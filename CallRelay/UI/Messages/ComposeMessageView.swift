@@ -91,6 +91,7 @@ struct ComposeMessageView: View {
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(Color("MessageBubbleColor"))
                     .controlSize(.large)
                     .disabled(!canSend)
                     .accessibilityIdentifier("smsSendButton")
