@@ -162,6 +162,7 @@ final class CloudSyncEngine: ObservableObject {
         let gen = generation
         status = .checking
         let outcome = await validate(gen: gen)
+        guard gen == generation else { return }
         switch outcome {
         case .ready:
             var snapshot = store.snapshot
@@ -237,7 +238,11 @@ final class CloudSyncEngine: ObservableObject {
     /// queue/cache are preserved and a bounded retry is scheduled.
     @discardableResult
     private func validate(gen: UInt64) async -> ValidationOutcome {
-        switch await transport.availability() {
+        // Capture, then guard: a delayed validation after disable()/account
+        // change must not fence the current store or override its status.
+        let availability = await transport.availability()
+        guard gen == generation else { return .unavailable }
+        switch availability {
         case .available:
             break
         case .noAccount:
@@ -258,9 +263,11 @@ final class CloudSyncEngine: ObservableObject {
             scheduleFailureRetry(retryAfter: nil)
             return .transient
         }
-        switch await transport.accountIdentity() {
-        case .identified(let identity):
-            await applyAccountFence(identity: identity)
+        let identity = await transport.accountIdentity()
+        guard gen == generation else { return .unavailable }
+        switch identity {
+        case .identified(let value):
+            await applyAccountFence(identity: value)
             guard gen == generation else { return .unavailable }
             return .ready
         case .none:

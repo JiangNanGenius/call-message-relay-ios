@@ -615,3 +615,107 @@ final class ScriptedCloudTransport: CloudSyncTransport {
         return .success(SyncPullResult(newToken: token))
     }
 }
+
+// MARK: - Validation generation races
+
+@MainActor
+final class HeldCloudTransport: CloudSyncTransport {
+    var availabilityResult: CloudSyncAvailability = .available
+    var identityResult: CloudAccountIdentity = .identified("account-1")
+    var holdFirstAvailability = false
+    var holdFirstIdentity = false
+    private var availabilityWaiters: [() -> Void] = []
+    private var identityWaiters: [() -> Void] = []
+    private var firstAvailability = true
+    private var firstIdentity = true
+    var ensureZoneCount = 0
+
+    func releaseAvailability() {
+        let waiters = availabilityWaiters
+        availabilityWaiters = []
+        waiters.forEach { $0() }
+    }
+    func releaseIdentity() {
+        let waiters = identityWaiters
+        identityWaiters = []
+        waiters.forEach { $0() }
+    }
+
+    func availability() async -> CloudSyncAvailability {
+        if holdFirstAvailability, firstAvailability {
+            firstAvailability = false
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                availabilityWaiters.append { c.resume() }
+            }
+        }
+        return availabilityResult
+    }
+
+    func accountIdentity() async -> CloudAccountIdentity {
+        if holdFirstIdentity, firstIdentity {
+            firstIdentity = false
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                identityWaiters.append { c.resume() }
+            }
+        }
+        return identityResult
+    }
+
+    func ensureZone() async -> Bool { ensureZoneCount += 1; return true }
+    func push(changes: [SyncPendingChange], payloads: SyncPayloadBundle,
+              anchors: [String: Data]) async -> SyncPushOutcome { SyncPushOutcome() }
+    func pull(token: Data?) async -> Result<SyncPullResult, SyncTransportError> {
+        .success(SyncPullResult())
+    }
+}
+
+extension CloudSyncEngineTests {
+    func testStaleAvailabilityAfterDisableHasNoSideEffects() async {
+        let store = CloudSyncStore(storeURL: tempURL())
+        let transport = HeldCloudTransport()
+        transport.holdFirstAvailability = true
+        let engine = CloudSyncEngine(store: store, transport: transport)
+
+        let enable = Task { await engine.enable() }
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        engine.disable() // bumps generation while enable() is suspended
+        transport.availabilityResult = .available
+        transport.identityResult = .identified("account-late")
+        transport.releaseAvailability()
+        await enable.value
+
+        XCTAssertEqual(engine.status, .off)
+        XCTAssertFalse(store.snapshot.enabled, "stale validation must not persist enabled")
+        XCTAssertNil(store.snapshot.accountToken)
+        XCTAssertEqual(transport.ensureZoneCount, 0)
+    }
+
+    func testStaleIdentityFromOldGenerationCannotFenceCurrentAccount() async {
+        let store = CloudSyncStore(storeURL: tempURL())
+        var seeded = SyncSnapshot()
+        seeded.enabled = true
+        seeded.accountToken = "account-1"
+        store.save(seeded)
+
+        let transport = HeldCloudTransport()
+        transport.holdFirstIdentity = true
+        let engine = CloudSyncEngine(store: store, transport: transport)
+
+        // Generation N sync is suspended inside accountIdentity().
+        let oldSync = Task { await engine.syncNow() }
+        try? await Task.sleep(nanoseconds: 80_000_000)
+
+        // Newer account-change validation (generation N+1) completes at once.
+        transport.holdFirstIdentity = false
+        transport.identityResult = .identified("account-2")
+        await engine.accountMayHaveChanged()
+        XCTAssertEqual(store.snapshot.accountToken, "account-2")
+
+        // The stale call finally returns the OLD identity: it must not refence.
+        transport.identityResult = .identified("account-1")
+        transport.releaseIdentity()
+        await oldSync.value
+        XCTAssertEqual(store.snapshot.accountToken, "account-2",
+                       "a delayed old-account identity must never overwrite the current fence")
+    }
+}
