@@ -104,6 +104,8 @@ xcodegen generate         # 生成 CallRelay.xcodeproj
 
 ## Feather 安装源
 
+当前预览版：[CallRelay 0.1.0](https://github.com/JiangNanGenius/call-message-relay-ios/releases/tag/v0.1.0)，支持 iOS 17+。
+
 在 Feather「源」中添加：
 
 ```
@@ -114,6 +116,16 @@ https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/fea
 无需上架 App Store。下载地址、版本、大小与 SHA-256 取自 GitHub Release 的实际产物。
 后台 VoIP 来电仍需匹配 Bundle ID、Push Notifications 描述文件和自有 APNs 服务；
 重新签名安装成功不代表后台推送或真实网关通话已经验收。
+
+本版来自固定源码 `0972a995fe9704f74bbb0df0786ff9b77aa452f2`；
+[发布 CI](https://github.com/JiangNanGenius/call-message-relay-ios/actions/runs/36869469687)
+通过 174 项单元测试、白天和夜间各一遍完整短信界面流程及 iPhone Release 构建，
+0 失败、0 测试进程重启。模拟器截图使用虚构内容，日夜界面已目视检查。
+
+| 界面 | 白天 | 夜间 |
+| --- | --- | --- |
+| 拨号 | <img src="https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-light.png" width="220" alt="白天拨号界面"> | <img src="https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-dark.png" width="220" alt="夜间拨号界面"> |
+| 短信 | <img src="https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-light.png" width="220" alt="白天短信列表"> | <img src="https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-dark.png" width="220" alt="夜间短信列表"> |
 
 ## 音质边界（重要）
 

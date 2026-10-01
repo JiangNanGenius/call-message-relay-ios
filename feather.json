@@ -1,0 +1,66 @@
+{
+  "name": "CallRelay 非商业安装源",
+  "identifier": "com.jiangnangenius.callrelay.source",
+  "subtitle": "自行签名 · 首版预览",
+  "website": "https://github.com/JiangNanGenius/call-message-relay-ios",
+  "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+  "tintColor": "135CDC",
+  "apps": [
+    {
+      "name": "CallRelay",
+      "bundleIdentifier": "com.jiangnangenius.callrelay",
+      "developerName": "JiangNanGenius",
+      "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
+      "localizedDescription": "连接自有 Linux 蜂窝电话网关，通过 CallKit 与 WebRTC 接打电话，并收发短信。PolyForm Noncommercial：仅限非商业用途。提供未签名 IPA，由 Feather 使用你自己的证书和描述文件重新签名。后台来电需要匹配的 Push Notifications 描述文件与自有 APNs 服务；iCloud 同步还需要匹配的 iCloud 权限和容器。",
+      "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+      "tintColor": "135CDC",
+      "beta": true,
+      "versions": [
+        {
+          "version": "0.1.0",
+          "buildVersion": "1",
+          "date": "2026-10-01T14:03:21Z",
+          "minOSVersion": "17.0",
+          "size": 9676183,
+          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/CallRelay.ipa",
+          "localizedDescription": "首版预览：CallKit、短信、通讯录去重导出、垃圾过滤与号码列表、自动重连及可选私有 iCloud 同步。跟随系统外观，提供离线演示。需自行签名；iCloud 另需匹配权限与容器。真实通话、短信、后台推送及跨设备同步待联调。",
+          "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
+        }
+      ],
+      "version": "0.1.0",
+      "versionDate": "2026-10-01T14:03:21Z",
+      "size": 9676183,
+      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/CallRelay.ipa",
+      "appPermissions": {
+        "entitlements": [
+          "aps-environment"
+        ],
+        "privacy": [
+          {
+            "name": "NSMicrophoneUsageDescription",
+            "usageDescription": "通话时需要使用麦克风，将你的语音经网关发送到对方。"
+          },
+          {
+            "name": "NSCameraUsageDescription",
+            "usageDescription": "扫描网关上显示的配对二维码时需要使用相机；也可以选择粘贴配对内容。"
+          },
+          {
+            "name": "NSContactsUsageDescription",
+            "usageDescription": "用于在联系人中选择号码拨号或发短信、在最近通话/短信中显示联系人姓名，并可按你的选择将通讯录号码视为可信发件人。App 不会上传或备份你的通讯录。"
+          }
+        ]
+      },
+      "screenshotURLs": [
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-light.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-dark.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-light.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-dark.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-thread-light.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-thread-dark.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-junk-light.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-junk-dark.png"
+      ]
+    }
+  ],
+  "news": []
+}
