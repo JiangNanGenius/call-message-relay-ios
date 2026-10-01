@@ -3,9 +3,8 @@ import XCTest
 @testable import CallRelay
 
 /// Serves one queued canned response per request through an NSURLProtocol,
-/// without opening any socket. Registered while the helper exists; ephemeral
-/// URLSessions (as HTTPGatewayAPI uses) consult globally registered protocols
-/// when `protocolClasses` is unset. Records the most recent request details.
+/// without opening any socket. The tested client's ephemeral configuration
+/// explicitly includes the mock protocol. Records request details.
 final class TestHTTPServer: @unchecked Sendable {
     let port = 8080
 
@@ -22,13 +21,17 @@ final class TestHTTPServer: @unchecked Sendable {
 
     init() {}
 
+    var configuration: URLSessionConfiguration {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockProtocol.self]
+        return config
+    }
+
     func start() throws {
         MockProtocol.owner = self
-        URLProtocol.registerClass(MockProtocol.self)
     }
 
     func stop() async {
-        URLProtocol.unregisterClass(MockProtocol.self)
         MockProtocol.owner = nil
         clear()
     }

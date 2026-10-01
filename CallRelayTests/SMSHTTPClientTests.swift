@@ -26,7 +26,7 @@ final class SMSHTTPClientTests: XCTestCase {
         ) else { throw NSError(domain: "test", code: 1) }
         let store = TokenStore(keychain: DictionaryKeychain())
         try store.save(TokenSet(accessToken: "a", refreshToken: "r", deviceId: "dev"))
-        return HTTPGatewayAPI(origin: origin, tokens: store)
+        return HTTPGatewayAPI(origin: origin, tokens: store, configuration: server.configuration)
     }
 
     func testListThreadsUsesExactPathAndBareArray() async throws {
@@ -39,6 +39,20 @@ final class SMSHTTPClientTests: XCTestCase {
         XCTAssertEqual(threads.first?.key, "555")
         XCTAssertEqual(server.lastPath, "/api/v1/threads")
         XCTAssertEqual(server.lastAuthorization, "Bearer a")
+    }
+
+    func testInboxLoadFailureThenSuccessfulRetry() async throws {
+        let client = try makeClient()
+        let inbox = MessageInbox(api: client)
+        server.respond(with: 503, body: "{}")
+        let first = await inbox.refreshThreads()
+        XCTAssertFalse(first)
+        guard case .failed = inbox.listPhase else { return XCTFail("Expected recoverable load failure") }
+        server.respond(with: 200, body: "[]")
+        let retried = await inbox.refreshThreads()
+        XCTAssertTrue(retried)
+        XCTAssertEqual(inbox.listPhase, .loaded)
+        XCTAssertTrue(inbox.displayThreads.isEmpty)
     }
 
     func testSendMessagePathHeadersAndCreatedResponse() async throws {

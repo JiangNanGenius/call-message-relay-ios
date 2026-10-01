@@ -97,12 +97,13 @@ final class HTTPGatewayAPI: GatewayAPI {
     private let deviceName: String
     private let credentialEpoch: UInt64
 
-    init(origin: GatewayOrigin, tokens: TokenStore, deviceName: String? = nil) {
+    init(origin: GatewayOrigin, tokens: TokenStore, deviceName: String? = nil,
+         configuration: URLSessionConfiguration = .ephemeral) {
         self.origin = origin
         self.tokens = tokens
         self.credentialEpoch = tokens.snapshot().epoch
         self.deviceName = deviceName ?? HTTPGatewayAPI.currentDeviceName()
-        let config = URLSessionConfiguration.ephemeral
+        let config = configuration
         config.tlsMinimumSupportedProtocolVersion = .TLSv12
         config.allowsCellularAccess = true
         // No credential storage, no cookies crossing origins.

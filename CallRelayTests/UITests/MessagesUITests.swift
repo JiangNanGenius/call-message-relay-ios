@@ -27,7 +27,7 @@ final class MessagesUITests: XCTestCase {
         // MARK: 2. Open conversation and read an example message
         thread.tap()
         XCTAssertTrue(element(containing: "你好，这是一条演示短信").waitForExistence(timeout: 5))
-        XCTAssertTrue(element(containing: "收到，界面按真实接口状态展示").exists)
+        XCTAssertTrue(element(containing: "收到，我们明天下午两点联系").exists)
         attach(named: "02-thread-detail")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 

@@ -36,11 +36,11 @@ struct SettingsView: View {
 
                 Section("铃声与来电") {
                     detailRow(title: "来电铃声", value: "系统默认（CallKit）")
-                    Label("来电由 CallKit 使用系统来电界面显示并响铃，App 不自行播放铃声或抢占音频。",
+                    Label("CallKit 使用系统来电界面显示来电，并播放系统默认铃声。",
                           systemImage: "bell")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Label("音量、听筒/扬声器/蓝牙路由由系统通话音频会话统一管理，可用系统音量键与音频路由菜单调整。",
+                    Label("通话中可切换听筒、扬声器或蓝牙，并使用手机音量键调整音量。",
                           systemImage: "speaker.wave.2")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

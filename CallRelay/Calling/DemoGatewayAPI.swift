@@ -60,7 +60,7 @@ final class DemoGatewayAPI: GatewayAPI {
             MessageRecord(
                 id: "demo-msg-2", gatewayID: DemoConstants.gatewayId, lineID: nil,
                 threadKey: DemoConstants.demoPeers[0], direction: .outbound,
-                peer: DemoConstants.demoPeers[0], body: "收到，界面按真实接口状态展示。",
+                peer: DemoConstants.demoPeers[0], body: "收到，我们明天下午两点联系。",
                 encoding: "ucs2", status: .sent, createdAt: now - minute * 60 * 26 + minute
             ),
             MessageRecord(

@@ -57,7 +57,7 @@ struct ComposeMessageView: View {
                 } footer: {
                     Text(model.isDemo
                          ? "演示模式：短信只保存在本机内存中，不会联网或真正发送。"
-                         : "发送请求成功后按网关真实状态显示（排队/已提交/已发送/失败），不显示虚假送达。")
+                         : "短信通过已配对网关发送，发送进度会显示在对话中。")
                         .font(.caption)
                 }
 
