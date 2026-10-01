@@ -224,6 +224,54 @@ final class CloudSyncEngineTests: XCTestCase {
         XCTAssertTrue(fake.pushedChanges.contains { $0.logicalID == "late" })
     }
 
+    /// Regression for a starvation bug: a high-priority joiner that observed
+    /// the completed owner task still registered kept re-awaiting it and
+    /// starved the background-priority owner's cleanup forever.
+    func testBackgroundOwnerHighPriorityJoinerBothReturnBounded() async {
+        let fake = ScriptedCloudTransport()
+        let (engine, _, _) = makeEngine(transport: fake)
+        await engine.enable()
+        engine.enqueueMessage(makeMessage(id: "m1"))
+        fake.holdPush = true
+        let ownerDone = expectation(description: "owner returned")
+        let joinDone = expectation(description: "joiner returned")
+        let owner = Task(priority: .background) {
+            await engine.syncNow()
+            ownerDone.fulfill()
+        }
+        try? await Task.sleep(nanoseconds: 120_000_000)
+        let joiner = Task(priority: .high) {
+            await engine.syncNow()
+            joinDone.fulfill()
+        }
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        engine.enqueueMessage(makeMessage(id: "late2"))
+        fake.releasePushAll()
+        await fulfillment(of: [ownerDone, joinDone], timeout: 5)
+        owner.cancel(); joiner.cancel()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(engine.isSyncing, "no stranded flight after both return")
+        XCTAssertTrue(fake.pushedChanges.contains { $0.logicalID == "late2" })
+    }
+
+    func testSamePriorityOverlapNeverRunsTwoPushesConcurrently() async {
+        let fake = ScriptedCloudTransport()
+        let (engine, _, _) = makeEngine(transport: fake)
+        await engine.enable()
+        fake.holdPush = true
+        let tasks = (0..<8).map { i in
+            Task {
+                if i == 4 { try? await Task.sleep(nanoseconds: 100_000_000) }
+                await engine.syncNow()
+            }
+        }
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertLessThanOrEqual(fake.inFlightCount, 1)
+        fake.releasePushAll()
+        for task in tasks { await task.value }
+        XCTAssertFalse(engine.isSyncing)
+    }
+
     // MARK: #5 account switch/logout fence
 
     func testAccountSwitchWipesAllCacheIncludingTombstonesAndRestores() async {

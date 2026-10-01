@@ -133,7 +133,8 @@ final class CloudSyncEngine: ObservableObject {
     private var generation: UInt64 = 0
     private var debounceTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
-    private var inflight: Task<Void, Never>?
+    private var inflightTask: Task<Void, Never>?
+    private var inflightToken: UUID?
     private var rerunRequested = false
     private var failureBackoff: RetryPolicy
     /// Last scheduled outage retry delay (observable in tests/UI).
@@ -416,28 +417,45 @@ final class CloudSyncEngine: ObservableObject {
 
     // MARK: Sync (single-flight, pull -> converge -> push)
 
-    /// Single-flight sync. Overlapping callers join the running pass and arm a
-    /// coalesced rerun; the owning loop runs exactly ONE more pass so revisions
-    /// queued DURING a flight are not stranded. No recursion: a joining caller
-    /// can never race the owner clearing/restarting `inflight`.
+    /// Single-flight sync.
+    ///
+    /// Joiners only mark `rerunRequested` and await once; they never busy-loop
+    /// on a completed task (a low-priority owner can be starved if joiners keep
+    /// re-awaiting). The OWNING task drains the rerun flag inside itself and
+    /// clears `inflight` only after the final pass, so an await returns only
+    /// once the flight — including its one coalesced follow-up — is done.
+    /// True while a flight (or its coalesced follow-up) is running.
+    var isSyncing: Bool { inflightTask != nil }
+
     func syncNow(reason: String = "manual") async {
-        while true {
-            if let inflight {
-                rerunRequested = true
-                await inflight.value
-                // The owner may already have started the coalesced rerun.
-                if self.inflight != nil { continue }
-                return
-            }
-            let task = Task { @MainActor in await self.runSync(reason: reason) }
-            inflight = task
-            await task.value
-            let rerun = rerunRequested
-            rerunRequested = false
-            inflight = nil
-            guard rerun else { return }
-            // Loop as the owner for one coalesced follow-up pass.
+        if let inflight = inflightTask {
+            rerunRequested = true
+            await inflight.value
+            return
         }
+        let token = UUID()
+        let owner = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                // Identity guard: an old (cancelled generation) owner can
+                // never clear a newer owner.
+                if self.inflightToken == token {
+                    self.inflightTask = nil
+                    self.inflightToken = nil
+                }
+            }
+            let ownerGeneration = self.generation
+            repeat {
+                self.rerunRequested = false
+                await self.runSync(reason: reason)
+                // Drain exactly one coalesced follow-up; edits made while that
+                // runs re-arm the flag, and ordinary edit debounce / foreground
+                // /network-regain triggers start a fresh owner afterwards.
+            } while self.rerunRequested && ownerGeneration == self.generation
+        }
+        inflightTask = owner
+        inflightToken = token
+        await owner.value
     }
 
     private func runSync(reason: String) async {

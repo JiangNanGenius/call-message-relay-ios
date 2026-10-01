@@ -904,6 +904,9 @@ final class AppModel: ObservableObject {
               activeCall?.gatewayCallId == gatewayId,
               activeCall?.phase == .incomingRinging else { return }
         await driver?.endCall(gatewayId: gatewayId)
+        // A suspension here can span unpair/re-bind: a stale screened call must
+        // never clear the NEW session's sets or active call.
+        guard generation == sessionGeneration else { return }
         activeGatewayCallIds.remove(gatewayId)
         reservedCallIds.remove(gatewayId)
         if activeCall?.gatewayCallId == gatewayId { activeCall = nil }
