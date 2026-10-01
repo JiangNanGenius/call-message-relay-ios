@@ -103,8 +103,7 @@ final class WireCompatibilityTests: XCTestCase {
         XCTAssertFalse(sync.hasMore)
     }
 
-    func testVoIPPushEnvelope() throws {
-        let dict: [AnyHashable: Any] = [
+    func testVoIPPushEnvelope() throws {        let dict: [AnyHashable: Any] = [
             "callUUID": "00000000-0000-0000-0000-000000000001",
             "callId": "maybe-not-a-uuid",
             "handle": "5550123",

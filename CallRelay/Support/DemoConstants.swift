@@ -13,3 +13,9 @@ enum DemoConstants {
     static let selfPeer = "555-0100"
     static let demoPeers = ["555-0123", "555-0148", "555-0177"]
 }
+
+/// Launch arguments used by UI tests to start directly in the fully offline
+/// demo without onboarding or stored defaults.
+enum LaunchArguments {
+    static let forceDemo = "-callrelayDemoMode"
+}

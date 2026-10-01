@@ -99,9 +99,16 @@ xcodebuild test \
 ```
 
 测试覆盖：Ed25519 一次性配对证明与 Keychain、真实 handler JSON 的线缆兼容
-（大小写/秒与毫秒/RFC3339/裸数组）、端点与重定向安全、callId→UUID 稳定映射与
-VoIP 推送去重策略、PCMU-only SDP 过滤、通话阶段判定，以及带可控延迟 Fake API 的
-取消/迟到响应/媒体失败/远端挂断竞态。
+（大小写/秒与毫秒/RFC3339/裸数组）、短信端点与字段（线程/对话/发送幂等/502 失败消息/
+Has-More 响应头）、端点与重定向安全、callId→UUID 稳定映射与
+VoIP 推送去重策略、PCMU-only SDP 过滤、通话阶段判定、短信收件箱（重试同键、切换模式后
+迟到响应作废、已读回执、演示路径）、CallKit handle 类型与 Intent/tel: 入口解析，以及
+带可控延迟 Fake API 的取消/迟到响应/媒体失败/远端挂断竞态。
+
+另有独立的 **CallRelayUITests**（XCUITest，UI-test target，不在单元测试 target 内），
+通过 `-callrelayDemoMode` 启动参数进入完全离线演示，走查短信列表→对话→编写→发送状态→
+设置中的系统铃声说明，并保存 `XCTAttachment(.keepAlways)` 截图；需要在已启动的模拟器
+上运行（CI 的稳定模拟器负责执行与目视检查，本机 iOS 27 beta 不启动模拟器）。
 
 ## 5. 真机无签名编译（仅编译验证，不可安装）
 

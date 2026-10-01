@@ -38,6 +38,35 @@
 - VoIP 推送信封：`{callUUID, callId, handle, gatewayId, issuedAt}`（issuedAt 为秒）。
   上游发送端当前把 `current.ID` 同时放进 `callUUID` 与 `callId`，**不保证是合法 UUID**。
 
+## 短信（SMS）线缆事实
+
+直接核对 `server.go` 的 `messageResponse`/`threadResponse`、`messages`/`messageAction`
+处理器与 `internal/sms/engine.go`：
+
+- `GET /messages?after&limit`：`after` 为 `sync_seq` 游标，返回**时间升序**的裸 JSON 数组
+  （空为 `[]`）；`limit` 1–500。
+- `GET /messages?threadKey=&before=&beforeId=&limit=`：单对话最新一页，服务端先按
+  `created_at DESC, id DESC` 取 `limit+1` 判定再翻回**时间升序**；是否还有更早的消息通过
+  响应头 **`X-CellBridge-Has-More: true|false`** 给出；`beforeId` 必须与 `before` 同时出现。
+- `POST /messages`：请求体 `{to, body}`（to 去空白后 1–32 字符；body 非空、≤10000 rune）；
+  必须带 `Idempotency-Key`。成功 **201** 返回 `messageResponse`；调制解调器在消息落库后
+  拒绝 PDU 时返回 **502 且体里仍是 `messageResponse`（status=failed）**——客户端把它作为
+  真实失败消息展示，而不是仅当错误丢弃。
+- 消息字段：`id, gatewayID, lineID, threadKey, direction(inbound|outbound), peer, body,
+  encoding(gsm7|ucs2), status, createdAt(Unix 毫秒)`。
+- 状态：引擎实际写入 `queued → submitted → sent`，失败写 `failed`；入站消息入库时为
+  `sent`；`POST /messages/{id}/read` 成功 **204**，此后入站消息状态为 `read`。
+  `delivered` 仅在枚举/OpenAPI 中预留，首版不声称已送达。
+- `GET /threads`：裸数组，元素 `{key, peer, unreadCount, lastMessage: Message}`；
+  `unreadCount` 只统计未 `read` 的入站消息。
+- 事件：入站/发送完成时发布 `message.created`，`data` 即 messageResponse；协议枚举还保留
+  `message.updated`，客户端两者都按消息对象合并。
+- 短信发送门槛来自 `/line`：`sim=ready` 且 `registration=registered` 且 **`sms=ready`**
+  （AT 适配器在正常轮询时上报短信 ready；不能只看 `voice`）。
+- 客户端幂等策略：同一逻辑提交（含网络失败后的重试）固定使用一个 Idempotency-Key，网关
+  会重放已完成的同一响应，因此重试不会产生第二条短信；对已落库 `failed` 的消息改用
+  **新**幂等键重新提交（旧键只会重放失败结果）。
+
 ## 安全实现
 
 - 端点校验：默认强制 HTTPS；仅在显式调试开关下允许 `localhost/127.0.0.1/::1` 的 HTTP；

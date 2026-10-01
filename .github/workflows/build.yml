@@ -52,9 +52,10 @@ jobs:
           xcrun simctl boot "$SIMULATOR_ID"
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
 
-      - name: Run unit tests
+      - name: Run tests in light appearance
         run: |
           set -euo pipefail
+          xcrun simctl ui "$SIMULATOR_ID" appearance light
           xcodebuild test \
             -project CallRelay.xcodeproj -scheme CallRelay \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
@@ -63,20 +64,58 @@ jobs:
             -resultBundlePath build/Tests.xcresult \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Exercise SMS UI in dark appearance
+        run: |
+          set -euo pipefail
+          xcrun simctl ui "$SIMULATOR_ID" appearance dark
+          xcodebuild test-without-building \
+            -project CallRelay.xcodeproj -scheme CallRelay \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath build/DerivedData \
+            -parallel-testing-enabled NO \
+            -only-testing:CallRelayUITests \
+            -resultBundlePath build/Tests-Dark.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Export UI screenshots
+        if: always()
+        run: |
+          for appearance in Light Dark; do
+            bundle=build/Tests.xcresult
+            if [ "$appearance" = Dark ]; then bundle=build/Tests-Dark.xcresult; fi
+            if [ -d "$bundle" ]; then
+              xcrun xcresulttool export attachments --path "$bundle" --output-path "build/UITestScreens/$appearance"
+            fi
+          done
+
+      - name: Save UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sms-ui-screens
+          path: build/UITestScreens
+          if-no-files-found: ignore
+
       - name: Launch offline demo and capture its screen
         run: |
           set -euo pipefail
           mkdir -p build/Preview
           xcrun simctl install "$SIMULATOR_ID" build/DerivedData/Build/Products/Debug-iphonesimulator/CallRelay.app
+          xcrun simctl ui "$SIMULATOR_ID" appearance light
+          xcrun simctl terminate "$SIMULATOR_ID" com.jiangnangenius.callrelay || true
           xcrun simctl launch "$SIMULATOR_ID" com.jiangnangenius.callrelay -callrelay.demoMode YES
           sleep 5
-          xcrun simctl io "$SIMULATOR_ID" screenshot build/Preview/dialer.png
+          xcrun simctl io "$SIMULATOR_ID" screenshot build/Preview/dialer-light.png
+          xcrun simctl ui "$SIMULATOR_ID" appearance dark
+          sleep 2
+          xcrun simctl io "$SIMULATOR_ID" screenshot build/Preview/dialer-dark.png
+          xcrun simctl ui "$SIMULATOR_ID" appearance light
 
       - name: Save demo screen
         uses: actions/upload-artifact@v4
         with:
           name: demo-screen
-          path: build/Preview/dialer.png
+          path: build/Preview/*.png
 
       - name: Build for iPhone (unsigned)
         run: |
@@ -100,5 +139,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-results
-          path: build/Tests.xcresult
+          path: build/Tests*.xcresult
           if-no-files-found: ignore

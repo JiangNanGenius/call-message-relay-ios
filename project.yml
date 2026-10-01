@@ -55,6 +55,11 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # Relaunch from a system Phone/Recents row: CallKit + INStartCallIntent
+        # donations carry the call back as an NSUserActivity.
+        NSUserActivityTypes:
+          - INStartCallIntent
+          - INStartAudioCallIntent
         UIRequiredDeviceCapabilities:
           - arm64
         UIBackgroundModes:
@@ -82,6 +87,8 @@ targets:
     platform: iOS
     sources:
       - path: CallRelayTests
+        excludes:
+          - "UITests/**"
     dependencies:
       - target: CallRelay
     settings:
@@ -89,12 +96,28 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.jiangnangenius.callrelay.tests
         GENERATE_INFOPLIST_FILE: "YES"
 
+  CallRelayUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: CallRelayTests/UITests
+    dependencies:
+      - target: CallRelay
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jiangnangenius.callrelay.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: CallRelay
+
 schemes:
   CallRelay:
     build:
       targets:
         CallRelay: all
         CallRelayTests: [test]
+        CallRelayUITests: [test]
     test:
       targets:
         - CallRelayTests
+        - CallRelayUITests
+      gatherCoverageData: false

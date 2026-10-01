@@ -5,7 +5,9 @@ import UIKit
 @MainActor
 final class AppModel: ObservableObject {
     // MARK: Published UI state
-    @Published var linePhase: LinePhase = .unpaired
+    @Published var linePhase: LinePhase = .unpaired {
+        didSet { resolvePendingExternalDial() }
+    }
     @Published var activeCall: ActiveCallViewState?
     @Published var quality: MediaQuality?
     @Published var recents: [CallRecord] = []
@@ -17,6 +19,17 @@ final class AppModel: ObservableObject {
     @Published var voipTokenHex: String?
     @Published var apnsTokenHex: String?
     @Published var eventState: EventStream.StreamState = .closed
+    @Published private(set) var inbox: MessageInbox?
+    @Published var externalCallRequest: ExternalCallRequest?
+
+    /// A dial requested from a system entry point (Phone Recents via
+    /// INStartCallIntent/NSUserActivity or a tel: URL). The UI explains when
+    /// the gateway line cannot place the call; we never fall back to cellular.
+    struct ExternalCallRequest: Identifiable, Equatable {
+        let id = UUID()
+        let peer: String
+        var message: String?
+    }
 
     // MARK: Services
     private let identities: IdentityStore
@@ -38,6 +51,7 @@ final class AppModel: ObservableObject {
     private var activeGatewayCallIds: Set<String> = []
     private var lastSyncSeq: Int64 = 0
     private var sessionGeneration: UInt64 = 0
+    private var pendingExternalPeer: String?
     /// Gateway call ids reserved during an in-flight CallKit report, so
     /// duplicate pushes/events cannot present a second ring while awaiting.
     private var reservedCallIds: Set<String> = []
@@ -63,6 +77,34 @@ final class AppModel: ObservableObject {
             && (line.voice == .ready || line.voice == .controlOnly)
     }
 
+    /// SMS readiness follows the *SMS* surfaces, not voice: the SIM must be
+    /// ready, the line registered, and the gateway modem must report SMS ready.
+    var isSMSLineUsable: Bool {
+        guard case .online(let line) = linePhase else { return false }
+        return line.sim == .ready
+            && line.registration == .registered
+            && line.sms == .ready
+    }
+
+    var smsUnavailableReason: String? {
+        if isDemo { return nil }
+        switch linePhase {
+        case .online(let line):
+            if line.sim != .ready { return "SIM 未就绪，暂时不能发送短信。" }
+            if line.registration != .registered { return "线路尚未注册到移动网络。" }
+            if line.sms != .ready { return "网关短信能力当前不可用。" }
+            return nil
+        case .demo:
+            return nil
+        case .connecting:
+            return "正在连接网关，请稍候。"
+        case .offline(let message):
+            return message
+        case .unpaired:
+            return "尚未配对网关。"
+        }
+    }
+
     init(
         identities: IdentityStore = IdentityStore(),
         tokenStore: TokenStore = TokenStore(),
@@ -78,7 +120,8 @@ final class AppModel: ObservableObject {
     // MARK: Lifecycle
 
     func bootstrap() {
-        if defaults.bool(forKey: DefaultsKey.demo) {
+        if defaults.bool(forKey: DefaultsKey.demo)
+            || ProcessInfo.processInfo.arguments.contains(LaunchArguments.forceDemo) {
             enterDemo(persist: false)
             return
         }
@@ -141,6 +184,9 @@ final class AppModel: ObservableObject {
         let demoDriver = DemoCallDriver(gateway: gateway)
         driver = demoDriver
         bindDriver(demoDriver)
+        let messages = MessageInbox(api: gateway)
+        inbox = messages
+        messages.start()
         linePhase = .demo
         gatewayName = DemoConstants.gatewayName
         Task { await refreshRecents() }
@@ -167,6 +213,63 @@ final class AppModel: ObservableObject {
 
     func demoAnswer() {
         (driver as? DemoCallDriver)?.demoAnswer()
+    }
+
+    func demoSimulateIncomingMessage() {
+        guard let demoGateway else { return }
+        let record = demoGateway.simulateIncomingMessage(
+            peer: DemoConstants.demoPeers[2],
+            body: "这是一条模拟收到的短信，全程离线，不会真正发送。"
+        )
+        inbox?.apply(eventMessage: record)
+    }
+
+    func demoArmNextSMSFailure() {
+        demoGateway?.failNextOutgoingSMS = true
+    }
+
+    // MARK: External call entry points (Intents / tel:)
+
+    /// Routes a number chosen in the system Phone/Contacts UI through the same
+    /// gateway path. Never places a cellular call; when unavailable the UI
+    /// explains why instead of silently failing or opening `tel:`.
+    func handleExternalDial(_ rawPeer: String) {
+        let peer = rawPeer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !peer.isEmpty else { return }
+        if case .connecting = linePhase {
+            pendingExternalPeer = peer
+            return
+        }
+        guard isDemo || isLineUsable else {
+            externalCallRequest = ExternalCallRequest(peer: peer, message: externalDialReason)
+            return
+        }
+        dial(peer)
+    }
+
+    private func resolvePendingExternalDial() {
+        guard let peer = pendingExternalPeer else { return }
+        if case .connecting = linePhase { return }
+        pendingExternalPeer = nil
+        handleExternalDial(peer)
+    }
+
+    func dismissExternalCallRequest() { externalCallRequest = nil }
+
+    private var externalDialReason: String {
+        if isDemo { return "" }
+        switch linePhase {
+        case .unpaired:
+            return "需要先配对网关后，才能通过网关拨打这个号码；App 不会改用蜂窝电话直接呼出。"
+        case .offline(let message):
+            return "当前无法连接网关（\(message)），请稍后重试；App 不会改用蜂窝电话直接呼出。"
+        case .connecting:
+            return "正在连接网关，请稍后重试；App 不会改用蜂窝电话直接呼出。"
+        case .online:
+            return "网关语音线路当前不可用（未注册或语音能力不可用）；App 不会改用蜂窝电话直接呼出。"
+        case .demo:
+            return ""
+        }
     }
 
     // MARK: Live wiring
@@ -254,6 +357,10 @@ final class AppModel: ObservableObject {
         driver = live
         bindDriver(live)
 
+        let messages = MessageInbox(api: http)
+        inbox = messages
+        messages.start()
+
         startPolling()
         Task {
             await refreshLine()
@@ -277,6 +384,8 @@ final class AppModel: ObservableObject {
         callKit = nil
         driver = nil
         api = nil
+        inbox?.invalidate()
+        inbox = nil
         activeGatewayCallIds.removeAll()
         reservedCallIds.removeAll()
         activeCall = nil
@@ -373,6 +482,8 @@ final class AppModel: ObservableObject {
         switch event.type {
         case .lineUpdated:
             if let line = event.line() { linePhase = .online(line) }
+        case .messageCreated, .messageUpdated:
+            if let message = event.message() { inbox?.apply(eventMessage: message) }
         case .callIncoming:
             if let call = event.call() { handleIncoming(call) }
         case .callUpdated, .callEnded:

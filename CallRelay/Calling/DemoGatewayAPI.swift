@@ -8,13 +8,20 @@ final class DemoGatewayAPI: GatewayAPI {
     private var calls: [CallRecord] = []
     private var line: LineStatus
 
+    /// Demo SMS storage. Never leaves the app: no network, no modem.
+    private var messages: [MessageRecord] = []
+    /// When true the next outbound SMS is persisted with status=failed (like a
+    /// 502 gateway response) so the UI's retry path can be demonstrated.
+    var failNextOutgoingSMS = false
+    private var idempotentSends: [String: MessageRecord] = [:]
+
     init() {
         self.line = LineStatus.demoReady()
         seedHistory()
+        seedMessages()
     }
 
-    private func seedHistory() {
-        let now = Date().unixMilliseconds
+    private func seedHistory() {        let now = Date().unixMilliseconds
         calls = [
             CallRecord(
                 id: "demo-call-1", gatewayID: DemoConstants.gatewayId, lineID: nil,
@@ -40,6 +47,104 @@ final class DemoGatewayAPI: GatewayAPI {
         ]
     }
 
+    private func seedMessages() {
+        let now = Date().unixMilliseconds
+        let minute: Int64 = 60_000
+        messages = [
+            MessageRecord(
+                id: "demo-msg-1", gatewayID: DemoConstants.gatewayId, lineID: nil,
+                threadKey: DemoConstants.demoPeers[0], direction: .inbound,
+                peer: DemoConstants.demoPeers[0], body: "你好，这是一条演示短信，网关离线时也能查看。",
+                encoding: "ucs2", status: .read, createdAt: now - minute * 60 * 26
+            ),
+            MessageRecord(
+                id: "demo-msg-2", gatewayID: DemoConstants.gatewayId, lineID: nil,
+                threadKey: DemoConstants.demoPeers[0], direction: .outbound,
+                peer: DemoConstants.demoPeers[0], body: "收到，界面按真实接口状态展示。",
+                encoding: "ucs2", status: .sent, createdAt: now - minute * 60 * 26 + minute
+            ),
+            MessageRecord(
+                id: "demo-msg-3", gatewayID: DemoConstants.gatewayId, lineID: nil,
+                threadKey: DemoConstants.demoPeers[1], direction: .inbound,
+                peer: DemoConstants.demoPeers[1], body: "明天的通话还是走网关吗？",
+                encoding: "ucs2", status: .sent, createdAt: now - minute * 60 * 3
+            )
+        ]
+    }
+
+    // MARK: SMS (in-memory, never transmitted)
+
+    func listThreads() async throws -> [MessageThread] {
+        var byKey: [String: MessageThread] = [:]
+        for message in messages.sorted(by: { $0.createdAt < $1.createdAt }) {
+            var unread = byKey[message.threadKey]?.unreadCount ?? 0
+            if message.direction == .inbound && message.status != .read { unread += 1 }
+            byKey[message.threadKey] = MessageThread(
+                key: message.threadKey, peer: message.peer,
+                unreadCount: unread, lastMessage: message
+            )
+        }
+        return Array(byKey.values)
+    }
+
+    func listMessages(after: Int64, limit: Int) async throws -> [MessageRecord] {
+        Array(messages.filter { $0.createdAt > after }.sorted { $0.createdAt < $1.createdAt }.prefix(limit))
+    }
+
+    func listThreadMessages(
+        threadKey: String, beforeCreatedAt: Int64?, beforeID: String?, limit: Int
+    ) async throws -> ThreadMessagePage {
+        var filtered = messages.filter { $0.threadKey == threadKey }
+        if let beforeCreatedAt {
+            let cursorID = beforeID ?? ""
+            filtered = filtered.filter { message in
+                message.createdAt < beforeCreatedAt
+                    || (message.createdAt == beforeCreatedAt && !cursorID.isEmpty && message.id < cursorID)
+            }
+        }
+        let descending = filtered.sorted {
+            $0.createdAt == $1.createdAt ? $0.id > $1.id : $0.createdAt > $1.createdAt
+        }
+        let page = Array(descending.prefix(limit))
+        // Gateway returns chronological ascending order.
+        return ThreadMessagePage(messages: page.reversed(), hasMore: descending.count > limit)
+    }
+
+    func sendMessage(to: String, body: String, idempotencyKey: String) async throws -> MessageRecord {
+        // Simulate bounded modem latency so the sending state is visible.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        if let replay = idempotentSends[idempotencyKey] { return replay }
+        let status: MessageStatus = failNextOutgoingSMS ? .failed : .sent
+        failNextOutgoingSMS = false
+        let record = MessageRecord(
+            id: "demo-msg-\(UUID().uuidString.prefix(8))",
+            gatewayID: DemoConstants.gatewayId, lineID: nil,
+            threadKey: to, direction: .outbound, peer: to, body: body,
+            encoding: "ucs2", status: status, createdAt: Date().unixMilliseconds
+        )
+        messages.append(record)
+        idempotentSends[idempotencyKey] = record
+        return record
+    }
+
+    func markMessageRead(id: String, idempotencyKey: String) async throws {
+        if let index = messages.firstIndex(where: { $0.id == id }) {
+            messages[index] = messages[index].with(status: .read)
+        }
+    }
+
+    /// Demo-only: fabricate an inbound SMS, as if the gateway modem received one.
+    func simulateIncomingMessage(peer: String, body: String) -> MessageRecord {
+        let record = MessageRecord(
+            id: "demo-incoming-\(UUID().uuidString.prefix(8))",
+            gatewayID: DemoConstants.gatewayId, lineID: nil,
+            threadKey: peer, direction: .inbound, peer: peer, body: body,
+            encoding: "ucs2", status: .sent, createdAt: Date().unixMilliseconds
+        )
+        messages.append(record)
+        return record
+    }
+
     func identity() async throws -> IdentityResponse {
         IdentityResponse(
             gatewayId: DemoConstants.gatewayId, gatewayName: DemoConstants.gatewayName,
@@ -54,7 +159,7 @@ final class DemoGatewayAPI: GatewayAPI {
             id: DemoConstants.gatewayId, name: DemoConstants.gatewayName,
             lineID: DemoConstants.gatewayId + ":line", transport: DemoConstants.transport,
             capabilities: GatewayCapabilities(
-                vendor: "演示", model: "H28K-QDC507 (模拟)", usbVid: nil, usbPid: nil,
+                vendor: "演示", model: "Linux 蜂窝网关（模拟）", usbVid: nil, usbPid: nil,
                 tier: "full_voice", sms: true, voice: true, dtmf: true,
                 audio: AudioCapabilities(backend: "demo", sampleRate: 8000, channels: 1),
                 recording: RecordingCapabilities(supported: false, manual: false, auto: false, format: "m4a-aac")

@@ -13,6 +13,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("ipa", type=Path)
 parser.add_argument("--tag", required=True)
 parser.add_argument("--output", type=Path, default=Path("feather.json"))
+parser.add_argument("--screenshot", action="append", default=[], help="Published screenshot filename beside the IPA")
 args = parser.parse_args()
 if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?", args.tag):
     parser.error("Expected a version tag, for example v0.1.0")
@@ -30,14 +31,14 @@ version = {
     "minOSVersion": info["MinimumOSVersion"],
     "size": args.ipa.stat().st_size,
     "downloadURL": f"{base}/releases/download/{args.tag}/{args.ipa.name}",
-    "localizedDescription": "首版预览：CallKit、私钥配对、PCMU 电话音频、离线演示。需自行签名；真机通话与后台推送待联调。",
+    "localizedDescription": "首版预览：CallKit、短信收发、系统通话入口、私钥配对、PCMU 电话音频和离线演示。需自行签名；真实通话、短信与后台推送待联调。",
     "sha256": hashlib.sha256(args.ipa.read_bytes()).hexdigest(),
 }
 app = {
     "name": "CallRelay", "bundleIdentifier": info["CFBundleIdentifier"],
     "developerName": "JiangNanGenius", "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
     "localizedDescription": "连接自有 Linux 蜂窝电话网关，通过 CallKit 与 WebRTC 接打电话。PolyForm Noncommercial：仅限非商业用途。提供未签名 IPA，由 Feather 使用你自己的证书和描述文件重新签名。后台来电需要包含 Push Notifications 的匹配描述文件与自有 APNs 服务。",
-    "iconURL": icon, "tintColor": "198B58", "beta": True,
+    "iconURL": icon, "tintColor": "135CDC", "beta": True,
     "versions": [version], "version": version["version"], "versionDate": version["date"],
     "size": version["size"], "downloadURL": version["downloadURL"],
     "appPermissions": {"entitlements": ["aps-environment"], "privacy": [
@@ -45,8 +46,13 @@ app = {
         {"name": "NSCameraUsageDescription", "usageDescription": info["NSCameraUsageDescription"]},
     ]},
 }
+if args.screenshot:
+    for name in args.screenshot:
+        if Path(name).name != name or not name.endswith(".png") or not (args.ipa.parent / name).is_file():
+            parser.error("Screenshots must be existing PNG files beside the IPA")
+    app["screenshotURLs"] = [f"{base}/releases/download/{args.tag}/{name}" for name in args.screenshot]
 source = {"name": "CallRelay 非商业安装源", "identifier": "com.jiangnangenius.callrelay.source",
           "subtitle": "自行签名 · 首版预览", "website": base, "iconURL": icon,
-          "tintColor": "198B58", "apps": [app], "news": []}
+          "tintColor": "135CDC", "apps": [app], "news": []}
 args.output.write_text(json.dumps(source, ensure_ascii=False, indent=2) + "\n")
 print(f"Wrote {args.output}: {version['version']}, {version['size']} bytes, SHA256 {version['sha256']}")

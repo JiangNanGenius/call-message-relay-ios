@@ -77,4 +77,25 @@ protocol GatewayAPI: Sendable {
     func iceConfiguration(callId: String) async throws -> ICEConfiguration
     func sync(after: Int64, limit: Int) async throws -> SyncResponse
     func registerPush(registration: PushRegistration, idempotencyKey: String) async throws
+
+    // MARK: SMS
+    func listThreads() async throws -> [MessageThread]
+    /// All messages in chronological (ascending) order, paged by `after`.
+    func listMessages(after: Int64, limit: Int) async throws -> [MessageRecord]
+    /// One thread page. A nil cursor starts at the newest messages; the result
+    /// is returned newest-first along with the gateway's has-more flag.
+    func listThreadMessages(
+        threadKey: String, beforeCreatedAt: Int64?, beforeID: String?, limit: Int
+    ) async throws -> ThreadMessagePage
+    /// Sends an SMS. The same logical submission must always reuse the same
+    /// `idempotencyKey` so retries cannot create duplicate messages.
+    func sendMessage(to: String, body: String, idempotencyKey: String) async throws -> MessageRecord
+    func markMessageRead(id: String, idempotencyKey: String) async throws
+}
+
+/// Newest-first page of one thread plus the gateway's X-CellBridge-Has-More
+/// flag (there are older messages on the server).
+struct ThreadMessagePage: Equatable, Sendable {
+    let messages: [MessageRecord]
+    let hasMore: Bool
 }

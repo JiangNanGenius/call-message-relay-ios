@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
@@ -31,6 +32,26 @@ struct SettingsView: View {
                     Section {
                         Button("退出演示模式", role: .destructive) { model.exitDemo() }
                     }
+                }
+
+                Section("铃声与来电") {
+                    detailRow(title: "来电铃声", value: "系统默认（CallKit）")
+                    Label("来电由 CallKit 使用系统来电界面显示并响铃，App 不自行播放铃声或抢占音频。",
+                          systemImage: "bell")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Label("音量、听筒/扬声器/蓝牙路由由系统通话音频会话统一管理，可用系统音量键与音频路由菜单调整。",
+                          systemImage: "speaker.wave.2")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        Link(destination: url) {
+                            Label("在系统设置中管理本 App 权限", systemImage: "gear")
+                        }
+                    }
+                    Text("静音开关、勿扰模式与蓝牙耳机的实际响铃/播放行为以真机系统为准；App 不能读取或选择 iPhone 个人铃声，也不提供自定义铃声下载。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("音频与通话") {
@@ -71,6 +92,12 @@ struct SettingsView: View {
                 model.demoAnswer()
             } label: { Label("接听当前模拟来电", systemImage: "phone.fill") }
             .disabled(model.activeCall == nil)
+            Button {
+                model.demoSimulateIncomingMessage()
+            } label: { Label("模拟收到一条短信", systemImage: "ellipsis.message") }
+            Button {
+                model.demoArmNextSMSFailure()
+            } label: { Label("让下一条演示短信发送失败（可重试）", systemImage: "exclamationmark.bubble") }
         }
     }
 
@@ -87,6 +114,7 @@ struct SettingsView: View {
                 detailRow(title: "注册", value: registrationText(line.registration))
                 detailRow(title: "信号", value: line.signal?.bars.map { "\($0)/5" } ?? "—")
                 detailRow(title: "语音能力", value: voiceText(line.voice))
+                detailRow(title: "短信能力", value: smsText(line.sms))
             }
             if let event = model.eventStateText, !event.isEmpty {
                 detailRow(title: "事件连接", value: event)
@@ -149,6 +177,14 @@ struct SettingsView: View {
         switch v {
         case .ready: return "可用"
         case .controlOnly: return "仅控制"
+        case .unavailable: return "不可用"
+        case .busy: return "占线"
+        }
+    }
+
+    private func smsText(_ s: SMSAvailability) -> String {
+        switch s {
+        case .ready: return "可用"
         case .unavailable: return "不可用"
         case .busy: return "占线"
         }

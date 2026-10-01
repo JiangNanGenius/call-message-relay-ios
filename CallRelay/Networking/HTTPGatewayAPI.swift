@@ -203,6 +203,70 @@ final class HTTPGatewayAPI: GatewayAPI {
         )
     }
 
+    // MARK: SMS
+
+    func listThreads() async throws -> [MessageThread] {
+        try await authorizedGet("threads")
+    }
+
+    func listMessages(after: Int64, limit: Int) async throws -> [MessageRecord] {
+        try await authorizedGet(
+            "messages",
+            queryItems: [URLQueryItem(name: "after", value: String(after)),
+                         URLQueryItem(name: "limit", value: String(limit))]
+        )
+    }
+
+    func listThreadMessages(
+        threadKey: String, beforeCreatedAt: Int64?, beforeID: String?, limit: Int
+    ) async throws -> ThreadMessagePage {
+        var query = [
+            URLQueryItem(name: "threadKey", value: threadKey),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        if let beforeCreatedAt {
+            query.append(URLQueryItem(name: "before", value: String(beforeCreatedAt)))
+        }
+        if let beforeID {
+            query.append(URLQueryItem(name: "beforeId", value: beforeID))
+        }
+        let request = try makeRequest(path: "messages", method: "GET", queryItems: query)
+        let (data, response) = try await performWithTokenRefresh(request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.network(URLError(.badServerResponse)) }
+        guard (200..<300).contains(http.statusCode) else { throw try error(from: http, data: data) }
+        // The gateway returns rows newest-first and reverses DB order into
+        // ascending chronological order; trust its array order.
+        let messages = try decoder.decode([MessageRecord].self, from: data)
+        let hasMore = http.value(forHTTPHeaderField: "X-CellBridge-Has-More")
+            .map { $0.lowercased() == "true" } ?? false
+        return ThreadMessagePage(messages: messages, hasMore: hasMore)
+    }
+
+    func sendMessage(to: String, body: String, idempotencyKey: String) async throws -> MessageRecord {
+        let payload = SendMessageRequest(to: to, body: body)
+        let payloadData = try encoder.encode(payload)
+        var request = try makeRequest(path: "messages", method: "POST", queryItems: [])
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        request.httpBody = payloadData
+        let (data, response) = try await performWithTokenRefresh(request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.network(URLError(.badServerResponse)) }
+        if http.statusCode == 201 {
+            return try decoder.decode(MessageRecord.self, from: data)
+        }
+        // A 502 may carry the persisted message with status=failed when the
+        // modem rejected the PDU after the row was created. Surface that
+        // truthful failed message instead of losing it behind an error.
+        if http.statusCode == 502, let failed = try? decoder.decode(MessageRecord.self, from: data) {
+            return failed
+        }
+        throw try error(from: http, data: data)
+    }
+
+    func markMessageRead(id: String, idempotencyKey: String) async throws {
+        try await authorizedVoidAction("messages/\(id)/read", idempotencyKey: idempotencyKey)
+    }
+
     // MARK: Unauthenticated pairing endpoints
 
     func completePairing(_ request: PairingCompleteRequest) async throws -> DeviceCredentials {

@@ -82,7 +82,7 @@ final class CallKitManager: NSObject, CallKitControlling {
     /// (caller must reconcile rather than retry blindly).
     @discardableResult
     func reportIncoming(uuid: UUID, handle: String, isVideo: Bool = false) async -> Bool {
-        let handleValue = CXHandle(type: .generic, value: handle)
+        let handleValue = CXHandle(type: CallKitManager.handleType(for: handle), value: handle)
         let update = CXCallUpdate()
         update.remoteHandle = handleValue
         update.hasVideo = isVideo
@@ -101,11 +101,23 @@ final class CallKitManager: NSObject, CallKitControlling {
     // MARK: Outgoing (UI path)
 
     func requestStartOutgoing(uuid: UUID, handle: String) async throws {
-        let handleValue = CXHandle(type: .generic, value: handle)
+        let handleValue = CXHandle(type: CallKitManager.handleType(for: handle), value: handle)
         let action = CXStartCallAction(call: uuid, handle: handleValue)
         action.isVideo = false
-        action.contactIdentifier = handle
+        // contactIdentifier must be a CNContact.identifier; never the raw phone
+        // number (that previously broke association in the system Phone app).
         try await request(CXTransaction(action: action))
+    }
+
+    /// Phone-like handles become `.phoneNumber` so the system Phone/Recents UI
+    /// associates them with contacts; anything else stays `.generic`.
+    nonisolated static func handleType(for value: String) -> CXHandle.HandleType {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .generic }
+        let allowed = CharacterSet(charactersIn: "+*#0123456789-() ")
+        let hasDigit = trimmed.unicodeScalars.contains { CharacterSet.decimalDigits.contains($0) }
+        return trimmed.unicodeScalars.allSatisfy { allowed.contains($0) } && hasDigit
+            ? .phoneNumber : .generic
     }
 
     func reportOutgoingConnecting(uuid: UUID) {
@@ -174,6 +186,9 @@ extension CallKitManager: CXProviderDelegate {
         update.supportsDTMF = true
         update.supportsHolding = false
         provider.reportCall(with: action.callUUID, updated: update)
+        // Donate so the call appears in the system Phone Recents and tapping
+        // it there relaunches this app via INStartCallIntent.
+        CallIntentDonor.donateOutgoing(peer: action.handle.value)
         Task { @MainActor in director?.startOutgoing(peer: action.handle.value, uuid: action.callUUID) }
         // Fulfill only the *request to start*. Connected is reported later,
         // once both cellular and media are ready.

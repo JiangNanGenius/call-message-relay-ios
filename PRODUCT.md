@@ -16,7 +16,7 @@ The owner of a HINLINK H28K and DJI IG830/QDC507 modules, using their own SIM fr
 
 ## Product Purpose
 
-Pair the iPhone with the owned cellular gateway, make and receive gateway SIM calls through the iPhone system call experience, and inspect connection and call history.
+Pair the iPhone with the owned cellular gateway, send and receive gateway SIM SMS and make/receive gateway SIM calls through the iPhone system experience, and inspect messages, connection and call history.
 
 ## Operating Context
 
@@ -25,6 +25,7 @@ H28K hardware preparation is a separate concurrent task. This repository is an i
 ## Capabilities and Constraints
 
 - One gateway line and one active call initially.
+- First release includes basic SMS: conversation list by number, conversation view, compose with pasteable recipient and multiline body, truthful queued/submitted/sent/failed status with idempotent retry, polling and event refresh, plus offline demo messages. No fabricated delivery state; sending requires SIM ready, registered network and gateway SMS capability.
 - Private key stays on the iPhone; pairing exchanges public keys and verifies a one-time challenge. Gateway tokens stay in Keychain.
 - CallKit manages system calls; WebRTC carries audio. Gateway state and media readiness govern call state.
 - Real foreground calling code is required; no fake connected/ready states outside explicit isolated demo mode.

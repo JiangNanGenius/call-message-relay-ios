@@ -105,6 +105,20 @@ final class FakeGatewayAPI: GatewayAPI {
     var dtmfs: [(id: String, digit: String)] = []
     var offers: [String] = []
 
+    // SMS surface
+    var threads: [MessageThread] = []
+    var threadPages: [String: [MessageRecord]] = [:]
+    var threadHasMore = false
+    var sentMessages: [SentSMS] = []
+    var sendResult: Result<MessageRecord, Error> = .failure(APIError.notReady("send not configured"))
+    var idempotentReplays: [String: MessageRecord] = [:]
+    var readMarked: [String] = []
+    var onSendEntered: ((String) -> Void)?
+    private var sendContinuation: CheckedContinuation<MessageRecord, Error>?
+    var autoResumeSend = true
+
+    struct SentSMS { let to: String; let body: String; let key: String }
+
     var onDialEntered: (() -> Void)?
     private var dialContinuation: CheckedContinuation<CallRecord, Error>?
     var autoResumeDial = true
@@ -165,6 +179,39 @@ final class FakeGatewayAPI: GatewayAPI {
         SyncResponse(from: after, to: after, hasMore: false, changes: [])
     }
     func registerPush(registration: PushRegistration, idempotencyKey: String) async throws {}
+
+    // MARK: SMS
+
+    func listThreads() async throws -> [MessageThread] { threads }
+
+    func listMessages(after: Int64, limit: Int) async throws -> [MessageRecord] { [] }
+
+    func listThreadMessages(
+        threadKey: String, beforeCreatedAt: Int64?, beforeID: String?, limit: Int
+    ) async throws -> ThreadMessagePage {
+        ThreadMessagePage(messages: threadPages[threadKey] ?? [], hasMore: threadHasMore)
+    }
+
+    func sendMessage(to: String, body: String, idempotencyKey: String) async throws -> MessageRecord {
+        if let replay = idempotentReplays[idempotencyKey] { return replay }
+        sentMessages.append(SentSMS(to: to, body: body, key: idempotencyKey))
+        onSendEntered?(idempotencyKey)
+        if autoResumeSend {
+            return try sendResult.get()
+        }
+        return try await withCheckedThrowingContinuation { cont in
+            sendContinuation = cont
+        }
+    }
+
+    func resumeSend(_ result: Result<MessageRecord, Error>) {
+        sendContinuation?.resume(with: result)
+        sendContinuation = nil
+    }
+
+    func markMessageRead(id: String, idempotencyKey: String) async throws {
+        readMarked.append(id)
+    }
 }
 
 // MARK: - Async pumping

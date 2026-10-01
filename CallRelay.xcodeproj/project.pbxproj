@@ -7,17 +7,22 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00ACFC2245972BB0A0124608 /* MessageInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0D81C8E4061FFAEA8009F6 /* MessageInbox.swift */; };
 		019340D00967E9B43EE96612 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 329E2138785C36E07F41EA54 /* EmptyStateView.swift */; };
 		037DF172E47744D2BB214522 /* GatewayOrigin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9362B8524798A318337FFF11 /* GatewayOrigin.swift */; };
 		09175A11E64EB5A180108AFA /* RecentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D50F86E7133E4C0AB2FC874A /* RecentsView.swift */; };
 		0A468E39D6CDEEB00882D760 /* DemoConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5252BE7A5377965154F12A7 /* DemoConstants.swift */; };
 		0C6CE48C385B45FB903AEB8F /* IdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED4DCDF083D3E2962363EB3 /* IdentityTests.swift */; };
+		0DF3DF1888FC917331695632 /* ComposeMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24A262CF8CFE3BC7D5383283 /* ComposeMessageView.swift */; };
 		1AA4AF6A1BC778F10756DA23 /* WebRTC-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 23DA30B41AAD7CD48A5D672E /* WebRTC-LICENSE.txt */; };
+		1E57FEECB85FF0E17F200D61 /* CallIntentRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5CDFE06EDC7BD7C66C0FA17 /* CallIntentRouter.swift */; };
 		313D53DF0BA818844554FC5C /* Wire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65399AE40AE5F9E959667CDC /* Wire.swift */; };
 		3A58CB97BE75FC98367C5450 /* CallRelay-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = D968488F481A10FEBA845385 /* CallRelay-NOTICE.txt */; };
 		3BE25122B4D81DFE65BB38BF /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 628E25BD6BAAC8F96258A291 /* TokenStore.swift */; };
 		3C129D899260D98523A976E7 /* CallIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC1304BDE651D30727E4DB4 /* CallIdentifier.swift */; };
 		3C2919F9716340686742BAC6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50EB70B3A4C35A8F5C23B00 /* SettingsView.swift */; };
+		3F8DE7E96043E4FFD639ED61 /* MessagesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4165909DB665BF2ED9F078 /* MessagesUITests.swift */; };
+		447EA5C4774185A7240F7804 /* MessageInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70F0E50529D24BC37088083 /* MessageInboxTests.swift */; };
 		454CB2CC2CCEC0B9EB4FF9A3 /* VoIPPushPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A66C9DBB90543E55C02CD36D /* VoIPPushPayload.swift */; };
 		4AE3B9EE984B3B00F4F90FFC /* SafetyAndPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B1F80F83B232F1C87894F28 /* SafetyAndPolicyTests.swift */; };
 		4EECE8C7467CAB323FB1F16D /* APITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B24B1137456D9029D5D036 /* APITypes.swift */; };
@@ -25,14 +30,19 @@
 		515BDA7BE0A2140A1DE8C9FA /* CallDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5200A77B86E1F9545F6207E5 /* CallDriver.swift */; };
 		52F1F86137E90954ADF3B18F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9018BD33E55D204A7371F2 /* RootView.swift */; };
 		5D58E702A27616F0D2291A18 /* EventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DA399FE480E12698ADD587 /* EventStream.swift */; };
+		66306408F391D1A8B672C502 /* MessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E6407350D96D3CBB7BFDAC /* MessagesView.swift */; };
 		6BBED35DBBE589DCFED1E67E /* PushRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 398AB8C8E90C9626F1238A0D /* PushRegistry.swift */; };
 		6C7A9180784789ADD73BFD26 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 46EB85C9ECB68A468626F396 /* ThirdPartyNotices.txt */; };
+		6FA4ECE6903F13212B52184F /* ThreadDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D781F6CF12AFC6D91536AD1 /* ThreadDetailView.swift */; };
 		7407094820EC6C777CA26198 /* IdentityBindingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444DD6802AFC2753B1AD8155 /* IdentityBindingPolicy.swift */; };
 		76BBDF4D0F3AC75499465427 /* DialerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5FF86542FF077ADFA588B46 /* DialerView.swift */; };
 		779556BB078733CD87ED70C3 /* CallState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570B277AE0721CACCDEF9076 /* CallState.swift */; };
+		77ADD4F4D122F26778117546 /* SMSHTTPClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60004AE25C5C1B99740CE26F /* SMSHTTPClientTests.swift */; };
 		7C9AE4EED50C9409288340AF /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E143357666B2A1132FBA2858 /* AppLog.swift */; };
 		890603471A633DB8A05871BA /* PairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E564DCA536A2933BEEC731 /* PairingService.swift */; };
 		970C5B2C980818AB6EFB30DA /* WebRTCCallMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA27AA16B850DA6DA915F5C8 /* WebRTCCallMedia.swift */; };
+		9D818860AD8A8EF85D114463 /* CallHandleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF1712358EAF8763B2FDF8D4 /* CallHandleTests.swift */; };
+		A1B15C623BE37E2BA38E500D /* TestHTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E29B1E29BF8F845FC3285F8A /* TestHTTPServer.swift */; };
 		A2D3645DDBDE78663F4D4713 /* WireCompatibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */; };
 		A7D1997CAEC4247CBD988E33 /* DemoGatewayAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A98ED7284FE1534630974E5 /* DemoGatewayAPI.swift */; };
 		ACDE05A5A6290C7CB159C92C /* CallCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC3B54C00DA01EB928B0C2D1 /* CallCoordinator.swift */; };
@@ -44,16 +54,25 @@
 		C39E000B13B2175B6AF0ABA8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 277EF6E70492478D477ECC8D /* Assets.xcassets */; };
 		C4563CE7BD6A1FBD0B41E296 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 19C3B73CCD39434F4620A84B /* WebRTC */; };
 		C5C52EC08F103CD7FA2DC1B9 /* DeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD1D6124FBCB269EB6F0FC7 /* DeviceIdentity.swift */; };
+		CC91ED89889055CC01F274F6 /* SMSWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9C46BCF75DFE9B41A5BB1C /* SMSWireTests.swift */; };
 		D9BAACD0DC42058BD981BD9F /* CallRelay-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 23D6C5702132450ACA6B62AE /* CallRelay-LICENSE.txt */; };
 		E306C5F8B0E5C826E4A3315F /* ActiveCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E7DF245408812D10FA4A76 /* ActiveCallView.swift */; };
 		E9C780B47D349B2F77275ABD /* CallKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98812606BAAF35C7F58B7698 /* CallKitManager.swift */; };
 		EA290D7AF96BD2F40DED138E /* CallLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E2FA0BA6159B54457B7990A /* CallLifecycleTests.swift */; };
 		EBC43B315021028AD1AEF0D1 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08783B9F8F03E8DB93E2F754 /* AppModel.swift */; };
 		F325A2AB94842C8482F8E642 /* GatewayBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 191B28D96B07C9285C80237A /* GatewayBinding.swift */; };
+		FFACBB85AA8CCBBAD4422DAD /* CallIntentDonor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C8EE3BF4C8729A36FD9B58 /* CallIntentDonor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		2F707AE8D7A4A94025B8EF06 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3ADD05E924824CB85A4E5171 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9FA23C99650F079B79CEBF3F;
+			remoteInfo = CallRelay;
+		};
+		DB90B2EA4921A955CB611695 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 3ADD05E924824CB85A4E5171 /* Project object */;
 			proxyType = 1;
@@ -67,10 +86,13 @@
 		08783B9F8F03E8DB93E2F754 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		08E564DCA536A2933BEEC731 /* PairingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingService.swift; sourceTree = "<group>"; };
 		0BC1304BDE651D30727E4DB4 /* CallIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIdentifier.swift; sourceTree = "<group>"; };
+		0D4165909DB665BF2ED9F078 /* MessagesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagesUITests.swift; sourceTree = "<group>"; };
 		191B28D96B07C9285C80237A /* GatewayBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayBinding.swift; sourceTree = "<group>"; };
 		218A231BA4DBC03932C09DB0 /* CallRelayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallRelayApp.swift; sourceTree = "<group>"; };
+		21E6407350D96D3CBB7BFDAC /* MessagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagesView.swift; sourceTree = "<group>"; };
 		23D6C5702132450ACA6B62AE /* CallRelay-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "CallRelay-LICENSE.txt"; sourceTree = "<group>"; };
 		23DA30B41AAD7CD48A5D672E /* WebRTC-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "WebRTC-LICENSE.txt"; sourceTree = "<group>"; };
+		24A262CF8CFE3BC7D5383283 /* ComposeMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeMessageView.swift; sourceTree = "<group>"; };
 		277EF6E70492478D477ECC8D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2C9018BD33E55D204A7371F2 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		2FA45748307FF4B37BBF0FB1 /* CallRelay.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CallRelay.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -84,6 +106,7 @@
 		570B277AE0721CACCDEF9076 /* CallState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallState.swift; sourceTree = "<group>"; };
 		5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireCompatibilityTests.swift; sourceTree = "<group>"; };
 		5E2FA0BA6159B54457B7990A /* CallLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallLifecycleTests.swift; sourceTree = "<group>"; };
+		60004AE25C5C1B99740CE26F /* SMSHTTPClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMSHTTPClientTests.swift; sourceTree = "<group>"; };
 		628E25BD6BAAC8F96258A291 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
 		65399AE40AE5F9E959667CDC /* Wire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wire.swift; sourceTree = "<group>"; };
 		6B1F80F83B232F1C87894F28 /* SafetyAndPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyAndPolicyTests.swift; sourceTree = "<group>"; };
@@ -96,18 +119,27 @@
 		96FD73019CC490571ECD09FD /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		98812606BAAF35C7F58B7698 /* CallKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallKitManager.swift; sourceTree = "<group>"; };
 		9BE7430C6BBEE3E2140F20DB /* HTTPGatewayAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPGatewayAPI.swift; sourceTree = "<group>"; };
+		9D781F6CF12AFC6D91536AD1 /* ThreadDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadDetailView.swift; sourceTree = "<group>"; };
 		A09FD39E73E3B9361A236FB6 /* CallRelayTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CallRelayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A50EB70B3A4C35A8F5C23B00 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A5CDFE06EDC7BD7C66C0FA17 /* CallIntentRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIntentRouter.swift; sourceTree = "<group>"; };
 		A66C9DBB90543E55C02CD36D /* VoIPPushPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoIPPushPayload.swift; sourceTree = "<group>"; };
+		A70F0E50529D24BC37088083 /* MessageInboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageInboxTests.swift; sourceTree = "<group>"; };
 		AA27AA16B850DA6DA915F5C8 /* WebRTCCallMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRTCCallMedia.swift; sourceTree = "<group>"; };
 		AC3B54C00DA01EB928B0C2D1 /* CallCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallCoordinator.swift; sourceTree = "<group>"; };
+		D0635913B3FD20B2420AF284 /* CallRelayUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CallRelayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D50F86E7133E4C0AB2FC874A /* RecentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentsView.swift; sourceTree = "<group>"; };
 		D5FF86542FF077ADFA588B46 /* DialerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialerView.swift; sourceTree = "<group>"; };
 		D968488F481A10FEBA845385 /* CallRelay-NOTICE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "CallRelay-NOTICE.txt"; sourceTree = "<group>"; };
+		DC9C46BCF75DFE9B41A5BB1C /* SMSWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMSWireTests.swift; sourceTree = "<group>"; };
 		DEF5C45E75AC8A3B3ED95D63 /* Fakes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fakes.swift; sourceTree = "<group>"; };
+		DF1712358EAF8763B2FDF8D4 /* CallHandleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHandleTests.swift; sourceTree = "<group>"; };
 		E143357666B2A1132FBA2858 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
+		E29B1E29BF8F845FC3285F8A /* TestHTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHTTPServer.swift; sourceTree = "<group>"; };
+		E4C8EE3BF4C8729A36FD9B58 /* CallIntentDonor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIntentDonor.swift; sourceTree = "<group>"; };
 		E5252BE7A5377965154F12A7 /* DemoConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoConstants.swift; sourceTree = "<group>"; };
 		F7E7DF245408812D10FA4A76 /* ActiveCallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveCallView.swift; sourceTree = "<group>"; };
+		FE0D81C8E4061FFAEA8009F6 /* MessageInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageInbox.swift; sourceTree = "<group>"; };
 		FED4DCDF083D3E2962363EB3 /* IdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityTests.swift; sourceTree = "<group>"; };
 		FF9E2D4EA8C019A6CFAD5B79 /* WebRTC */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WebRTC; path = Vendor/WebRTC; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -130,6 +162,8 @@
 				AC3B54C00DA01EB928B0C2D1 /* CallCoordinator.swift */,
 				5200A77B86E1F9545F6207E5 /* CallDriver.swift */,
 				0BC1304BDE651D30727E4DB4 /* CallIdentifier.swift */,
+				E4C8EE3BF4C8729A36FD9B58 /* CallIntentDonor.swift */,
+				A5CDFE06EDC7BD7C66C0FA17 /* CallIntentRouter.swift */,
 				98812606BAAF35C7F58B7698 /* CallKitManager.swift */,
 				570B277AE0721CACCDEF9076 /* CallState.swift */,
 				3A772A3DADD60E9829B43C7E /* DemoCallDriver.swift */,
@@ -188,11 +222,17 @@
 		40197F870E308E6A91FCF750 /* CallRelayTests */ = {
 			isa = PBXGroup;
 			children = (
+				DF1712358EAF8763B2FDF8D4 /* CallHandleTests.swift */,
 				5E2FA0BA6159B54457B7990A /* CallLifecycleTests.swift */,
 				DEF5C45E75AC8A3B3ED95D63 /* Fakes.swift */,
 				FED4DCDF083D3E2962363EB3 /* IdentityTests.swift */,
+				A70F0E50529D24BC37088083 /* MessageInboxTests.swift */,
 				6B1F80F83B232F1C87894F28 /* SafetyAndPolicyTests.swift */,
+				60004AE25C5C1B99740CE26F /* SMSHTTPClientTests.swift */,
+				DC9C46BCF75DFE9B41A5BB1C /* SMSWireTests.swift */,
+				E29B1E29BF8F845FC3285F8A /* TestHTTPServer.swift */,
 				5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */,
+				D7620C89F766008B03BC07B5 /* UITests */,
 			);
 			path = CallRelayTests;
 			sourceTree = "<group>";
@@ -202,6 +242,7 @@
 			children = (
 				21376720627C006F39E88D60 /* Common */,
 				C37E429B8CCDBCE3F03F8A26 /* Dialer */,
+				51E85F3EF1CF7BFECEA9AF32 /* Messages */,
 				DEEBCFFE12A4CAA7CB6A9044 /* Onboarding */,
 				8341FCB1DCE828F8C863104B /* Recents */,
 				D3456132F5F22F9815B4C3DB /* Settings */,
@@ -221,6 +262,16 @@
 			path = Identity;
 			sourceTree = "<group>";
 		};
+		51E85F3EF1CF7BFECEA9AF32 /* Messages */ = {
+			isa = PBXGroup;
+			children = (
+				24A262CF8CFE3BC7D5383283 /* ComposeMessageView.swift */,
+				21E6407350D96D3CBB7BFDAC /* MessagesView.swift */,
+				9D781F6CF12AFC6D91536AD1 /* ThreadDetailView.swift */,
+			);
+			path = Messages;
+			sourceTree = "<group>";
+		};
 		58155BBAF67AC32396922570 = {
 			isa = PBXGroup;
 			children = (
@@ -236,6 +287,7 @@
 			children = (
 				2FA45748307FF4B37BBF0FB1 /* CallRelay.app */,
 				A09FD39E73E3B9361A236FB6 /* CallRelayTests.xctest */,
+				D0635913B3FD20B2420AF284 /* CallRelayUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -301,6 +353,14 @@
 			path = Settings;
 			sourceTree = "<group>";
 		};
+		D7620C89F766008B03BC07B5 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				0D4165909DB665BF2ED9F078 /* MessagesUITests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
 		DEEBCFFE12A4CAA7CB6A9044 /* Onboarding */ = {
 			isa = PBXGroup;
 			children = (
@@ -325,6 +385,7 @@
 			children = (
 				08783B9F8F03E8DB93E2F754 /* AppModel.swift */,
 				218A231BA4DBC03932C09DB0 /* CallRelayApp.swift */,
+				FE0D81C8E4061FFAEA8009F6 /* MessageInbox.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -332,6 +393,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		1EB1E51F68799A971B007863 /* CallRelayUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 152B2ADA6434BE51AAD5C066 /* Build configuration list for PBXNativeTarget "CallRelayUITests" */;
+			buildPhases = (
+				9628CBA8FBE42D0516DE5587 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D4A370A03E6CDBEC63378560 /* PBXTargetDependency */,
+			);
+			name = CallRelayUITests;
+			packageProductDependencies = (
+			);
+			productName = CallRelayUITests;
+			productReference = D0635913B3FD20B2420AF284 /* CallRelayUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		5BB31088FC1F3F5DE1D025E7 /* CallRelayTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 4EE38F74E8E5D02BCD3BB90F /* Build configuration list for PBXNativeTarget "CallRelayTests" */;
@@ -379,6 +458,11 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					1EB1E51F68799A971B007863 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+						TestTargetID = 9FA23C99650F079B79CEBF3F;
+					};
 					5BB31088FC1F3F5DE1D025E7 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
@@ -408,6 +492,7 @@
 			targets = (
 				9FA23C99650F079B79CEBF3F /* CallRelay */,
 				5BB31088FC1F3F5DE1D025E7 /* CallRelayTests */,
+				1EB1E51F68799A971B007863 /* CallRelayUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -432,11 +517,24 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9D818860AD8A8EF85D114463 /* CallHandleTests.swift in Sources */,
 				EA290D7AF96BD2F40DED138E /* CallLifecycleTests.swift in Sources */,
 				B25E95F679A71598C09445BC /* Fakes.swift in Sources */,
 				0C6CE48C385B45FB903AEB8F /* IdentityTests.swift in Sources */,
+				447EA5C4774185A7240F7804 /* MessageInboxTests.swift in Sources */,
+				77ADD4F4D122F26778117546 /* SMSHTTPClientTests.swift in Sources */,
+				CC91ED89889055CC01F274F6 /* SMSWireTests.swift in Sources */,
 				4AE3B9EE984B3B00F4F90FFC /* SafetyAndPolicyTests.swift in Sources */,
+				A1B15C623BE37E2BA38E500D /* TestHTTPServer.swift in Sources */,
 				A2D3645DDBDE78663F4D4713 /* WireCompatibilityTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9628CBA8FBE42D0516DE5587 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3F8DE7E96043E4FFD639ED61 /* MessagesUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -451,9 +549,12 @@
 				ACDE05A5A6290C7CB159C92C /* CallCoordinator.swift in Sources */,
 				515BDA7BE0A2140A1DE8C9FA /* CallDriver.swift in Sources */,
 				3C129D899260D98523A976E7 /* CallIdentifier.swift in Sources */,
+				FFACBB85AA8CCBBAD4422DAD /* CallIntentDonor.swift in Sources */,
+				1E57FEECB85FF0E17F200D61 /* CallIntentRouter.swift in Sources */,
 				E9C780B47D349B2F77275ABD /* CallKitManager.swift in Sources */,
 				B3360F6947FD32F621D3C84B /* CallRelayApp.swift in Sources */,
 				779556BB078733CD87ED70C3 /* CallState.swift in Sources */,
+				0DF3DF1888FC917331695632 /* ComposeMessageView.swift in Sources */,
 				4F930407CD97FB4D07C8AD58 /* DemoCallDriver.swift in Sources */,
 				0A468E39D6CDEEB00882D760 /* DemoConstants.swift in Sources */,
 				A7D1997CAEC4247CBD988E33 /* DemoGatewayAPI.swift in Sources */,
@@ -466,12 +567,15 @@
 				B7F683E14FEA51D710E0A3A7 /* HTTPGatewayAPI.swift in Sources */,
 				7407094820EC6C777CA26198 /* IdentityBindingPolicy.swift in Sources */,
 				B060B01110E082DF9AD132F8 /* LiveCallDriver.swift in Sources */,
+				00ACFC2245972BB0A0124608 /* MessageInbox.swift in Sources */,
+				66306408F391D1A8B672C502 /* MessagesView.swift in Sources */,
 				B87E93BD732DD924242DEC8C /* OnboardingView.swift in Sources */,
 				890603471A633DB8A05871BA /* PairingService.swift in Sources */,
 				6BBED35DBBE589DCFED1E67E /* PushRegistry.swift in Sources */,
 				09175A11E64EB5A180108AFA /* RecentsView.swift in Sources */,
 				52F1F86137E90954ADF3B18F /* RootView.swift in Sources */,
 				3C2919F9716340686742BAC6 /* SettingsView.swift in Sources */,
+				6FA4ECE6903F13212B52184F /* ThreadDetailView.swift in Sources */,
 				3BE25122B4D81DFE65BB38BF /* TokenStore.swift in Sources */,
 				454CB2CC2CCEC0B9EB4FF9A3 /* VoIPPushPayload.swift in Sources */,
 				970C5B2C980818AB6EFB30DA /* WebRTCCallMedia.swift in Sources */,
@@ -486,6 +590,11 @@
 			isa = PBXTargetDependency;
 			target = 9FA23C99650F079B79CEBF3F /* CallRelay */;
 			targetProxy = 2F707AE8D7A4A94025B8EF06 /* PBXContainerItemProxy */;
+		};
+		D4A370A03E6CDBEC63378560 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9FA23C99650F079B79CEBF3F /* CallRelay */;
+			targetProxy = DB90B2EA4921A955CB611695 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -571,6 +680,23 @@
 			};
 			name = Release;
 		};
+		A1780B581378B7B2C3943662 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jiangnangenius.callrelay.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CallRelay;
+			};
+			name = Debug;
+		};
 		A4D70FD1382B06B045D3B10F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -604,6 +730,23 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CallRelay.app/CallRelay";
+			};
+			name = Release;
+		};
+		B1DB7E171E68368E04356491 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jiangnangenius.callrelay.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CallRelay;
 			};
 			name = Release;
 		};
@@ -705,6 +848,15 @@
 			buildConfigurations = (
 				D2C292677DECE564A95B3D74 /* Debug */,
 				1848E8599EB4BDEFE545FCED /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		152B2ADA6434BE51AAD5C066 /* Build configuration list for PBXNativeTarget "CallRelayUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1780B581378B7B2C3943662 /* Debug */,
+				B1DB7E171E68368E04356491 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

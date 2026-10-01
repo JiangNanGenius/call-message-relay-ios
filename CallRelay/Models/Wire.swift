@@ -238,6 +238,98 @@ struct CallRecord: Decodable, Equatable, Identifiable, Sendable {
     var isFinished: Bool { endedAt != nil || state == .idle }
 }
 
+// MARK: - Messages (SMS)
+//
+// Verified against the pinned gateway handlers:
+//   * `messageResponse` (server.go) — gatewayID/lineID route metadata and
+//     Unix-millisecond `createdAt`; `direction` is inbound|outbound.
+//   * Status lifecycle written by internal/sms/engine.go:
+//     queued -> submitted -> sent, or failed (read applies to inbound).
+//   * `GET /messages` returns a bare JSON array (never null); thread pages
+//     additionally expose the `X-CellBridge-Has-More` response header.
+//   * `message.created` / `message.updated` events carry this same object.
+
+enum MessageDirection: String, Decodable, Equatable, Sendable {
+    case inbound, outbound
+}
+
+enum MessageStatus: String, Decodable, Equatable, Sendable {
+    case queued
+    case submitted
+    case sent
+    case delivered
+    case failed
+    case read
+    /// Forward-compatible: an unrecognized status string from a newer gateway.
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let raw = (try? decoder.singleValueContainer().decode(String.self)) ?? ""
+        self = MessageStatus(rawValue: raw) ?? .unknown
+    }
+}
+
+struct MessageRecord: Decodable, Equatable, Identifiable, Sendable {
+    let id: String
+    let gatewayID: String?
+    let lineID: String?
+    let threadKey: String
+    let direction: MessageDirection
+    let peer: String
+    let body: String
+    let encoding: String?
+    let status: MessageStatus
+    /// Unix milliseconds.
+    let createdAt: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case id, threadKey, direction, peer, body, encoding, status, createdAt
+        case gatewayID = "gatewayID", lineID = "lineID"
+    }
+
+    init(
+        id: String, gatewayID: String? = nil, lineID: String? = nil,
+        threadKey: String, direction: MessageDirection, peer: String,
+        body: String, encoding: String?, status: MessageStatus, createdAt: Int64
+    ) {
+        self.id = id
+        self.gatewayID = gatewayID
+        self.lineID = lineID
+        self.threadKey = threadKey
+        self.direction = direction
+        self.peer = peer
+        self.body = body
+        self.encoding = encoding
+        self.status = status
+        self.createdAt = createdAt
+    }
+
+    var createdDate: Date { Date(unixMilliseconds: createdAt) }
+    var isOutbound: Bool { direction == .outbound }
+
+    func with(status newStatus: MessageStatus) -> MessageRecord {
+        MessageRecord(
+            id: id, gatewayID: gatewayID, lineID: lineID, threadKey: threadKey,
+            direction: direction, peer: peer, body: body, encoding: encoding,
+            status: newStatus, createdAt: createdAt
+        )
+    }
+}
+
+struct MessageThread: Decodable, Equatable, Identifiable, Sendable {
+    let key: String
+    let peer: String
+    let unreadCount: Int
+    let lastMessage: MessageRecord
+
+    var id: String { key }
+}
+
+struct SendMessageRequest: Encodable {
+    let to: String
+    let body: String
+}
+
 struct DialRequest: Encodable {
     let to: String
     let clientCallId: String
@@ -384,6 +476,13 @@ struct GatewayEvent: Decodable, Equatable {
     func line() -> LineStatus? {
         guard let data, type == .lineUpdated else { return nil }
         return try? JSONDecoder().decode(LineStatus.self, from: data)
+    }
+
+    func message() -> MessageRecord? {
+        guard let data, [EventType.messageCreated, .messageUpdated].contains(type) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(MessageRecord.self, from: data)
     }
 }
 
