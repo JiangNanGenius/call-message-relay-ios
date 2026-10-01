@@ -105,6 +105,13 @@ final class ContactsService: ObservableObject {
     // MARK: Authorization
 
     func refreshStatus() {
+        // UI tests run the fully offline demo: never expose the runner's real
+        // address book or a simulator TCC pre-grant; present the deterministic
+        // not-determined permission gate.
+        if LaunchArguments.isUITestReset {
+            access = .notDetermined
+            return
+        }
         let status = CNContactStore.authorizationStatus(for: .contacts)
         switch status {
         case .notDetermined: access = .notDetermined
@@ -278,13 +285,13 @@ final class ContactsService: ObservableObject {
                             selectedGroups groups: [ContactDeduper.Group]) -> [CNContact] {
         let plan = ContactVCardBuilder.plan(
             sourceCount: items.count, sourceIDs: items.map(\.id), selectedGroups: groups)
-        // Production contacts have unique identifiers; deserialized/unsaved
-        // test contacts can have empty identifiers, in which case order is the
-        // correspondence (fetchCNContacts preserves the items order).
-        let identifiers = full.map(\.identifier)
-        let uniqueIDs = Set(identifiers).count == identifiers.count && !identifiers.contains("")
+        // Production: match by the real CNContact.identifier. Unsaved/
+        // deserialized contacts (unit tests) may all have empty identifiers:
+        // correlate by POSITION since fetchCNContacts preserves items order.
+        let productionIDs = Set(full.map(\.identifier))
+        let hasRealIDs = !productionIDs.contains("") && productionIDs.count == full.count
         let byID: [String: CNContact]
-        if uniqueIDs {
+        if hasRealIDs {
             byID = Dictionary(full.map { ($0.identifier, $0) }, uniquingKeysWith: { first, _ in first })
         } else {
             byID = Dictionary(zip(items.map(\.id), full), uniquingKeysWith: { first, _ in first })

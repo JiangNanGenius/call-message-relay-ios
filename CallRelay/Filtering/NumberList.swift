@@ -56,15 +56,19 @@ enum NumberListParser {
         guard data.count <= NumberList.maxBytes else {
             return .failure(.tooLarge(maxBytes: NumberList.maxBytes))
         }
-        // JSON first when it looks like JSON.
-        let trimmedPrefix = data.prefix(while: { $0 == 0x20 || $0 == 0x0A || $0 == 0x0D || $0 == 0x09 })
-        if trimmedPrefix.first == 0x5B || trimmedPrefix.first == 0x7B { // [ or {
-            return parseJSON(data)
-        }
         guard let text = String(data: data, encoding: .utf8) else {
             return .failure(.invalidEncoding)
         }
-        return .success(ParsedNumberList(numbers: parseText(text), format: "TXT"))
+        // JSON first when the first non-whitespace byte is [ or { (JSON only,
+        // never a text heuristic: leading whitespace/newlines must not hide
+        // the real first byte).
+        let trimmed = text.drop(while: { $0 == " " || $0 == "\n" || $0 == "\r" || $0 == "\t" })
+        if trimmed.first == "[" || trimmed.first == "{" {
+            return parseJSON(data)
+        }
+        let numbers = parseText(text)
+        guard !numbers.isEmpty else { return .failure(.noNumbers) }
+        return .success(ParsedNumberList(numbers: numbers, format: "TXT"))
     }
 
     static func parseText(_ text: String) -> Set<String> {

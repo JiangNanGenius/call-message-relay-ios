@@ -24,16 +24,21 @@ enum ContactVCardBuilder {
 
     static func plan(sourceCount: Int, sourceIDs: [String],
                      selectedGroups: [ContactDeduper.Group]) -> Plan {
-        // First pass: reject any group that overlaps another SELECTED group;
-        // overlapping warning groups must never double-export a source.
-        var accepted: [ContactDeduper.Group] = []
-        var used = Set<String>()
+        // If ANY selected groups overlap (a source contact in more than one
+        // group), reject EVERY group involved and export those contacts
+        // individually — an automatic choice between two ambiguous merges
+        // could drop or double-export a source.
+        var memberships: [String: Int] = [:]
         for group in selectedGroups {
-            let ids = Set(group.contacts.map(\.id))
-            guard ids.isDisjoint(with: used) else { continue }
-            accepted.append(group)
-            used.formUnion(ids)
+            for id in Set(group.contacts.map(\.id)) {
+                memberships[id, default: 0] += 1
+            }
         }
+        let sharedIDs = Set(memberships.filter { $0.value > 1 }.keys)
+        let accepted = selectedGroups.filter { group in
+            Set(group.contacts.map(\.id)).isDisjoint(with: sharedIDs)
+        }
+        let used = Set(accepted.flatMap { $0.contacts.map(\.id) })
         let removedByMerge = accepted.reduce(0) { $0 + ($1.contacts.count - 1) }
         return Plan(
             mergedSourceIDs: used,

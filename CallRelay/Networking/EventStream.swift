@@ -44,6 +44,7 @@ final class EventStream {
         }
     }
 
+    private let queue: DispatchQueue
     private let origin: GatewayOrigin
     private let tokens: TokenStore
     private let credentialEpoch: UInt64
@@ -54,13 +55,13 @@ final class EventStream {
 
     private var task: EventSocket?
     private var stopped = false
+    private var hasStarted = false
     /// Bumped on every connect/kick/stop. Callbacks captured under an older
     /// generation are obsolete and must not deliver or reconnect.
     private var generation: UInt64 = 0
     private var retryCancellable: Cancellable?
     private var didOpen = false
     private let decoder = JSONDecoder()
-    private let queue = DispatchQueue(label: "callrelay.eventstream")
     private var pathMonitor: NWPathMonitor?
     private var wasReachable = true
     private var foregroundObserver: NSObjectProtocol?
@@ -103,13 +104,15 @@ final class EventStream {
         retry: RetryPolicy = RetryPolicy(base: 1, cap: 30, maxJitter: 0.5),
         maxAttempts: Int = .max,
         scheduler: DelayedScheduling? = nil,
-        socketFactory: SocketFactory? = nil
+        socketFactory: SocketFactory? = nil,
+        queue: DispatchQueue? = nil
     ) {
         self.origin = origin
         self.tokens = tokens
         self.credentialEpoch = tokens.snapshot().epoch
         self.retry = retry
         self.maxAttempts = maxAttempts
+        self.queue = queue ?? DispatchQueue(label: "callrelay.eventstream")
         self.scheduler = scheduler ?? WallScheduler()
         let config = URLSessionConfiguration.ephemeral
         config.httpCookieStorage = nil
@@ -125,7 +128,8 @@ final class EventStream {
 
     func start() {
         queue.async { [weak self] in
-            guard let self, self.stopped == false else { return }
+            guard let self, self.stopped == false, self.hasStarted == false else { return }
+            self.hasStarted = true
             self.startObservers()
             self.beginConnect(resetBackoff: true)
         }
@@ -187,6 +191,7 @@ final class EventStream {
     /// Tear down the current attempt and open a new socket under a fresh
     /// generation. Must be called on `queue`.
     private func beginConnect(resetBackoff: Bool) {
+        dispatchPrecondition(condition: .onQueue(queue))
         guard stopped == false else { return }
         retryCancellable?.cancel()
         retryCancellable = nil

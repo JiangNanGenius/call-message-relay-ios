@@ -66,9 +66,13 @@ final class ContactVCardExportTests: XCTestCase {
         let output = ContactsService.buildExport(items: [a, b, c], full: cn, selectedGroups: groups)
         // 3 sources -> 1 merged + 1 standalone = 2 exported, each source once.
         XCTAssertEqual(output.count, 2)
-        let mergedPhones = (output.first?.phoneNumbers ?? []).map(\.value.stringValue)
-        XCTAssertEqual(Set(mergedPhones), ["13800001111", "+86 138 0000 1111"],
-                       "canonical spellings are distinct display values but one contact")
+        let merged = output.first { $0.phoneNumbers.count >= 1 && $0.givenName == "张" }
+        let mergedPhones = (merged?.phoneNumbers ?? []).map(\.value.stringValue)
+        // +86/national spellings collapse via canonical keys (not raw digits),
+        // so the merged contact keeps the number once.
+        XCTAssertEqual(mergedPhones.count, 1)
+        XCTAssertTrue(mergedPhones.contains("13800001111")
+                      || mergedPhones.contains("+86 138 0000 1111"))
     }
 
     func testUnselectedWarningGroupExportsMembersIndividually() {

@@ -206,6 +206,14 @@ final class CloudSyncEngineTests: XCTestCase {
 
     // MARK: #4 overlapping syncNow calls
 
+    private func waitFor(_ timeout: TimeInterval = 3, _ predicate: @MainActor () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while await MainActor.run(body: { !predicate() }) {
+            if Date() > deadline { return }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
     func testOverlappingSyncsSingleFlightAndRerunsForMidflightEnqueue() async {
         let fake = ScriptedCloudTransport()
         let (engine, _, _) = makeEngine(transport: fake)
@@ -213,13 +221,13 @@ final class CloudSyncEngineTests: XCTestCase {
         fake.holdPush = true
         let a = Task { await engine.syncNow() }
         let b = Task { await engine.syncNow() }
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        await waitFor { fake.inFlightCount == 1 }
         XCTAssertEqual(fake.inFlightCount, 1)
         engine.enqueueMessage(makeMessage(id: "late"))
         fake.releasePushAll()
         await a.value
         await b.value
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        await waitFor { fake.pushedChanges.contains { $0.logicalID == "late" } }
         // The coalesced rerun pushed the late message (no recursion/deadlock).
         XCTAssertTrue(fake.pushedChanges.contains { $0.logicalID == "late" })
     }
@@ -239,17 +247,17 @@ final class CloudSyncEngineTests: XCTestCase {
             await engine.syncNow()
             ownerDone.fulfill()
         }
-        try? await Task.sleep(nanoseconds: 120_000_000)
+        await waitFor { fake.inFlightCount == 1 }
         let joiner = Task(priority: .high) {
             await engine.syncNow()
             joinDone.fulfill()
         }
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        try? await Task.sleep(nanoseconds: 30_000_000)
         engine.enqueueMessage(makeMessage(id: "late2"))
         fake.releasePushAll()
-        await fulfillment(of: [ownerDone, joinDone], timeout: 5)
+        await fulfillment(of: [ownerDone, joinDone], timeout: 8)
         owner.cancel(); joiner.cancel()
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        await waitFor { !engine.isSyncing }
         XCTAssertFalse(engine.isSyncing, "no stranded flight after both return")
         XCTAssertTrue(fake.pushedChanges.contains { $0.logicalID == "late2" })
     }

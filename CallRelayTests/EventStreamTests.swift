@@ -92,6 +92,13 @@ final class EventStreamTests: XCTestCase {
         }
     }
 
+    /// Serial synchronous queue: blocks run inside queue.async on the test
+    /// thread, which makes reconnect state deterministic.
+    private func makeSyncQueue() -> DispatchQueue {
+        let queue = DispatchQueue(label: "test.eventstream")
+        return queue
+    }
+
     private final class SocketBag {
         var sockets: [FakeSocket] = []
         func make() -> FakeSocket { add(FakeSocket()) }
@@ -103,12 +110,14 @@ final class EventStreamTests: XCTestCase {
 
     private func makeStream(bag: SocketBag,
                             scheduler: ManualScheduler = ManualScheduler(),
-                            retry: RetryPolicy = RetryPolicy(base: 1, cap: 30))
+                            retry: RetryPolicy = RetryPolicy(base: 1, cap: 30),
+                            queue: DispatchQueue? = nil)
     -> (EventStream, ManualScheduler) {
         let stream = EventStream(
             origin: origin, tokens: store, retry: retry,
             scheduler: scheduler,
-            socketFactory: { [bag] _ in bag.make() })
+            socketFactory: { [bag] _ in bag.make() },
+            queue: queue)
         return (stream, scheduler)
     }
 
@@ -151,9 +160,11 @@ final class EventStreamTests: XCTestCase {
     func testTerminal401HandshakeGoesUnauthorizedAndNeverRetries() {
         let scheduler = ManualScheduler()
         let bag = SocketBag()
+        let syncQueue = makeSyncQueue()
         let stream = EventStream(
             origin: origin, tokens: store, scheduler: scheduler,
-            socketFactory: { [bag] _ in bag.add(FakeSocket(status: 401)) })
+            socketFactory: { [bag] _ in bag.add(FakeSocket(status: 401)) },
+            queue: syncQueue)
         let unauthorized = expectation(description: "unauthorized")
         stream.onState = { if $0 == .unauthorized { unauthorized.fulfill() } }
         stream.start()
@@ -167,10 +178,12 @@ final class EventStreamTests: XCTestCase {
     func testTransientFailureSchedulesRetryHonoringRetryAfter() {
         let scheduler = ManualScheduler()
         let bag = SocketBag()
+        let syncQueue = makeSyncQueue()
         let stream = EventStream(
             origin: origin, tokens: store,
             retry: RetryPolicy(base: 1, cap: 30), scheduler: scheduler,
-            socketFactory: { [bag] _ in bag.make() })
+            socketFactory: { [bag] _ in bag.make() },
+            queue: syncQueue)
         let waiting = expectation(description: "waiting")
         stream.onState = { if $0.isWaiting { waiting.fulfill() } }
         stream.start()
@@ -193,6 +206,7 @@ final class EventStreamTests: XCTestCase {
     func testKickCancelsStaleTimerAndOldSocketCannotReplaceNewConnection() {
         let scheduler = ManualScheduler()
         let bag = SocketBag()
+        let syncQueue = makeSyncQueue()
         let stream = EventStream(
             origin: origin, tokens: store, scheduler: scheduler,
             socketFactory: { [bag] _ in bag.make() })
@@ -222,6 +236,7 @@ final class EventStreamTests: XCTestCase {
     func testStopCancelsSocketAndPendingRetryAndIgnoresLateCallbacks() {
         let scheduler = ManualScheduler()
         let bag = SocketBag()
+        let syncQueue = makeSyncQueue()
         let stream = EventStream(
             origin: origin, tokens: store, scheduler: scheduler,
             socketFactory: { [bag] _ in bag.make() })

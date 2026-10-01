@@ -343,7 +343,13 @@ final class CloudSyncEngine: ObservableObject {
         var snapshot = store.snapshot
         guard snapshot.enabled else { return }
         let signature = CloudConvergence.rulesSignature(rules)
+        // Content identical to the last applied/enqueued document never
+        // re-enqueues — even with a newer timestamp (the spam store re-emits
+        // with Date() after a remote apply), preventing device ping-pong.
         if signature == snapshot.lastRulesSignature { return }
+        // A genuinely different document older than what we already hold is
+        // likewise ignored (LWW); an equal timestamp needs a push.
+        if let current = snapshot.rules, current.updatedAt > rules.updatedAt { return }
         snapshot.rules = rules
         snapshot.lastRulesSignature = signature
         enqueueContent(&snapshot, entity: .rule, logicalID: Self.rulesLogicalID, at: rules.updatedAt)
@@ -628,22 +634,17 @@ final class CloudSyncEngine: ObservableObject {
 
         if !outcome.conflicts.isEmpty {
             let obsolete = CloudConvergence.applyConflicts(outcome.conflicts, into: &snapshot)
-            // Apply conflict content to the runtime too via a synthetic report.
-            var report = CloudMergeReport(snapshot: snapshot)
-            for (name, conflict) in outcome.conflicts where obsolete.contains(name) == false {
-                guard SyncEntity.fromContentRecordName(name) != nil else { continue }
-                switch conflict.value {
-                case .message(let m): report.upsertedMessages.append(m)
-                case .call(let c): report.upsertedCalls.append(c)
-                case .rules(let r): report.rules = r
-                case .listSetting(let s): report.upsertedListSettings.append(s)
-                case .tombstone: break
-                }
-            }
-            if let rules = snapshot.rules {
+            // A conflict is a PUSH outcome: the pull for the NEXT pass
+            // delivers the conflict content via the merge report. Only adopt
+            // the rules signature / runtime rules here (no synthetic partial
+            // history application).
+            if let rules = snapshot.rules,
+               outcome.conflicts.values.contains(where: { if case .rules = $0.value { return true } else { return false } }) {
                 snapshot.lastRulesSignature = CloudConvergence.rulesSignature(rules)
+                appLayer?.cloudSyncDidApply(
+                    CloudMergeReport(snapshot: snapshot, rules: rules), scope: scopeHint)
             }
-            appLayer?.cloudSyncDidApply(report, scope: scopeHint)
+            _ = obsolete
         }
 
         let flightRevision: [String: Int64] = Dictionary(
@@ -658,11 +659,20 @@ final class CloudSyncEngine: ObservableObject {
         }
         snapshot.pending = CloudConvergence.prunePending(against: snapshot)
 
-        // Prune anchors: keep content anchors still present locally and every
-        // tombstone anchor (tombstone records may be re-saved after a conflict).
-        var presentContent = Set(snapshot.messages.map { SyncPendingChange.contentKey(entity: .message, logicalID: $0.id) })
-            .union(snapshot.calls.map { SyncPendingChange.contentKey(entity: .call, logicalID: $0.id) })
-            .union(snapshot.listSettings.map { SyncPendingChange.contentKey(entity: .listSetting, logicalID: $0.id) })
+        // Prune anchors: keep content anchors for records still present or
+        // still pending (an unacked local record needs its server tag for the
+        // next conditional save) and every tombstone anchor.
+        var presentContent = Set(snapshot.pending
+            .map { SyncPendingChange.contentKey(entity: $0.entity, logicalID: $0.logicalID) })
+        presentContent.formUnion(snapshot.messages.map {
+            SyncPendingChange.contentKey(entity: .message, logicalID: $0.id)
+        })
+        presentContent.formUnion(snapshot.calls.map {
+            SyncPendingChange.contentKey(entity: .call, logicalID: $0.id)
+        })
+        presentContent.formUnion(snapshot.listSettings.map {
+            SyncPendingChange.contentKey(entity: .listSetting, logicalID: $0.id)
+        })
         if snapshot.rules != nil {
             presentContent.insert(SyncPendingChange.contentKey(entity: .rule, logicalID: Self.rulesLogicalID))
         }
