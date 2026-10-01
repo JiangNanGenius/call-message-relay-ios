@@ -51,6 +51,24 @@ final class RetryPolicyTests: XCTestCase {
         XCTAssertEqual(RetryClassification.classify(httpStatus: 403, retryAfter: nil, error: nil), .authTerminal)
     }
 
+    /// A live WebSocket keeps reporting its 101 upgrade status after a
+    /// mid-stream drop; the drop must stay retryable or the event stream
+    /// would classify every real disconnect as terminal and never reconnect.
+    func testWebSocketUpgradeStatusNeverMakesDisconnectTerminal() {
+        let drop = URLError(.networkConnectionLost)
+        XCTAssertEqual(RetryClassification.classify(httpStatus: 101, retryAfter: nil, error: drop),
+                       .retryable(retryAfter: nil))
+        XCTAssertEqual(RetryClassification.classify(httpStatus: 101, retryAfter: nil,
+                                                    error: URLError(.notConnectedToInternet)),
+                       .retryable(retryAfter: nil))
+        // Auth failures surfaced on the upgrade response stay terminal.
+        XCTAssertEqual(RetryClassification.classify(httpStatus: 401, retryAfter: nil, error: drop),
+                       .authTerminal)
+        // An unclassifiable drop with no response stays terminal.
+        XCTAssertEqual(RetryClassification.classify(httpStatus: nil, retryAfter: nil, error: nil),
+                       .terminal)
+    }
+
     @MainActor
     func testBackoffRunnerStopsOnTerminalAndCancels() async {
         let runner = BackoffRunner()

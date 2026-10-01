@@ -14,13 +14,15 @@ final class ContactVCardExportTests: XCTestCase {
     }
 
     private func cnContact(
-        id: String, given: String = "", family: String = "", org: String = "",
+        given: String = "", family: String = "", org: String = "",
         phones: [String] = [], emails: [String] = [],
         street: String? = nil, url: String? = nil, jobTitle: String? = nil
     ) -> CNMutableContact {
         let cn = CNMutableContact()
-        // CNMutableContact identifier is read-only and empty for unsaved
-        // contacts; tests correlate by order, not identifier.
+        // CNMutableContact.identifier is read-only; on current SDKs an unsaved
+        // contact exposes a generated identifier (older SDKs returned "").
+        // Tests therefore derive ContactItem ids from the REAL identifier so
+        // the production by-ID correlation path is the one under test.
         cn.givenName = given
         cn.familyName = family
         cn.organizationName = org
@@ -46,27 +48,33 @@ final class ContactVCardExportTests: XCTestCase {
     // MARK: Planning
 
     func testNoDuplicatesExportsEveryContactExactlyOnce() {
-        let items = [item(id: "1", given: "A"), item(id: "2", given: "B"), item(id: "3", given: "C")]
-        let cn = items.map { cnContact(id: $0.id, given: $0.givenName) }
+        let cn = [cnContact(given: "A"), cnContact(given: "B"), cnContact(given: "C")]
+        let items = [
+            item(id: cn[0].identifier, given: "A"),
+            item(id: cn[1].identifier, given: "B"),
+            item(id: cn[2].identifier, given: "C")
+        ]
         let output = ContactsService.buildExport(items: items, full: cn, selectedGroups: [])
         XCTAssertEqual(output.count, 3)
     }
 
     func testSelectedGroupPlusUngroupedKeepsEveryContactOnce() {
-        let a = item(id: "1", given: "张", family: "三", phones: ["13800001111"])
-        let b = item(id: "2", given: "张", family: "三", phones: ["+86 138 0000 1111"])
-        let c = item(id: "3", given: "李", phones: ["13900002222"])
+        // Build the CNContacts FIRST: an unsaved CNMutableContact may already
+        // have a generated identifier, so items must correlate with the real
+        // identifier rather than guessed "1"/"2".
+        let cnA = cnContact(given: "张", family: "三", phones: ["13800001111"])
+        let cnB = cnContact(given: "张", family: "三", phones: ["+86 138 0000 1111"])
+        let cnC = cnContact(given: "李", phones: ["13900002222"])
+        let a = item(id: cnA.identifier, given: "张", family: "三", phones: ["13800001111"])
+        let b = item(id: cnB.identifier, given: "张", family: "三", phones: ["+86 138 0000 1111"])
+        let c = item(id: cnC.identifier, given: "李", phones: ["13900002222"])
         let groups = ContactDeduper.findDuplicates(in: [a, b, c])
         XCTAssertEqual(groups.first?.reason, .nameAndContact)
-        let cn = [
-            cnContact(id: "1", given: "张", family: "三", phones: ["13800001111"]),
-            cnContact(id: "2", given: "张", family: "三", phones: ["+86 138 0000 1111"]),
-            cnContact(id: "3", given: "李", phones: ["13900002222"])
-        ]
+        let cn = [cnA, cnB, cnC]
         let output = ContactsService.buildExport(items: [a, b, c], full: cn, selectedGroups: groups)
         // 3 sources -> 1 merged + 1 standalone = 2 exported, each source once.
         XCTAssertEqual(output.count, 2)
-        let merged = output.first { $0.phoneNumbers.count >= 1 && $0.givenName == "张" }
+        let merged = output.first { $0.givenName == "张" }
         let mergedPhones = (merged?.phoneNumbers ?? []).map(\.value.stringValue)
         // +86/national spellings collapse via canonical keys (not raw digits),
         // so the merged contact keeps the number once.
@@ -76,15 +84,14 @@ final class ContactVCardExportTests: XCTestCase {
     }
 
     func testUnselectedWarningGroupExportsMembersIndividually() {
-        let a = item(id: "1", given: "王伟", org: "Acme", phones: ["13800001111"])
-        let b = item(id: "2", given: "王伟", org: "Acme", phones: ["13700007777"])
+        let cnA = cnContact(given: "王伟", org: "Acme", phones: ["13800001111"])
+        let cnB = cnContact(given: "王伟", org: "Acme", phones: ["13700007777"])
+        let a = item(id: cnA.identifier, given: "王伟", org: "Acme", phones: ["13800001111"])
+        let b = item(id: cnB.identifier, given: "王伟", org: "Acme", phones: ["13700007777"])
         let groups = ContactDeduper.findDuplicates(in: [a, b])
         XCTAssertEqual(groups.first?.reason, .nameAndOrganization,
                        "same-name coworkers without shared contact are warnings only")
-        let cn = [
-            cnContact(id: "1", given: "王伟", org: "Acme", phones: ["13800001111"]),
-            cnContact(id: "2", given: "王伟", org: "Acme", phones: ["13700007777"])
-        ]
+        let cn = [cnA, cnB]
         // Nothing selected: both exported.
         XCTAssertEqual(assemble([a, b], cn).count, 2)
     }
@@ -92,21 +99,21 @@ final class ContactVCardExportTests: XCTestCase {
     func testOverlappingSelectedGroupsNeverDoubleExport() {
         // Two manually-confirmed groups sharing contact b: export must not
         // merge either (otherwise b would be exported twice).
-        let a = item(id: "1", given: "外卖", phones: ["13800001111"])
-        let b = item(id: "2", given: "快递", phones: ["13800001111", "13700007777"])
-        let c = item(id: "3", given: "快递", phones: ["13700007777"])
+        let cnA = cnContact(given: "外卖", phones: ["13800001111"])
+        let cnB = cnContact(given: "快递", phones: ["13800001111", "13700007777"])
+        let cnC = cnContact(given: "快递", phones: ["13700007777"])
+        let a = item(id: cnA.identifier, given: "外卖", phones: ["13800001111"])
+        let b = item(id: cnB.identifier, given: "快递", phones: ["13800001111", "13700007777"])
+        let c = item(id: cnC.identifier, given: "快递", phones: ["13700007777"])
         let groups = [
             ContactDeduper.Group(id: "g1", contacts: [a, b], reason: .sharedPhoneDifferentName),
             ContactDeduper.Group(id: "g2", contacts: [b, c], reason: .nameAndContact)
         ]
-        let plan = ContactVCardBuilder.plan(sourceCount: 3, sourceIDs: ["1", "2", "3"],
+        let plan = ContactVCardBuilder.plan(sourceCount: 3,
+                                            sourceIDs: [cnA.identifier, cnB.identifier, cnC.identifier],
                                             selectedGroups: groups)
         XCTAssertTrue(plan.mergedGroupIDs.isEmpty, "overlapping merges are both rejected")
-        let cn = [
-            cnContact(id: "1", given: "外卖", phones: ["13800001111"]),
-            cnContact(id: "2", given: "快递", phones: ["13800001111", "13700007777"]),
-            cnContact(id: "3", given: "快递", phones: ["13700007777"])
-        ]
+        let cn = [cnA, cnB, cnC]
         let output = ContactsService.buildExport(items: [a, b, c], full: cn, selectedGroups: groups)
         XCTAssertEqual(output.count, 3, "overlap falls back to individual export, never duplicated")
     }
@@ -114,10 +121,10 @@ final class ContactVCardExportTests: XCTestCase {
     // MARK: Rich fields + native round trip
 
     func testMergePreservesRichFields() throws {
-        let a = cnContact(id: "1", given: "张", family: "三", phones: ["13800001111"],
+        let a = cnContact(given: "张", family: "三", phones: ["13800001111"],
                           emails: ["a@example.test"], street: "中关村 1 号", url: "https://a.test")
         a.jobTitle = "工程师"
-        let b = cnContact(id: "2", given: "张", family: "三", phones: ["13900002222"],
+        let b = cnContact(given: "张", family: "三", phones: ["13900002222"],
                           emails: ["b@example.test"], street: "南京路 2 号")
         let merged = ContactVCardBuilder.merge([a, b])
         XCTAssertEqual(merged.phoneNumbers.count, 2)
@@ -138,8 +145,8 @@ final class ContactVCardExportTests: XCTestCase {
     }
 
     func testCanonicalPhoneMergeCollapsesNationalFormsOnly() {
-        let a = cnContact(id: "1", given: "张", phones: ["13800001111", "555-0100;ext=12"])
-        let b = cnContact(id: "2", given: "张", phones: ["+86 138 0000 1111", "555-0100;ext=34"])
+        let a = cnContact(given: "张", phones: ["13800001111", "555-0100;ext=12"])
+        let b = cnContact(given: "张", phones: ["+86 138 0000 1111", "555-0100;ext=34"])
         let merged = ContactVCardBuilder.merge([a, b])
         let values = merged.phoneNumbers.map(\.value.stringValue)
         // +86 form collapses; differing extensions stay distinct.

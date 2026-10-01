@@ -110,13 +110,20 @@ enum RetryClassification: Equatable {
     /// its Retry-After header.
     static func classify(httpStatus: Int?, retryAfter: String?, error: Error?) -> RetryClassification {
         if let status = httpStatus {
-            if status == 429 { return .retryable(retryAfter: retryAfter) }
-            if (200..<300).contains(status) { return .success }
-            if status == 401 || status == 403 { return .authTerminal }
-            if (500...599).contains(status) || status == 408 {
-                return .retryable(retryAfter: retryAfter)
+            // 101 = WebSocket upgrade succeeded: the HTTP exchange is DONE and
+            // the response keeps reporting 101 for the task's whole life, so a
+            // mid-stream drop must be classified by its transport error —
+            // treating 101 as an HTTP failure verdict would mark every dropped
+            // live socket terminal and kill reconnection for good.
+            if status != 101 {
+                if status == 429 { return .retryable(retryAfter: retryAfter) }
+                if (200..<300).contains(status) { return .success }
+                if status == 401 || status == 403 { return .authTerminal }
+                if (500...599).contains(status) || status == 408 {
+                    return .retryable(retryAfter: retryAfter)
+                }
+                return .terminal
             }
-            return .terminal
         }
         if let error { return classify(error: error) }
         return .terminal

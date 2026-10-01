@@ -9,6 +9,19 @@ struct ContactsView: View {
     @State private var search = ""
 
     var body: some View {
+        // The permission gate observes ContactsService directly (AppModel
+        // owns the service but does not forward its objectWillChange), so
+        // grant/deny/limited transitions redraw the branch immediately.
+        ContactsContent(model: model, service: model.contacts, search: $search)
+    }
+}
+
+private struct ContactsContent: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var service: ContactsService
+    @Binding var search: String
+
+    var body: some View {
         NavigationStack {
             content
                 .navigationTitle("联系人")
@@ -26,29 +39,29 @@ struct ContactsView: View {
                     }
                 }
         }
-        .onAppear { Task { await model.contacts.refreshIfAuthorized() } }
+        .onAppear { Task { await service.refreshIfAuthorized() } }
     }
 
     @ViewBuilder private var content: some View {
-        switch model.contacts.access {
+        switch service.access {
         case .notDetermined:
             RequestAccessView(primary: true) {
-                Task { _ = await model.contacts.requestAccess() }
+                Task { _ = await service.requestAccess() }
             }
         case .denied, .restricted:
             RequestAccessView(primary: false) {
-                model.contacts.openSystemSettings()
+                service.openSystemSettings()
             }
         case .limited:
             ContactsListView(
-                service: model.contacts, query: search,
+                service: service, query: search,
                 banner: "仅可访问你选中的联系人（iOS 受限访问），可在系统设置中更改。",
                 onCall: { model.dial($0) },
                 onMessage: { model.composeSMS(to: $0) }
             )
         case .full:
             ContactsListView(
-                service: model.contacts, query: search, banner: nil,
+                service: service, query: search, banner: nil,
                 onCall: { model.dial($0) },
                 onMessage: { model.composeSMS(to: $0) }
             )

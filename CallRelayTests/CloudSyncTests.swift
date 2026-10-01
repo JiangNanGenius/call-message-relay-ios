@@ -218,6 +218,9 @@ final class CloudSyncEngineTests: XCTestCase {
         let fake = ScriptedCloudTransport()
         let (engine, _, _) = makeEngine(transport: fake)
         await engine.enable()
+        // A real queued mutation must exist, otherwise performPush correctly
+        // short-circuits and the hold never engages.
+        engine.enqueueMessage(makeMessage(id: "first"))
         fake.holdPush = true
         let a = Task { await engine.syncNow() }
         let b = Task { await engine.syncNow() }
@@ -234,28 +237,33 @@ final class CloudSyncEngineTests: XCTestCase {
 
     /// Regression for a starvation bug: a high-priority joiner that observed
     /// the completed owner task still registered kept re-awaiting it and
-    /// starved the background-priority owner's cleanup forever.
+    /// starved the background-priority owner's cleanup forever. Bounded
+    /// polling (never XCTWaiter) keeps this deterministic on loaded runners,
+    /// where a .background task may not be scheduled for seconds.
     func testBackgroundOwnerHighPriorityJoinerBothReturnBounded() async {
         let fake = ScriptedCloudTransport()
         let (engine, _, _) = makeEngine(transport: fake)
         await engine.enable()
         engine.enqueueMessage(makeMessage(id: "m1"))
         fake.holdPush = true
-        let ownerDone = expectation(description: "owner returned")
-        let joinDone = expectation(description: "joiner returned")
+        var ownerReturned = false
+        var joinerReturned = false
         let owner = Task(priority: .background) {
             await engine.syncNow()
-            ownerDone.fulfill()
+            ownerReturned = true
         }
         await waitFor { fake.inFlightCount == 1 }
+        XCTAssertEqual(fake.inFlightCount, 1, "background owner must reach the held push")
         let joiner = Task(priority: .high) {
             await engine.syncNow()
-            joinDone.fulfill()
+            joinerReturned = true
         }
         try? await Task.sleep(nanoseconds: 30_000_000)
         engine.enqueueMessage(makeMessage(id: "late2"))
         fake.releasePushAll()
-        await fulfillment(of: [ownerDone, joinDone], timeout: 8)
+        await waitFor(8) { ownerReturned && joinerReturned }
+        XCTAssertTrue(ownerReturned, "owner returned")
+        XCTAssertTrue(joinerReturned, "joiner returned")
         owner.cancel(); joiner.cancel()
         await waitFor { !engine.isSyncing }
         XCTAssertFalse(engine.isSyncing, "no stranded flight after both return")
@@ -348,6 +356,7 @@ final class CloudSyncEngineTests: XCTestCase {
         let fake = ScriptedCloudTransport()
         let (engine, store, _) = makeEngine(transport: fake)
         await engine.enable()
+        let freshLogical = AppModel.cloudLogicalID(scope: "g_a", rawID: "fresh")
         var seeded = SyncSnapshot()
         seeded.enabled = true
         seeded.accountToken = "account-1"
@@ -355,14 +364,15 @@ final class CloudSyncEngineTests: XCTestCase {
         seeded.recordAnchors = ["message|stale": Data("old".utf8)]
         store.save(seeded)
         fake.nextPull = SyncPullResult(
-            messages: [makeMessage(id: "fresh", updated: Date(timeIntervalSince1970: 90))],
+            messages: [makeMessage(id: freshLogical, updated: Date(timeIntervalSince1970: 90))],
             newToken: Data("new-token".utf8),
-            anchors: ["message|fresh": Data("fresh".utf8)],
+            anchors: [CloudSync.recordName(entity: .message, logicalID: freshLogical): Data("fresh".utf8)],
             tokenReset: true)
         await engine.syncNow()
         XCTAssertEqual(store.snapshot.serverChangeToken, Data("new-token".utf8))
         XCTAssertNil(store.snapshot.recordAnchors["message|stale"], "stale anchor discarded on reset")
-        XCTAssertEqual(store.snapshot.recordAnchors["message|g_a.fresh"], Data("fresh".utf8))
+        XCTAssertEqual(store.snapshot.recordAnchors[
+            CloudSync.recordName(entity: .message, logicalID: freshLogical)], Data("fresh".utf8))
     }
 
     // MARK: rules feedback loop
@@ -381,6 +391,40 @@ final class CloudSyncEngineTests: XCTestCase {
                                         knownSenders: rules.knownSenders, updatedAt: Date()))
         await engine.syncNow()
         XCTAssertEqual(fake.pushedChanges.count, pushesBefore, "identical remote rules must not re-enqueue")
+    }
+
+    func testRulesSignatureIsStableAcrossInsertionOrderAndRepeatedEncodes() {
+        let fixed = Date(timeIntervalSince1970: 500)
+        let makeRules: () -> SyncedRules = {
+            SyncedRules(
+                rules: [
+                    SpamRule(id: UUID(uuidString: "00000000-0000-0000-0000-0000000000AA")!,
+                             kind: .keyword, value: "中奖", enabled: true,
+                             label: "a", createdAt: fixed),
+                    SpamRule(id: UUID(uuidString: "00000000-0000-0000-0000-0000000000BB")!,
+                             kind: .senderExact, value: "5550100", enabled: true,
+                             label: "b", createdAt: fixed),
+                    SpamRule(id: UUID(uuidString: "00000000-0000-0000-0000-0000000000CC")!,
+                             kind: .whitelistSender, value: "5550188", enabled: true,
+                             label: "c", createdAt: fixed),
+                ],
+                enabledPresets: ["loan", "gambling"],
+                knownSenders: ["5550123", "5550166", "5550199"],
+                updatedAt: fixed)
+        }
+        let forward = makeRules()
+        // Same elements, different insertion order must hash identically —
+        // this is what stops inbound rules bouncing back as a "new" local edit.
+        var shuffled = forward
+        shuffled.rules = [forward.rules[2], forward.rules[0], forward.rules[1]]
+        shuffled.enabledPresets = ["gambling", "loan"]
+        shuffled.knownSenders = [forward.knownSenders[2], forward.knownSenders[0],
+                                 forward.knownSenders[1]]
+        XCTAssertEqual(CloudConvergence.rulesSignature(forward),
+                       CloudConvergence.rulesSignature(shuffled))
+        XCTAssertEqual(CloudConvergence.rulesSignature(forward),
+                       CloudConvergence.rulesSignature(makeRules()),
+                       "repeated identical encodes must be byte-stable")
     }
 
     // MARK: gateway isolation
@@ -583,8 +627,24 @@ final class ScriptedCloudTransport: CloudSyncTransport {
         if !conflictOnNextPush.isEmpty {
             let conflicts = conflictOnNextPush
             conflictOnNextPush = [:]
-            // Conflicts replace a normal ACK for those keys.
-            return SyncPushOutcome(savedKeys: [], deletedKeys: [], conflicts: conflicts)
+            // Conflicts replace a normal ACK for those keys. Content
+            // conflicts carry the content-record anchor; a conflict on a
+            // tombstone SAVE is keyed by content name but its anchor is for
+            // the tombstone record, so it is returned under that record name.
+            var anchorUpdates: [String: Data] = [:]
+            for (key, conflict) in conflicts {
+                guard let anchor = conflict.anchor,
+                      let parsed = SyncEntity.fromContentRecordName(key) else { continue }
+                switch conflict.value {
+                case .tombstone:
+                    anchorUpdates[CloudSync.tombstoneRecordName(
+                        entity: parsed.entity, logicalID: parsed.logicalID)] = anchor
+                default:
+                    anchorUpdates[key] = anchor
+                }
+            }
+            return SyncPushOutcome(savedKeys: [], deletedKeys: [],
+                                   conflicts: conflicts, anchorUpdates: anchorUpdates)
         }
         if let batchFailure {
             return SyncPushOutcome(batchFailure: batchFailure)
@@ -629,6 +689,11 @@ final class HeldCloudTransport: CloudSyncTransport {
     private var firstAvailability = true
     private var firstIdentity = true
     var ensureZoneCount = 0
+
+    /// Deterministic hold engagement for tests: poll instead of sleeping a
+    /// fixed duration and hoping the suspended call already parked.
+    var availabilityIsHeld: Bool { !availabilityWaiters.isEmpty }
+    var identityIsHeld: Bool { !identityWaiters.isEmpty }
 
     func releaseAvailability() {
         let waiters = availabilityWaiters
@@ -677,11 +742,13 @@ extension CloudSyncEngineTests {
         let engine = CloudSyncEngine(store: store, transport: transport)
 
         let enable = Task { await engine.enable() }
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        await waitFor { transport.availabilityIsHeld }
+        XCTAssertTrue(transport.availabilityIsHeld, "enable() must park inside availability()")
         engine.disable() // bumps generation while enable() is suspended
         transport.availabilityResult = .available
         transport.identityResult = .identified("account-late")
         transport.releaseAvailability()
+        await waitFor(5) { !transport.availabilityIsHeld }
         await enable.value
 
         XCTAssertEqual(engine.status, .off)
@@ -701,19 +768,35 @@ extension CloudSyncEngineTests {
         transport.holdFirstIdentity = true
         let engine = CloudSyncEngine(store: store, transport: transport)
 
-        // Generation N sync is suspended inside accountIdentity().
+        // Generation N sync is suspended inside accountIdentity(). The newer
+        // account-change validation below re-enters syncNow as a JOINER that
+        // awaits this held flight, so the held identity must be released by
+        // the test BEFORE awaiting the account-change task — otherwise the
+        // test deadlocks against its own fixture.
         let oldSync = Task { await engine.syncNow() }
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        await waitFor { transport.identityIsHeld }
+        XCTAssertTrue(transport.identityIsHeld, "syncNow() must park inside accountIdentity()")
 
         // Newer account-change validation (generation N+1) completes at once.
         transport.holdFirstIdentity = false
         transport.identityResult = .identified("account-2")
-        await engine.accountMayHaveChanged()
+        var changeFinished = false
+        let change = Task {
+            await engine.accountMayHaveChanged()
+            changeFinished = true
+        }
+        await waitFor { store.snapshot.accountToken == "account-2" }
         XCTAssertEqual(store.snapshot.accountToken, "account-2")
 
         // The stale call finally returns the OLD identity: it must not refence.
         transport.identityResult = .identified("account-1")
         transport.releaseIdentity()
+        await waitFor(5) { changeFinished }
+        XCTAssertTrue(changeFinished,
+                      "account-change validation must finish once the held identity is released")
+        // The joiner only returns after the held owner completes, so a
+        // finished change implies oldSync is done; bail out bounded on failure.
+        guard changeFinished else { return }
         await oldSync.value
         XCTAssertEqual(store.snapshot.accountToken, "account-2",
                        "a delayed old-account identity must never overwrite the current fence")

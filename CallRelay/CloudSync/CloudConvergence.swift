@@ -336,9 +336,14 @@ enum CloudConvergence {
 
     /// Content signature used to avoid a push feedback loop: inbound rules
     /// applied to the spam store must not be re-enqueued with timestamp=now.
+    /// Canonical encoding (sorted keys, sorted arrays) makes the signature
+    /// stable across dictionary/array insertion order.
     static func rulesSignature(_ rules: SyncedRules) -> String {
         let encoder = JSONEncoder.iso
-        let body = RulesBody(rules: rules.rules,
+        encoder.outputFormatting = [.sortedKeys]
+        let body = RulesBody(rules: rules.rules.sorted { lhs, rhs in
+            (lhs.kind.rawValue, lhs.value) < (rhs.kind.rawValue, rhs.value)
+        },
                              enabledPresets: rules.enabledPresets.sorted(),
                              knownSenders: rules.knownSenders.sorted())
         let data = (try? encoder.encode(body)) ?? Data()

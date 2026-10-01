@@ -28,7 +28,13 @@ final class MessagesUITests: XCTestCase {
         attach(named: "00-dialer")
         let contactsTab = app.tabBars.buttons["联系人"]
         contactsTab.tap()
-        XCTAssertTrue(app.otherElements["contactsPermission"].waitForExistence(timeout: 5),
+        // The permission gate can surface as any element kind under SwiftUI
+        // (otherElements/buttons/staticTexts); assert the real CTA/title, not
+        // a specific wrapper class.
+        let permissionCTA = app.buttons["授权访问通讯录"]
+        let permissionTitle = app.staticTexts["读取通讯录以拨号、发短信"]
+        XCTAssertTrue(permissionCTA.waitForExistence(timeout: 5)
+                      || permissionTitle.waitForExistence(timeout: 5),
                       "offline demo never auto-requests contacts access")
         attach(named: "00b-contacts-permission")
 

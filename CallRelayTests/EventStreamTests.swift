@@ -135,7 +135,7 @@ final class EventStreamTests: XCTestCase {
 
     func testSuccessfulPingEmitsOpenExactlyOnceAndDeliversEvents() {
         let bag = SocketBag()
-        let (stream, _) = makeStream(bag: bag)
+        let (stream, _) = makeStream(bag: bag, queue: makeSyncQueue())
         var states: [EventStream.StreamState] = []
         let openExp = expectation(description: "open")
         stream.onState = { state in
@@ -209,7 +209,8 @@ final class EventStreamTests: XCTestCase {
         let syncQueue = makeSyncQueue()
         let stream = EventStream(
             origin: origin, tokens: store, scheduler: scheduler,
-            socketFactory: { [bag] _ in bag.make() })
+            socketFactory: { [bag] _ in bag.make() },
+            queue: syncQueue)
         let waiting = expectation(description: "waiting")
         stream.onState = { if $0.isWaiting { waiting.fulfill() } }
         stream.start()
@@ -218,10 +219,12 @@ final class EventStreamTests: XCTestCase {
         old.failReceive()
         wait(for: [waiting], timeout: 3)
         XCTAssertEqual(scheduler.pending.count, 1)
+        guard scheduler.pending.count == 1 else { stream.stop(); return }
 
         // Kick replaces the waiting attempt immediately and cancels its timer.
         stream.kick()
         waitFor { bag.sockets.count == 2 }
+        guard bag.sockets.count == 2 else { stream.stop(); return }
         XCTAssertTrue(scheduler.pending[0].cancelled)
 
         // The obsolete socket's late failure must do nothing to the new one.
@@ -239,7 +242,8 @@ final class EventStreamTests: XCTestCase {
         let syncQueue = makeSyncQueue()
         let stream = EventStream(
             origin: origin, tokens: store, scheduler: scheduler,
-            socketFactory: { [bag] _ in bag.make() })
+            socketFactory: { [bag] _ in bag.make() },
+            queue: syncQueue)
         let waiting = expectation(description: "waiting")
         stream.onState = { if $0.isWaiting { waiting.fulfill() } }
         stream.start()

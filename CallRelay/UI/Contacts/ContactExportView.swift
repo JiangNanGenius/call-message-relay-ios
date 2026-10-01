@@ -6,6 +6,18 @@ import UIKit
 /// shares a real vCard (.vcf). The system Contacts database is never modified.
 struct ContactExportView: View {
     @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        // The permission gate observes ContactsService directly (AppModel owns
+        // the service but does not forward its objectWillChange), so
+        // grant/deny/limited transitions redraw the branch immediately.
+        ContactExportContent(model: model, service: model.contacts)
+    }
+}
+
+private struct ContactExportContent: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var service: ContactsService
     @State private var loaded = false
     @State private var groups: [ContactDeduper.Group] = []
     @State private var selectedAuto = Set<String>()
@@ -18,23 +30,23 @@ struct ContactExportView: View {
     var body: some View {
         Form {
             Section {
-                switch model.contacts.access {
+                switch service.access {
                 case .notDetermined:
                     RequestAccessView(primary: true) {
                         Task {
-                            _ = await model.contacts.requestAccess()
+                            _ = await service.requestAccess()
                             await reload()
                         }
                     }
                     .listRowInsets(EdgeInsets())
                 case .denied, .restricted:
-                    RequestAccessView(primary: false) { model.contacts.openSystemSettings() }
+                    RequestAccessView(primary: false) { service.openSystemSettings() }
                         .listRowInsets(EdgeInsets())
                 case .full, .limited:
                     overview
                 }
             }
-            if !groups.isEmpty, model.contacts.access.canRead {
+            if !groups.isEmpty, service.access.canRead {
                 duplicateSections
             }
         }
@@ -53,10 +65,10 @@ struct ContactExportView: View {
     }
 
     @ViewBuilder private var overview: some View {
-        LabeledContent("联系人总数", value: "\(model.contacts.contacts.count)")
+        LabeledContent("联系人总数", value: "\(service.contacts.count)")
         LabeledContent("检测到重复组", value: "\(groups.count)")
         LabeledContent("导出后条数",
-                       value: "\(model.contacts.exportCount(selectedGroups: mergeDuplicates ? chosenGroups : []))")
+                       value: "\(service.exportCount(selectedGroups: mergeDuplicates ? chosenGroups : []))")
         Toggle("在导出的 vCard 中合并勾选的重复项", isOn: $mergeDuplicates)
         Button {
             Task { await export() }
@@ -66,7 +78,7 @@ struct ContactExportView: View {
                 Label("导出 vCard (.vcf)", systemImage: "square.and.arrow.up")
             }
         }
-        .disabled(model.contacts.contacts.isEmpty || exporting)
+        .disabled(service.contacts.isEmpty || exporting)
         if let exportNote {
             Text(exportNote).font(.caption).foregroundStyle(.secondary)
         }
@@ -121,9 +133,9 @@ struct ContactExportView: View {
     }
 
     private func reload() async {
-        await model.contacts.refreshIfAuthorized()
-        await model.contacts.load()
-        let found = ContactDeduper.findDuplicates(in: model.contacts.contacts)
+        await service.refreshIfAuthorized()
+        await service.load()
+        let found = ContactDeduper.findDuplicates(in: service.contacts)
         groups = found
         // Only proven duplicates (same name + shared phone/email) are
         // preselected; coworkers/shared-number warnings start unchecked.
@@ -135,9 +147,9 @@ struct ContactExportView: View {
         defer { exporting = false }
         let chosen = mergeDuplicates ? chosenGroups : []
         do {
-            let url = try await model.contacts.exportVCard(selectedGroups: chosen)
+            let url = try await service.exportVCard(selectedGroups: chosen)
             shareURL = url
-            let count = model.contacts.exportCount(selectedGroups: chosen)
+            let count = service.exportCount(selectedGroups: chosen)
             exportNote = "已生成 \(count) 条联系人的 vCard，原始通讯录未改动。"
         } catch {
             exportNote = "导出失败：\(error.localizedDescription)"

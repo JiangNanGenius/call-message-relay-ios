@@ -285,16 +285,26 @@ final class ContactsService: ObservableObject {
                             selectedGroups groups: [ContactDeduper.Group]) -> [CNContact] {
         let plan = ContactVCardBuilder.plan(
             sourceCount: items.count, sourceIDs: items.map(\.id), selectedGroups: groups)
-        // Production: match by the real CNContact.identifier. Unsaved/
-        // deserialized contacts (unit tests) may all have empty identifiers:
-        // correlate by POSITION since fetchCNContacts preserves items order.
-        let productionIDs = Set(full.map(\.identifier))
-        let hasRealIDs = !productionIDs.contains("") && productionIDs.count == full.count
+        // Match item ids to contact identifiers whenever possible; when the
+        // unsaved/deserialized test contacts do not carry those ids, fall back
+        // to POSITIONAL correlation (fetchCNContacts preserves items order).
+        // The by-ID branch requires real, distinct, non-empty identifiers on
+        // BOTH sides: unsaved CNMutableContacts expose generated identifiers
+        // on modern SDKs (historically they were all ""), and an all-empty
+        // set would silently collapse the correlation dictionary.
+        let fullIDs = Set(full.map(\.identifier))
+        let itemIDs = items.map(\.id)
+        let fullIDsAreReal = !full.isEmpty && !fullIDs.contains("")
+            && fullIDs.count == full.count
+        let itemsReferToRealIDs = fullIDsAreReal
+            && Set(itemIDs).count == itemIDs.count
+            && !itemIDs.contains("")
+            && Set(itemIDs).isSubset(of: fullIDs)
         let byID: [String: CNContact]
-        if hasRealIDs {
+        if itemsReferToRealIDs {
             byID = Dictionary(full.map { ($0.identifier, $0) }, uniquingKeysWith: { first, _ in first })
         } else {
-            byID = Dictionary(zip(items.map(\.id), full), uniquingKeysWith: { first, _ in first })
+            byID = Dictionary(zip(itemIDs, full), uniquingKeysWith: { first, _ in first })
         }
 
         let accepted = groups.filter { plan.mergedGroupIDs.contains($0.id) }
