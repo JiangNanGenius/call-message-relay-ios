@@ -245,6 +245,9 @@ final class EventStream {
                 guard gen == self.generation, self.stopped == false else { return }
                 switch result {
                 case .failure(let error):
+                    // A cancelled task (kick/stop/replacement) never drives a
+                    // reconnect: its generation is already obsolete, but
+                    // checking the error first avoids a needless retry pass.
                     if (error as? URLError)?.code == .cancelled { return }
                     self.handleDisconnect(error: error, socket: socket, gen: gen)
                 case .success(let message):

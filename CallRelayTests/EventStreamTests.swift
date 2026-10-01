@@ -20,6 +20,11 @@ final class EventStreamTests: XCTestCase {
         private(set) var cancelled = false
         private var receives: [(Result<URLSessionWebSocketTask.Message, Error>) -> Void] = []
         private var pings: [(Error?) -> Void] = []
+        /// Results/pings requested before the stream registered its handler —
+        /// factories append the socket before `receive` is wired, so a test
+        /// firing in that window must be buffered rather than dropped.
+        private var queuedReceive: Result<URLSessionWebSocketTask.Message, Error>?
+        private var queuedPing: Error??
 
         init(status: Int? = nil) {
             let code = status ?? 101
@@ -31,21 +36,35 @@ final class EventStreamTests: XCTestCase {
         func resume() { resumeCount += 1 }
         func cancel() { cancelled = true }
         func receive(completionHandler: @escaping (Result<URLSessionWebSocketTask.Message, Error>) -> Void) {
-            receives.append(completionHandler)
+            if let queued = queuedReceive {
+                queuedReceive = nil
+                DispatchQueue.global().async { completionHandler(queued) }
+            } else {
+                receives.append(completionHandler)
+            }
         }
         func sendPing(pongReceiveHandler: @escaping (Error?) -> Void) {
-            pings.append(pongReceiveHandler)
+            if let queued = queuedPing {
+                queuedPing = nil
+                DispatchQueue.global().async { pongReceiveHandler(queued) }
+            } else {
+                pings.append(pongReceiveHandler)
+            }
         }
 
-        func succeedPing() { pings.first?(nil) }
+        func succeedPing() {
+            if !pings.isEmpty { pings.removeFirst()(nil) } else { queuedPing = .some(nil) }
+        }
         func failPing(_ error: Error = URLError(.networkConnectionLost)) {
-            if !pings.isEmpty { pings.removeFirst()(error) }
+            if !pings.isEmpty { pings.removeFirst()(error) } else { queuedPing = .some(error) }
         }
         func deliver(text: String) {
             if !receives.isEmpty { receives.removeFirst()(.success(.string(text))) }
+            else { queuedReceive = .success(.string(text)) }
         }
         func failReceive(_ error: Error = URLError(.networkConnectionLost)) {
             if !receives.isEmpty { receives.removeFirst()(.failure(error)) }
+            else { queuedReceive = .failure(error) }
         }
     }
 
