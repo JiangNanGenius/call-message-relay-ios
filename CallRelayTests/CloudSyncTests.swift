@@ -235,14 +235,24 @@ final class CloudSyncEngineTests: XCTestCase {
         XCTAssertTrue(fake.pushedChanges.contains { $0.logicalID == "late" })
     }
 
-    /// Regression for a starvation bug: a high-priority joiner that observed
-    /// the completed owner task still registered kept re-awaiting it and
-    /// starved the owner's cleanup forever. Bounded polling (never XCTWaiter)
-    /// keeps this deterministic. The owner runs at DEFAULT priority: the
-    /// engine never runs syncNow below default in the app, and a
-    /// .background-priority task's post-await continuation can be starved for
-    /// seconds on a loaded CI runner, which would test the scheduler instead
-    /// of the single-flight algorithm.
+    /// Regression for the reproduced single-flight starvation: the owner runs
+    /// as a .background caller and the joiner at .high priority. The original
+    /// broken algorithm let the joiner re-await a completed-but-still-
+    /// registered owner task in a tight loop, hogging the queue so the
+    /// background owner's cleanup never ran (inflight stranded, joiner spun
+    /// forever). The fixed algorithm makes the joiner mark one rerun and await
+    /// exactly once, and the owner drains the rerun and clears inflight
+    /// BEFORE completion wakes waiters.
+    ///
+    /// Only the joiner's bounded return, the cleaned-flight state and the
+    /// coalesced mutation are asserted on the 8s window: those are engine
+    /// invariants. The outer .background caller's own epilogue is observed
+    /// afterwards with a generous bound — a loaded shared runner may delay
+    /// background continuations for seconds, which is scheduler fairness, not
+    /// engine behavior (the app always drives syncNow from the main actor).
+    /// The original re-await algorithm fails the bounded joiner/flight
+    /// assertions; the fixed ownership passes them regardless of background
+    /// scheduling latency.
     func testBackgroundOwnerHighPriorityJoinerBothReturnBounded() async {
         let fake = ScriptedCloudTransport()
         let (engine, _, _) = makeEngine(transport: fake)
@@ -251,12 +261,12 @@ final class CloudSyncEngineTests: XCTestCase {
         fake.holdPush = true
         var ownerReturned = false
         var joinerReturned = false
-        let owner = Task {
+        let owner = Task(priority: .background) {
             await engine.syncNow()
             ownerReturned = true
         }
         await waitFor { fake.inFlightCount == 1 }
-        XCTAssertEqual(fake.inFlightCount, 1, "owner must reach the held push before the joiner")
+        XCTAssertEqual(fake.inFlightCount, 1, "background owner must reach the held push first")
         let joiner = Task(priority: .high) {
             await engine.syncNow()
             joinerReturned = true
@@ -264,13 +274,22 @@ final class CloudSyncEngineTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 30_000_000)
         engine.enqueueMessage(makeMessage(id: "late2"))
         fake.releasePushAll()
-        await waitFor(8) { ownerReturned && joinerReturned }
-        XCTAssertTrue(ownerReturned, "owner returned")
-        XCTAssertTrue(joinerReturned, "joiner returned")
+
+        // Bounded engine invariants: the high-priority joiner returns (only
+        // possible once the owner drained the coalesced rerun AND cleared
+        // inflight before waking waiters) and no flight is stranded.
+        await waitFor(8) { joinerReturned && !engine.isSyncing }
+        XCTAssertTrue(joinerReturned, "joiner must return once, not spin on the completed owner")
+        XCTAssertFalse(engine.isSyncing, "owning flight must be cleaned before the joiner wakes")
+        XCTAssertTrue(fake.pushedChanges.contains { $0.logicalID == "late2" },
+                      "the coalesced rerun must push the mid-flight mutation")
+
+        // The background caller's own completion is observed separately with
+        // a generous bound (eventual completion, not an 8s CPU guarantee).
+        await waitFor(30) { ownerReturned }
+        XCTAssertTrue(ownerReturned, "background caller eventually completes once scheduled")
+        if ownerReturned { await owner.value }
         owner.cancel(); joiner.cancel()
-        await waitFor { !engine.isSyncing }
-        XCTAssertFalse(engine.isSyncing, "no stranded flight after both return")
-        XCTAssertTrue(fake.pushedChanges.contains { $0.logicalID == "late2" })
     }
 
     func testSamePriorityOverlapNeverRunsTwoPushesConcurrently() async {

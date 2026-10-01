@@ -214,16 +214,24 @@ final class EventStreamTests: XCTestCase {
         let waiting = expectation(description: "waiting")
         stream.onState = { if $0.isWaiting { waiting.fulfill() } }
         stream.start()
-        waitFor { !bag.sockets.isEmpty }
+        syncQueue.sync { }
+        XCTAssertFalse(bag.sockets.isEmpty)
         let old = bag.sockets[0]
         old.failReceive()
         wait(for: [waiting], timeout: 3)
+        // .waiting fires just before the retry token is appended: drain so
+        // the append is complete before counting pending work.
+        syncQueue.sync { }
         XCTAssertEqual(scheduler.pending.count, 1)
         guard scheduler.pending.count == 1 else { stream.stop(); return }
 
         // Kick replaces the waiting attempt immediately and cancels its timer.
+        // Drain the stream queue synchronously: the kick block (socket
+        // creation + timer cancellation) is then complete — no cross-queue
+        // polling, which loaded runners can starve past any timeout.
         stream.kick()
-        waitFor { bag.sockets.count == 2 }
+        syncQueue.sync { }
+        XCTAssertEqual(bag.sockets.count, 2)
         guard bag.sockets.count == 2 else { stream.stop(); return }
         XCTAssertTrue(scheduler.pending[0].cancelled)
 
@@ -231,6 +239,7 @@ final class EventStreamTests: XCTestCase {
         old.failReceive()
         let staleTimer = scheduler.pending[0]
         staleTimer.work?() // manually firing a cancelled token: work is nil
+        syncQueue.sync { }
         XCTAssertEqual(bag.sockets.count, 2, "stale callbacks must not create a third socket")
         XCTAssertFalse(bag.sockets[1].cancelled, "healthy new socket must survive old callbacks")
         stream.stop()
@@ -247,12 +256,16 @@ final class EventStreamTests: XCTestCase {
         let waiting = expectation(description: "waiting")
         stream.onState = { if $0.isWaiting { waiting.fulfill() } }
         stream.start()
-        waitFor { !bag.sockets.isEmpty }
+        syncQueue.sync { }
+        XCTAssertFalse(bag.sockets.isEmpty)
         bag.sockets[0].failReceive()
         wait(for: [waiting], timeout: 3)
         stream.stop()
-        // stop() only enqueues its teardown; wait until it actually ran.
-        waitFor { bag.sockets[0].cancelled && scheduler.pending.allSatisfy(\.cancelled) }
+        // stop() only enqueues its teardown: drain the stream queue
+        // synchronously so the socket/task/timer cancellations are complete —
+        // no cross-queue polling with a timeout that a loaded runner can
+        // starve.
+        syncQueue.sync { }
         XCTAssertTrue(bag.sockets[0].cancelled)
         XCTAssertTrue(scheduler.pending.allSatisfy(\.cancelled))
         // A late ping/frame after stop must not crash or deliver.

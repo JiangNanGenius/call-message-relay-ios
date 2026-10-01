@@ -177,7 +177,10 @@ final class EventStream {
                 self.wasReachable = reachable
             }
         }
-        monitor.start(queue: queue)
+        // The handler re-dispatches to `queue` itself, so the monitor runs on
+        // its OWN queue: cancelling it from the stream queue (stop()) must
+        // never synchronize back onto its own queue and wedge the stream.
+        monitor.start(queue: DispatchQueue(label: "callrelay.eventstream.pathmonitor"))
         pathMonitor = monitor
 
         foregroundObserver = NotificationCenter.default.addObserver(
