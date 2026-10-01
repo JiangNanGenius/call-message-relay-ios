@@ -71,6 +71,12 @@ final class MediaReconnectionTests: XCTestCase {
         await waitUntil(timeout: 5) {
             callKit.ended.contains { $0.uuid == uuid && $0.reason == .failed }
         }
+        // The gateway hangup is issued right AFTER the local CallKit end
+        // (UX first, network second) in a detached step: wait for it bounded
+        // instead of racing it.
+        await waitUntil(timeout: 5) {
+            api.hangups.contains(uuid.uuidString.lowercased())
+        }
         XCTAssertTrue(api.hangups.contains(uuid.uuidString.lowercased()))
     }
 }

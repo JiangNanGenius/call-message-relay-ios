@@ -813,7 +813,7 @@ extension CloudSyncEngineTests {
         transport.holdFirstIdentity = false
         transport.identityResult = .identified("account-2")
         var changeFinished = false
-        let change = Task {
+        Task {
             await engine.accountMayHaveChanged()
             changeFinished = true
         }

@@ -77,10 +77,14 @@ final class EventStreamTests: XCTestCase {
     private final class ManualScheduler: EventStream.DelayedScheduling {
         var pending: [Token] = []
         var delays: [TimeInterval] = []
+        /// Production WallScheduler semantics: the work runs on the queue the
+        /// stream supplied, so beginConnect stays confined to the stream's
+        /// serial queue (it precondition-checks that queue) and can never be
+        /// invoked from the test thread racing stream callbacks.
         func asyncAfter(on queue: DispatchQueue, delay: TimeInterval,
                         _ work: @escaping () -> Void) -> EventStream.Cancellable {
             let token = Token()
-            token.work = work
+            token.work = { queue.async { work() } }
             pending.append(token)
             delays.append(delay)
             return token
@@ -135,7 +139,8 @@ final class EventStreamTests: XCTestCase {
 
     func testSuccessfulPingEmitsOpenExactlyOnceAndDeliversEvents() {
         let bag = SocketBag()
-        let (stream, _) = makeStream(bag: bag, queue: makeSyncQueue())
+        let syncQueue = makeSyncQueue()
+        let (stream, _) = makeStream(bag: bag, queue: syncQueue)
         var states: [EventStream.StreamState] = []
         let openExp = expectation(description: "open")
         stream.onState = { state in
@@ -145,7 +150,8 @@ final class EventStreamTests: XCTestCase {
         let eventExp = expectation(description: "event")
         stream.onEvent = { _ in eventExp.fulfill() }
         stream.start()
-        waitFor { !bag.sockets.isEmpty }
+        syncQueue.sync { }
+        XCTAssertFalse(bag.sockets.isEmpty)
         bag.sockets[0].succeedPing()
         wait(for: [openExp], timeout: 3)
         // A frame after the ping must not emit a duplicate open.
@@ -168,7 +174,8 @@ final class EventStreamTests: XCTestCase {
         let unauthorized = expectation(description: "unauthorized")
         stream.onState = { if $0 == .unauthorized { unauthorized.fulfill() } }
         stream.start()
-        waitFor { !bag.sockets.isEmpty }
+        syncQueue.sync { }
+        XCTAssertFalse(bag.sockets.isEmpty)
         bag.sockets[0].failPing(URLError(.networkConnectionLost))
         wait(for: [unauthorized], timeout: 3)
         XCTAssertTrue(scheduler.pending.isEmpty, "terminal auth failure must not schedule a retry")
@@ -187,7 +194,8 @@ final class EventStreamTests: XCTestCase {
         let waiting = expectation(description: "waiting")
         stream.onState = { if $0.isWaiting { waiting.fulfill() } }
         stream.start()
-        waitFor { !bag.sockets.isEmpty }
+        syncQueue.sync { }
+        XCTAssertFalse(bag.sockets.isEmpty)
         // The dead task's response carries 429 + Retry-After; the receive
         // failure drives the classified reconnect decision.
         bag.sockets[0].response = HTTPURLResponse(
@@ -196,10 +204,17 @@ final class EventStreamTests: XCTestCase {
             headerFields: ["Retry-After": "5"])!
         bag.sockets[0].failReceive(URLError(.networkConnectionLost))
         wait(for: [waiting], timeout: 3)
+        // .waiting fires just before the retry token is appended: drain the
+        // stream queue so both the recorded delay and the token are visible.
+        syncQueue.sync { }
         XCTAssertEqual(scheduler.delays.last, 5)
-        // Firing the retry opens exactly one new socket.
+        XCTAssertEqual(scheduler.pending.count, 1)
+        // Firing the retry runs beginConnect ON THE STREAM QUEUE (the fake
+        // scheduler now preserves the supplied queue, matching production):
+        // drain, then exactly one replacement socket must exist.
         scheduler.fireOldest()
-        waitFor { bag.sockets.count == 2 }
+        syncQueue.sync { }
+        XCTAssertEqual(bag.sockets.count, 2, "firing the retry opens exactly one new socket")
         stream.stop()
     }
 
