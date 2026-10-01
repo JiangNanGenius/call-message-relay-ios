@@ -272,6 +272,39 @@ final class EventStreamTests: XCTestCase {
         bag.sockets[0].succeedPing()
         bag.sockets[0].deliver(text: #"{"id":"x","seq":2,"type":"line.updated","createdAt":1,"data":{}}"#)
     }
+
+    /// The real unpair/rebind path: AppModel.teardown() calls stop() and then
+    /// releases its last strong reference immediately. The queued teardown
+    /// must retain the stream long enough to cancel the socket and the
+    /// pending retry, and the stream must deallocate once the teardown ran.
+    func testStopCancelsResourcesAndReleasesStreamAfterLastOwnerGoesAway() {
+        let scheduler = ManualScheduler()
+        let bag = SocketBag()
+        let syncQueue = makeSyncQueue()
+        var stream: EventStream? = EventStream(
+            origin: origin, tokens: store, scheduler: scheduler,
+            socketFactory: { [bag] _ in bag.make() },
+            queue: syncQueue)
+        weak var weakStream = stream
+        let waiting = expectation(description: "waiting")
+        stream?.onState = { if $0.isWaiting { waiting.fulfill() } }
+        stream?.start()
+        syncQueue.sync { }
+        XCTAssertNotNil(weakStream)
+        bag.sockets[0].failReceive()
+        wait(for: [waiting], timeout: 3)
+
+        stream?.stop()
+        stream = nil // last owner released, like AppModel.teardown()
+
+        syncQueue.sync { }
+        XCTAssertTrue(bag.sockets[0].cancelled,
+                      "queued teardown must cancel the dead socket even with no owner left")
+        XCTAssertTrue(scheduler.pending.allSatisfy(\.cancelled),
+                      "queued teardown must cancel the pending retry")
+        waitFor { weakStream == nil }
+        XCTAssertNil(weakStream, "stream deallocates once its teardown completed")
+    }
 }
 
 private extension EventStream.StreamState {

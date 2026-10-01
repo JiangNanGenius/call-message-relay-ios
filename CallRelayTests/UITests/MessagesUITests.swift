@@ -56,11 +56,15 @@ final class MessagesUITests: XCTestCase {
 
         // MARK: 3. Compose a new SMS with recipient + multiline body
         app.buttons["newMessageButton"].tap()
+        // The shared macOS runner can stall the simulator for tens of seconds
+        // (observed 60s+ to materialize a tab): the compose fields are verified
+        // present, just slow, so they get the same generous window as tabs.
         let recipient = app.textFields["smsRecipientField"]
-        XCTAssertTrue(recipient.waitForExistence(timeout: 5))
+        XCTAssertTrue(recipient.waitForExistence(timeout: 15))
         recipient.tap()
         recipient.typeText("555-0199")
         let body = app.textViews["smsBodyField"]
+        XCTAssertTrue(body.waitForExistence(timeout: 15))
         body.tap()
         body.typeText("Offline demo SMS from the UI test.")
         let done = app.buttons["完成"]

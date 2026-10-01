@@ -145,8 +145,13 @@ final class EventStream {
     }
 
     func stop() {
-        queue.async { [weak self] in
-            guard let self else { return }
+        // Retain self for this ONE queued cleanup: the owner (AppModel.
+        // teardown) releases its last strong reference immediately after
+        // calling stop(), so a [weak self] guard here could let the object
+        // vanish before the block runs and drop the entire teardown — socket,
+        // retry timer, path monitor and foreground observer would all leak.
+        // Late callbacks stay fenced by `stopped` and the generation checks.
+        queue.async {
             self.stopped = true
             self.generation += 1
             self.retryCancellable?.cancel()
@@ -292,14 +297,18 @@ final class EventStream {
     private func handleDisconnect(error: Error, socket: EventSocket, gen: UInt64) {
         // Obsolete sockets never drive state or reconnect.
         guard gen == generation, stopped == false, task === socket else { return }
-        retryCancellable?.cancel()
-        retryCancellable = nil
-        task = nil
-
+        // Capture the failure verdict BEFORE tearing the dead attempt down.
         let status = (socket.response as? HTTPURLResponse)?.statusCode
         let retryAfter = (socket.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After")
         let classification = RetryClassification.classify(
             httpStatus: status, retryAfter: retryAfter, error: error)
+        retryCancellable?.cancel()
+        retryCancellable = nil
+        task = nil
+        // The failed attempt's resources die with it: leaving the socket
+        // uncancelled here means a later stop() finds task == nil and can
+        // never cancel it, leaking the underlying connection.
+        socket.cancel()
 
         switch classification {
         case .success:
