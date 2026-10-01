@@ -233,14 +233,21 @@ final class CKCloudSyncTransport: CloudSyncTransport, @unchecked Sendable {
         defer { stateLock.unlock() }
         guard !hardFailed else { return nil }
         if let container = _container { return container }
-        guard let created = containerFactory(containerID) else {
+        // Defense in depth: even a custom factory (and the production factory
+        // closure itself) is invoked inside the ObjC boundary so a missing
+        // EFFECTIVE entitlement NSException can never escape to Swift.
+        var created: CKContainer?
+        let ok = CKExceptionGuard.executeCatchingException({
+            created = self.containerFactory(self.containerID)
+        }, error: nil)
+        guard ok, let container = created else {
             // ObjC exception or other construction failure: latch, never
             // probe CloudKit again this process.
             hardFailed = true
             return nil
         }
-        _container = created
-        return created
+        _container = container
+        return container
     }
 
     private var privateDB: CKDatabase? {

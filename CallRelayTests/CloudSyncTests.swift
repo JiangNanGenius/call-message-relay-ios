@@ -413,7 +413,7 @@ final class CloudSyncEngineTests: XCTestCase {
 
         // availability stays available but identity fetch is indeterminate
         // (offline/service error): NOT a logout.
-        fake.identity = .indeterminate
+        fake.identityMode = .indeterminate
         await engine.syncNow()
         XCTAssertEqual(engine.status, .offline)
         XCTAssertFalse(store.snapshot.pending.isEmpty, "queue must survive indeterminate identity")
@@ -421,7 +421,7 @@ final class CloudSyncEngineTests: XCTestCase {
         XCTAssertNotNil(engine.lastRetryDelay)
 
         // On recovery the next pass succeeds.
-        fake.identity = .identified("account-1")
+        fake.identityMode = .account("account-1")
         await engine.syncNow()
         XCTAssertEqual(engine.status, .ready)
         XCTAssertTrue(store.snapshot.pending.isEmpty)
@@ -460,7 +460,7 @@ final class CloudSyncEngineTests: XCTestCase {
         await engine.syncNow()
         XCTAssertFalse(store.snapshot.messages.isEmpty)
 
-        fake.identity = .none
+        fake.identityMode = .none
         await engine.syncNow()
         XCTAssertEqual(engine.status, .needsAccount)
         XCTAssertTrue(store.snapshot.messages.isEmpty, "proven sign-out wipes restored cache")
@@ -505,7 +505,8 @@ final class CloudSyncEngineTests: XCTestCase {
 final class ScriptedCloudTransport: CloudSyncTransport {
     var availabilityResult: CloudSyncAvailability = .available
     var account = "account-1"
-    var identity: CloudAccountIdentity?
+    enum IdentityMode { case account(String), indeterminate, none, passthrough }
+    var identityMode: IdentityMode = .passthrough
     var ensureZoneResult = true
     var ensureZoneCount = 0
     /// Increments per push while one is held, proves single-flight.
@@ -526,7 +527,12 @@ final class ScriptedCloudTransport: CloudSyncTransport {
 
     func availability() async -> CloudSyncAvailability { availabilityResult }
     func accountIdentity() async -> CloudAccountIdentity {
-        identity ?? .identified(account)
+        switch identityMode {
+        case .account(let id): return .identified(id)
+        case .indeterminate: return .indeterminate
+        case .none: return .none
+        case .passthrough: return .identified(account)
+        }
     }
 
     func ensureZone() async -> Bool {
@@ -556,6 +562,9 @@ final class ScriptedCloudTransport: CloudSyncTransport {
         lastPayloads = payloads
         lastAnchors = anchors
         if holdPush {
+            // Only the FIRST push of a test parks: the coalesced rerun after
+            // release must complete (mirrors the standalone repro gate).
+            holdPush = false
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 waiters.append { continuation.resume() }
             }

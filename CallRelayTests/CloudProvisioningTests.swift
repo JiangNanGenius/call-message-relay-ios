@@ -122,7 +122,9 @@ final class CloudProvisioningTests: XCTestCase {
 
 extension CloudProvisioningTests {
     func testSubsecondDatesSurviveJSONRoundTrip() {
-        let date = ISO8601DateFormatter().date(from: "2026-10-01T12:34:56.789Z")!
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = fractionalFormatter.date(from: "2026-10-01T12:34:56.789Z")!
         let change = SyncPendingChange(
             id: "message|m", entity: .message, logicalID: "g_a.dot.raw",
             op: .upsert, updatedAt: date, revision: 7)
