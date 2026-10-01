@@ -1,7 +1,8 @@
 # CallRelay
 
-一个用于自有 QDC507 蜂窝网关的原生 iPhone 客户端。SIM 留在 H28K，iPhone 通过
-CallKit 与原生 WebRTC 接打网关 SIM 的电话。默认界面语言为简体中文。
+一个用于自有 **Linux 蜂窝电话网关**的原生 iPhone 客户端。SIM 和蜂窝模块连接在
+Linux 主机上，iPhone 通过 CallKit 与原生 WebRTC 接打网关 SIM 的电话。
+默认界面语言为简体中文。
 
 首版已实现：Ed25519 一次性配对与网关身份绑定、Keychain 私钥/令牌、HTTPS REST 与
 授权 WebSocket 事件、令牌轮换与幂等、拨号 / 最近通话 / 设置三个标签、来电与通话
@@ -9,6 +10,17 @@ CallKit 与原生 WebRTC 接打网关 SIM 的电话。默认界面语言为简�
 **演示模式**。网关协议参考 [CellBridge v2.0.6](https://github.com/mccding/CellBridge/tree/v2.0.6)。
 
 本仓库只包含独立客户端，不含模块刷机资料、固件、云端凭据或私人设备数据。
+
+## 网关运行平台
+
+网关端基于 Linux，**不限定 H28K**。H28K 是参考部署设备；其他 ARM 或 x86 Linux
+主机也可以作为部署目标，前提是具备所用模块的驱动、USB/串口访问、AT 控制和
+UAC/ALSA 音频支持，并运行兼容的网关服务。本 App 通过 HTTP/WebSocket/WebRTC
+与网关交互，不直接依赖主机型号或 CPU 架构。
+
+当前协议参考 CellBridge v2.0.6，音频路径参考 QDC507 的 UAC 实现；其他主机或模块
+需要核对服务与驱动兼容性。尚未逐一实测所有 Linux 平台。
+iPhone App 本身需要 iOS 17+；Linux 指网关服务的运行平台。
 
 ## 功能范围
 

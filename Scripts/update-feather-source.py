@@ -35,8 +35,8 @@ version = {
 }
 app = {
     "name": "CallRelay", "bundleIdentifier": info["CFBundleIdentifier"],
-    "developerName": "JiangNanGenius", "subtitle": "自有蜂窝网关的 iPhone 通话客户端",
-    "localizedDescription": "连接自有 H28K/QDC507 网关，通过 CallKit 与 WebRTC 接打电话。PolyForm Noncommercial：仅限非商业用途。提供未签名 IPA，由 Feather 使用你自己的证书和描述文件重新签名。后台来电需要包含 Push Notifications 的匹配描述文件与自有 APNs 服务。",
+    "developerName": "JiangNanGenius", "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
+    "localizedDescription": "连接自有 Linux 蜂窝电话网关，通过 CallKit 与 WebRTC 接打电话。PolyForm Noncommercial：仅限非商业用途。提供未签名 IPA，由 Feather 使用你自己的证书和描述文件重新签名。后台来电需要包含 Push Notifications 的匹配描述文件与自有 APNs 服务。",
     "iconURL": icon, "tintColor": "198B58", "beta": True,
     "versions": [version], "version": version["version"], "versionDate": version["date"],
     "size": version["size"], "downloadURL": version["downloadURL"],
