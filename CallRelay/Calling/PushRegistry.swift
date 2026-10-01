@@ -69,7 +69,7 @@ extension PushRegistry: PKPushRegistryDelegate {
         _ registry: PKPushRegistry,
         didReceiveIncomingPushWith payload: PKPushPayload,
         for type: PKPushType,
-        withCompletionHandler completion: @escaping () -> Void
+        completion: @escaping () -> Void
     ) {
         guard type == .voIP else { completion(); return }
         // On the legacy path a VoIP push always mandates a CallKit report.

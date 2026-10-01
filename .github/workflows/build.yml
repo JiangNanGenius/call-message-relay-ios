@@ -59,8 +59,24 @@ jobs:
             -project CallRelay.xcodeproj -scheme CallRelay \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -parallel-testing-enabled NO \
+            -derivedDataPath build/DerivedData \
             -resultBundlePath build/Tests.xcresult \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Launch offline demo and capture its screen
+        run: |
+          set -euo pipefail
+          mkdir -p build/Preview
+          xcrun simctl install "$SIMULATOR_ID" build/DerivedData/Build/Products/Debug-iphonesimulator/CallRelay.app
+          xcrun simctl launch "$SIMULATOR_ID" com.jiangnangenius.callrelay -callrelay.demoMode YES
+          sleep 5
+          xcrun simctl io "$SIMULATOR_ID" screenshot build/Preview/dialer.png
+
+      - name: Save demo screen
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-screen
+          path: build/Preview/dialer.png
 
       - name: Build for iPhone (unsigned)
         run: |

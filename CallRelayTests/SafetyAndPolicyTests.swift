@@ -1,7 +1,15 @@
 import XCTest
+import PushKit
 @testable import CallRelay
 
 final class EndpointSafetyTests: XCTestCase {
+    func testLegacyPushDelegateImplementsTheSystemSelector() {
+        let receiver = PushRegistry()
+        XCTAssertTrue(receiver.responds(to: #selector(PKPushRegistryDelegate.pushRegistry(
+            _:didReceiveIncomingPushWith:for:completion:
+        ))))
+    }
+
     func testHTTPSAccepted() {
         guard case .success(let origin) = GatewayOrigin.validate("https://gw.example.com:8443") else {
             return XCTFail("expected valid origin")
