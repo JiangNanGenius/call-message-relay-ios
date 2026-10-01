@@ -66,6 +66,33 @@
 - 客户端幂等策略：同一逻辑提交（含网络失败后的重试）固定使用一个 Idempotency-Key，网关
   会重放已完成的同一响应，因此重试不会产生第二条短信；对已落库 `failed` 的消息改用
   **新**幂等键重新提交（旧键只会重放失败结果）。
+- 快照对账：断线重连或回前台时，客户端只做**一次**有界的 `GET /messages?after=0&limit=200`
+  补水（`after` 是 `sync_seq`，而 messageResponse 不回传该序列，因此不做光标语义翻页），
+  按消息 `id` 幂等合并后刷新 `/threads`；打开具体对话时再按 thread 分页取更早历史。
+- `/sync`：`SyncResponse{from,to,hasMore,changes[]}`，`changes[]` 仅含
+  `{seq,entity_type,entity_id,op}`（不含实体正文），用于知道“有变更”而非直接取数。
+
+## 本地过滤、通讯录与云同步（非网关协议）
+
+- 垃圾规则、名单、信任号码、待发短信全部只存本机：规则为 JSON 文件，待发短信以
+  网关标识哈希做作用域、受数据保护的 outbox 文件；两者都不含凭据，名单 HTTPS 拉取不带
+  任何鉴权头、不上传统计。
+- 联系人经系统 `CNContactStore` 读取（统一联系人天然包含系统 iCloud 联系人），导出使用
+  `CNContactVCardSerialization`，全程不修改系统通讯录。
+- 可选 iCloud 同步使用 CloudKit **私人数据库**自定义 zone，正文/号码/姓名与规则/名单
+  设置的 JSON 全部写入 `CKRecord.encryptedValues`（CloudKit 服务端加密存储，属于加密
+  at-rest；并非在所有账号设置下都保证端到端加密），记录名为 `entity|logicalID`（首个
+  `|` 分隔，逻辑 id 可含 `.`；逻辑 id 带 `<scope>.` 前缀，不同网关相同原始 id 不冲突），
+  按网关标识 SHA-256 前缀做 scope 隔离；删除始终复制为独立的**墓碑记录**
+  （`SyncTombstone|entity|logicalID`，实体感知、可复制、按 deletedAt LWW），物理删除仅
+  为尽力清理且不作为 ACK 依据；同步每轮**先拉后推**，按归档记录的 change tag 做乐观
+  保存（`.ifServerRecordUnchanged`），冲突返回 serverRecordChanged 由纯函数收敛，增量
+  token 过期自动全量重拉并重置基线。基线不声明 CloudKit 能力，启用前先解析
+  embedded.mobileprovision（精确匹配配置容器且声明 CloudKit 服务），再在 ObjC
+  `@try/@catch` 保护下用 `CKContainer.accountStatus`/`fetchUserRecordID` 实测生效签名
+  权限和账号身份（描述文件权限可能宽于实际签名权限；不用 iCloud Drive 的
+  ubiquityIdentityToken 判断 CloudKit 登录），未配置时只显示不可用、不触碰 CloudKit。
+
 
 ## 安全实现
 
@@ -106,6 +133,8 @@
   DSP/延迟承诺。
 
 ## 尚未验证的真实关卡
+
+- 真实网关短信：收件、中文与长短信、发送失败重试、未读/已读同步。
 
 - 真实 H28K/QDC507 上：AT 控制、UAC 枚举、PCM 非零、双向可听、回声/蓝牙/扬声器、
   音频中断与 Wi‑Fi/蜂窝切换。

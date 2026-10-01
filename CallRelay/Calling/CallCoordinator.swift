@@ -22,7 +22,11 @@ enum CallPhaseResolver {
         case .ending: return .ending
         case .active:
             // Only here is the call genuinely usable, and only with media.
-            return media == .connected ? .active(startedAt: gateway.connectedDate) : .connecting
+            switch media {
+            case .connected: return .active(startedAt: gateway.connectedDate)
+            case .disconnected: return .reconnecting
+            default: return .connecting
+            }
         case .idle: return .ended(reason: gateway.endReason)
         }
     }
@@ -58,6 +62,7 @@ final class CallCoordinator: NSObject {
     private let mediaProvider: MediaSessionProviding
     private let registry: CallIdentityRegistry
     private let transport: String
+    private let mediaRecoveryWindow: TimeInterval
 
     weak var delegate: CallCoordinatorDelegate?
     var onQuality: ((MediaQuality) -> Void)?
@@ -70,6 +75,8 @@ final class CallCoordinator: NSObject {
     private var speaker = false
     private var monitorTask: Task<Void, Never>?
     private var mediaTask: Task<Void, Never>?
+    /// Bounded grace window after an ICE `disconnected` before ending.
+    private var mediaRecoveryTask: Task<Void, Never>?
     private var ended = false
 
     /// Bumped on every teardown/reset; stale continuations observe a stale
@@ -81,13 +88,15 @@ final class CallCoordinator: NSObject {
         callKit: CallKitControlling,
         mediaProvider: MediaSessionProviding,
         registry: CallIdentityRegistry,
-        transport: String
+        transport: String,
+        mediaRecoveryWindow: TimeInterval = 20
     ) {
         self.api = api
         self.callKit = callKit
         self.mediaProvider = mediaProvider
         self.registry = registry
         self.transport = transport
+        self.mediaRecoveryWindow = mediaRecoveryWindow
         super.init()
         callKit.director = self
         AudioSessionBridge.shared.onActivate = { [weak self] session in
@@ -228,9 +237,26 @@ final class CallCoordinator: NSObject {
             Task { @MainActor in
                 guard let self, gen == self.generation else { return }
                 self.latestMedia = state
-                self.publishPhase()
-                if state == .connected { self.startMonitorIfNeeded(callId: callId, uuid: uuid, gen: gen) }
-                if state == .failed { await self.failActiveCall(message: "音频连接中断。") }
+                switch state {
+                case .connected:
+                    self.mediaRecoveryTask?.cancel()
+                    self.mediaRecoveryTask = nil
+                    self.publishPhase()
+                    self.startMonitorIfNeeded(callId: callId, uuid: uuid, gen: gen)
+                case .disconnected:
+                    // ICE can flap on a network handover. Surface "recovering"
+                    // and give the existing peer connection a bounded grace
+                    // window to reconnect; never place a NEW call.
+                    self.publishPhase()
+                    self.scheduleMediaFailure(callId: callId, gen: gen,
+                                              message: "音频长时间未恢复，已结束通话。")
+                case .failed:
+                    self.mediaRecoveryTask?.cancel()
+                    self.mediaRecoveryTask = nil
+                    await self.failActiveCall(message: "音频连接中断。")
+                default:
+                    self.publishPhase()
+                }
             }
         }
         session.onQuality = { [weak self] quality in
@@ -263,6 +289,23 @@ final class CallCoordinator: NSObject {
     }
 
     private var monitorStarted = false
+
+    /// After an ICE `disconnected` on an established call, wait a bounded
+    /// window for the same peer connection to recover. A later `connected`
+    /// cancels this. Expiry fails the call truthfully without redialing.
+    private func scheduleMediaFailure(callId: String, gen: UInt64, message: String) {
+        guard mediaRecoveryTask == nil else { return }
+        let window = mediaRecoveryWindow
+        mediaRecoveryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(window * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            guard let self, gen == self.generation else { return }
+            if self.latestMedia == .disconnected {
+                await self.failActiveCall(message: message)
+            }
+            self.mediaRecoveryTask = nil
+        }
+    }
     private func startMonitorIfNeeded(callId: String, uuid: UUID, gen: UInt64) {
         guard monitorStarted == false else { return }
         monitorStarted = true
@@ -367,12 +410,16 @@ final class CallCoordinator: NSObject {
         monitorStarted = false
         monitorTask?.cancel()
         mediaTask?.cancel()
+        mediaRecoveryTask?.cancel()
+        mediaRecoveryTask = nil
     }
 
     private func invalidateGeneration() -> UInt64 {
         generation += 1
         monitorTask?.cancel()
         mediaTask?.cancel()
+        mediaRecoveryTask?.cancel()
+        mediaRecoveryTask = nil
         media?.close()
         media = nil
         monitorStarted = false

@@ -32,8 +32,8 @@ struct ActiveCallView: View {
                     Text("演示模式")
                         .font(.caption)
                         .padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(Color.purple.opacity(0.15), in: Capsule())
-                        .foregroundStyle(.purple)
+                        .background(Color.accentColor.opacity(0.15), in: Capsule())
+                        .foregroundStyle(Color.accentColor)
                 }
 
                 if let quality = model.quality, !quality.summary.isEmpty {

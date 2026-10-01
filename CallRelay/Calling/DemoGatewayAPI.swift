@@ -68,6 +68,29 @@ final class DemoGatewayAPI: GatewayAPI {
                 threadKey: DemoConstants.demoPeers[1], direction: .inbound,
                 peer: DemoConstants.demoPeers[1], body: "明天的通话还是走网关吗？",
                 encoding: "ucs2", status: .sent, createdAt: now - minute * 60 * 3
+            ),
+            // Unknown sender, genuine OTP — must stay OUT of junk.
+            MessageRecord(
+                id: "demo-msg-4", gatewayID: DemoConstants.gatewayId, lineID: nil,
+                threadKey: "555-0188", direction: .inbound,
+                peer: "555-0188", body: "【示例短剧】验证码 482913，用于登录，5 分钟内有效，请勿泄露给他人。",
+                encoding: "ucs2", status: .sent, createdAt: now - minute * 42
+            ),
+            // Unknown sender carrying a typical loan solicitation — junk.
+            MessageRecord(
+                id: "demo-msg-5", gatewayID: DemoConstants.gatewayId, lineID: nil,
+                threadKey: "555-0166", direction: .inbound,
+                peer: "555-0166",
+                body: "【速贷管家】您有一笔最高 50 万元额度待激活，无抵押贷款、低息贷款、极速放款，回 T 退订。",
+                encoding: "ucs2", status: .sent, createdAt: now - minute * 18
+            ),
+            // Scam phrase embedded even with an "order" word: must be junk.
+            MessageRecord(
+                id: "demo-msg-6", gatewayID: DemoConstants.gatewayId, lineID: nil,
+                threadKey: "555-0155", direction: .inbound,
+                peer: "555-0155",
+                body: "您好，您的订单可获得刷单返佣奖励，垫付小额本金即可日赚 800 元，点击链接报名。",
+                encoding: "ucs2", status: .sent, createdAt: now - minute * 7
             )
         ]
     }

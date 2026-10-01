@@ -135,17 +135,41 @@ final class BindingStore {
 }
 
 extension JSONDecoder {
+    /// Fractional-second ISO8601 decoding with a no-fraction fallback.
+    /// Sub-second precision matters for sync convergence (two edits to the
+    /// same logical record within one second must keep their LWW ordering),
+    /// while the fallback stays compatible with older on-disk snapshots that
+    /// were written without fractions.
     static var iso: JSONDecoder {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let whole = ISO8601DateFormatter()
+        whole.formatOptions = [.withInternetDateTime]
+        d.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let string = try container.decode(String.self)
+            if let date = fractional.date(from: string) ?? whole.date(from: string) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container, debugDescription: "Invalid ISO8601 date: \(string)")
+        }
         return d
     }
 }
 
 extension JSONEncoder {
+    /// Always emits fractional ISO8601 so sub-second mutation timestamps
+    /// survive snapshot persistence and LWW comparisons.
     static var iso: JSONEncoder {
         let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        e.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(fractional.string(from: date))
+        }
         return e
     }
 }

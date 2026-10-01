@@ -57,16 +57,26 @@ private extension AppModel {
 }
 
 struct MainTabs: View {
+    @EnvironmentObject private var model: AppModel
+
     var body: some View {
-        TabView {
+        TabView(selection: $model.selectedTab) {
             DialerView()
-                .tabItem { Label("拨号", systemImage: "circle.grid.3x3.fill") }
+                .tabItem { Label("拨号键盘", systemImage: "circle.grid.3x3.fill") }
+                .tag(AppModel.AppTab.keypad)
+            ContactsView()
+                .tabItem { Label("联系人", systemImage: "person.crop.circle.fill") }
+                .tag(AppModel.AppTab.contacts)
             MessagesView()
                 .tabItem { Label("短信", systemImage: "ellipsis.message.fill") }
+                .tag(AppModel.AppTab.messages)
             RecentsView()
                 .tabItem { Label("最近通话", systemImage: "clock.fill") }
+                .tag(AppModel.AppTab.recents)
             SettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape.fill") }
+                .tag(AppModel.AppTab.settings)
         }
+        .tint(.accentColor)
     }
 }

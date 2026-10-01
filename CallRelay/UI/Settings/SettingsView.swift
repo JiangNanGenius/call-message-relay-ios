@@ -14,6 +14,31 @@ struct SettingsView: View {
 
                 connectionSection
 
+                Section("短信与来电") {
+                    NavigationLink {
+                        SpamRulesView(store: model.spamFilter)
+                    } label: {
+                        Label("垃圾拦截规则", systemImage: "shield.lefthalf.filled")
+                    }
+                    Toggle("通讯录号码视为可信", isOn: Binding(
+                        get: { model.contactWhitelistEnabled },
+                        set: { model.contactWhitelistEnabled = $0 }
+                    ))
+                    NavigationLink {
+                        ContactExportView()
+                    } label: {
+                        Label("通讯录去重与导出", systemImage: "person.crop.circle.badge.checkmark")
+                    }
+                }
+
+                Section("iCloud 同步（可选）") {
+                    NavigationLink {
+                        CloudSyncSettingsView()
+                    } label: {
+                        Label("短信/通话/规则同步", systemImage: "icloud")
+                    }
+                }
+
                 if !model.isDemo {
                     Section("网关") {
                         detailRow(title: "名称", value: model.gatewayName.isEmpty ? "—" : model.gatewayName)
@@ -150,7 +175,7 @@ struct SettingsView: View {
     private var tint: Color {
         switch model.linePhase {
         case .online(let l): return l.registration == .registered ? .green : .orange
-        case .demo: return .purple
+        case .demo: return .secondary
         default: return .secondary
         }
     }

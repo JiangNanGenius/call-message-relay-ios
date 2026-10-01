@@ -1,20 +1,26 @@
 import SwiftUI
 
+/// Native Phone-style keypad: generous whitespace, subtle circular keys with
+/// normal digits and small letter captions, a single large green call button,
+/// and a discreet gateway status line. No large title competes with the pad.
 struct DialerView: View {
     @EnvironmentObject private var model: AppModel
     @State private var number = ""
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 16), count: 3)
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
     private let keys: [String] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                LineStatusHeader()
+            VStack(spacing: 0) {
+                Spacer(minLength: 8)
 
-                Spacer(minLength: 4)
+                DialStatusLine()
+                    .padding(.bottom, 6)
 
-                TextField("输入号码", text: $number)
+                Spacer(minLength: 2)
+
+                TextField("", text: $number)
                     .keyboardType(.phonePad)
                     .multilineTextAlignment(.center)
                     .textContentType(.telephoneNumber)
@@ -22,13 +28,39 @@ struct DialerView: View {
                         let filtered = String(value.filter { "0123456789+*#".contains($0) }.prefix(32))
                         if filtered != value { number = filtered }
                     }
-                    .font(.system(size: 34, weight: .semibold, design: .rounded))
+                    .font(.system(size: 36, weight: .regular))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
-                    .frame(height: 44)
+                    .frame(height: 46)
+                    .overlay(alignment: .trailing) {
+                        if !number.isEmpty {
+                            Button {
+                                number = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title3)
+                                    .foregroundStyle(Color(UIColor.tertiaryLabel))
+                            }
+                            .padding(.trailing, 24)
+                            .accessibilityLabel("清空号码")
+                        }
+                    }
                     .accessibilityLabel(number.isEmpty ? "号码输入框" : number)
 
-                LazyVGrid(columns: columns, spacing: 18) {
+                if let match = contactMatch, !match.isEmpty {
+                    Text(match)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                } else {
+                    Text(" ")
+                        .font(.subheadline)
+                        .padding(.top, 2)
+                }
+
+                Spacer(minLength: 10)
+
+                LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(keys, id: \.self) { key in
                         DialKey(label: key) { append(key) }
                             .contextMenu {
@@ -36,7 +68,9 @@ struct DialerView: View {
                             }
                     }
                 }
-                .padding(.horizontal, 40)
+                .padding(.horizontal, 64)
+
+                Spacer(minLength: 16)
 
                 HStack {
                     Color.clear.frame(width: 64, height: 64)
@@ -45,10 +79,10 @@ struct DialerView: View {
                         model.dial(number)
                     } label: {
                         Image(systemName: "phone.fill")
-                            .font(.title2)
+                            .font(.system(size: 30, weight: .semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 64, height: 64)
-                            .background(canDial ? Color.green : Color.gray.opacity(0.5))
+                            .frame(width: 68, height: 68)
+                            .background(canDial ? Color.green : Color.gray.opacity(0.45))
                             .clipShape(Circle())
                     }
                     .disabled(!canDial)
@@ -59,23 +93,39 @@ struct DialerView: View {
                     } label: {
                         Image(systemName: "delete.left")
                             .font(.title2)
-                            .frame(width: 64, height: 44)
+                            .foregroundStyle(number.isEmpty ? Color(UIColor.tertiaryLabel) : Color.primary)
+                            .frame(width: 64, height: 64)
                     }
                     .disabled(number.isEmpty)
                     .accessibilityLabel("删除一位")
                 }
-                .padding(.horizontal, 48)
-                .padding(.bottom, 8)
+                .padding(.horizontal, 52)
+                .padding(.bottom, 10)
             }
-            .padding(.bottom, 12)
-            .navigationTitle("拨号")
-            .navigationBarTitleDisplayMode(.large)
+            .background(Color(.systemBackground))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .alert("已按拦截规则阻止", isPresented: Binding(
+                get: { model.blockedDialAttempt != nil },
+                set: { if !$0 { model.blockedDialAttempt = nil } }
+            )) {
+                Button("知道了", role: .cancel) { model.blockedDialAttempt = nil }
+            } message: {
+                if let attempt = model.blockedDialAttempt {
+                    Text("号码 \(attempt.peer) 命中：\(attempt.reason)。这是本机拦截，未通过网关呼出；可在短信/通话规则里修改。")
+                }
+            }
         }
     }
 
     private var canDial: Bool {
         !number.trimmingCharacters(in: .whitespaces).isEmpty
             && (model.isDemo || model.isLineUsable)
+    }
+
+    private var contactMatch: String? {
+        guard !number.isEmpty else { return nil }
+        return model.contacts.name(forPeer: number)
     }
 
     private func append(_ key: String) {
@@ -104,51 +154,56 @@ struct DialKey: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 2) {
-                Text(label).font(.title)
+            VStack(spacing: 1) {
+                Text(label)
+                    .font(.system(size: 32, weight: .regular))
                 if !subtitle.isEmpty {
-                    Text(subtitle).font(.caption2).foregroundStyle(.secondary)
+                    Text(subtitle)
+                        .font(.system(size: 10, weight: .medium))
+                        .tracking(2)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 72, height: 72)
-            .background(Color(.secondarySystemFill))
-            .clipShape(Circle())
+            .frame(width: 76, height: 76)
+            .background(Color(.tertiarySystemFill), in: Circle())
             .foregroundStyle(.primary)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(VoiceOverKey(label))
+        .accessibilityLabel(voiceOverKey)
     }
 
-    private func VoiceOverKey(_ key: String) -> String {
-        key == "*" ? "星号" : key == "#" ? "井号" : key
+    private var voiceOverKey: String {
+        label == "*" ? "星号" : label == "#" ? "井号" : label
     }
 }
 
-struct LineStatusHeader: View {
+/// One discreet line: gateway state, never a dominant title.
+struct DialStatusLine: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                Text(model.linePhase.summaryLine)
-                    .font(.subheadline)
-                    .foregroundStyle(color)
-                    .multilineTextAlignment(.center)
-            }
-            if !model.gatewayName.isEmpty {
-                Text(model.gatewayName).font(.caption).foregroundStyle(.secondary)
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption2)
+            Text(model.linePhase.summaryLine)
+                .font(.caption2)
+                .lineLimit(1)
+            if !model.gatewayName.isEmpty, !model.isDemo {
+                Text("· \(model.gatewayName)").font(.caption2).lineLimit(1)
             }
         }
-        .padding(.horizontal)
-        .padding(.top, 4)
+        .foregroundStyle(color)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Color(.tertiarySystemFill), in: Capsule())
+        .accessibilityIdentifier("dialerStatus")
     }
 
     private var icon: String {
         switch model.linePhase {
         case .unpaired: return "slash.circle"
         case .demo: return "wand.and.stars"
-        case .connecting: return "arrow.triangle.2.circlepath"
+        case .connecting: return "arrow.triangle.2.cyclepath"
         case .online: return "dot.radiowaves.left.and.right"
         case .offline: return "wifi.slash"
         }
@@ -158,7 +213,7 @@ struct LineStatusHeader: View {
         switch model.linePhase {
         case .online(let line):
             return line.registration == .registered ? .green : .orange
-        case .demo: return .purple
+        case .demo: return .secondary
         case .offline, .unpaired: return .secondary
         case .connecting: return .orange
         }

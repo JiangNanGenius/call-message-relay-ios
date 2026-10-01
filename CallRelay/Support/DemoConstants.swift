@@ -18,4 +18,14 @@ enum DemoConstants {
 /// demo without onboarding or stored defaults.
 enum LaunchArguments {
     static let forceDemo = "-callrelayDemoMode"
+    /// Hermetic UI-test support flags.
+    static let uiTestReset = "-callrelayUITestReset"
+    static let demoEnableSpamPresets = "-callrelayDemoSpamPresets"
+
+    static var isUITestReset: Bool {
+        ProcessInfo.processInfo.arguments.contains(uiTestReset)
+    }
+    static var enablesDemoSpamPresets: Bool {
+        ProcessInfo.processInfo.arguments.contains(demoEnableSpamPresets)
+    }
 }

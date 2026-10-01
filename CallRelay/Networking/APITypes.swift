@@ -5,6 +5,9 @@ enum APIError: Error, Equatable {
     case noCredentials
     case network(URLError)
     case http(status: Int, code: String?, message: String?)
+    /// 429 with an optional server-provided delay (seconds), honored by retry
+    /// loops instead of hammering the gateway.
+    case rateLimited(retryAfter: TimeInterval?)
     case decoding(String)
     case unauthorized
     case originMismatch(expected: String, actual: String?)
@@ -23,7 +26,9 @@ enum APIError: Error, Equatable {
             }
             return "网络错误：\(e.localizedDescription)"
         case .http(let status, let code, let message):
+            if status == 429 { return "请求过于频繁，请稍后再试。" }
             return Self.describe(status: status, code: code, message: message)
+        case .rateLimited: return "请求过于频繁，请稍后再试。"
         case .decoding: return "网关返回的数据无法识别（协议不匹配）。"
         case .unauthorized: return "授权已失效，请重新配对。"
         case .originMismatch: return "网关身份与配对时不一致，已停止连接以防冒用。"
@@ -52,6 +57,7 @@ enum APIError: Error, Equatable {
         switch (lhs, rhs) {
         case (.network(let a), .network(let b)): return a.code == b.code
         case (.http(let a, let b, let c), .http(let d, let e, let f)): return a == d && b == e && c == f
+        case (.rateLimited(let a), .rateLimited(let b)): return a == b
         case (.decoding(let a), .decoding(let b)): return a == b
         case (.originMismatch(let a, let b), .originMismatch(let c, let d)): return a == c && b == d
         default: return String(describing: lhs) == String(describing: rhs)

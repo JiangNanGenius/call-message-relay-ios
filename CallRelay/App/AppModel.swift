@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UIKit
+import CloudKit
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -21,6 +22,26 @@ final class AppModel: ObservableObject {
     @Published var eventState: EventStream.StreamState = .closed
     @Published private(set) var inbox: MessageInbox?
     @Published var externalCallRequest: ExternalCallRequest?
+    @Published var blockedDialAttempt: BlockedDial?
+    /// Incoming call labeled as suspected harassment by local screening.
+    @Published var screenedCallNotice: ScreenedCallNotice?
+    /// Selected main tab; shared so Contacts can hand a number to Messages.
+    @Published var selectedTab: AppTab = .keypad
+    @Published var pendingComposePeer: String?
+
+    enum AppTab: String { case keypad, contacts, messages, recents, settings }
+
+    struct BlockedDial: Identifiable, Equatable {
+        let id = UUID()
+        let peer: String
+        let reason: String
+    }
+
+    struct ScreenedCallNotice: Identifiable, Equatable {
+        let id = UUID()
+        let peer: String
+        let reason: String
+    }
 
     /// A dial requested from a system entry point (Phone Recents via
     /// INStartCallIntent/NSUserActivity or a tel: URL). The UI explains when
@@ -45,9 +66,22 @@ final class AppModel: ObservableObject {
     private var callKit: CallKitManager?
     private var identityRegistry = CallIdentityRegistry()
     private var pushPolicy: PushReceptionPolicy?
+    private var networkMonitor: NetworkMonitor?
 
-    private var linePollTask: Task<Void, Never>?
-    private var recentsPollTask: Task<Void, Never>?
+    let spamFilter: SpamFilterStore
+    let contacts: ContactsService
+    private(set) var cloudSync: CloudSyncEngine?
+    private var foregroundObserver: NSObjectProtocol?
+    private var rulesChangeObserver: NSObjectProtocol?
+    private var contactChangeObserver: NSObjectProtocol?
+    private var cancellables = Set<AnyCancellable>()
+
+    private var lineRunner: BackoffRunner?
+    private var recentsRunner: BackoffRunner?
+    /// Gateway-fetched recents; `recents` is the published merge with
+    /// read-only CloudKit-restored calls for the current scope.
+    private var gatewayRecents: [CallRecord] = []
+    private var cloudRecents: [SyncedCall] = []
     private var activeGatewayCallIds: Set<String> = []
     private var lastSyncSeq: Int64 = 0
     private var sessionGeneration: UInt64 = 0
@@ -55,9 +89,16 @@ final class AppModel: ObservableObject {
     /// Gateway call ids reserved during an in-flight CallKit report, so
     /// duplicate pushes/events cannot present a second ring while awaiting.
     private var reservedCallIds: Set<String> = []
+    /// Snapshot reconciliation guard so foreground/WS-open can't overlap.
+    private var reconciling = false
+    /// Current gateway scope id for history isolation in optional sync.
+    private var currentGatewayScope: String?
 
     private let defaults: UserDefaults
-    private enum DefaultsKey { static let demo = "callrelay.demoMode" }
+    private enum DefaultsKey {
+        static let demo = "callrelay.demoMode"
+        static let contactWhitelist = "callrelay.contactWhitelist"
+    }
 
     var isPaired: Bool { bindingStore.current() != nil && tokenStore.tokens() != nil }
 
@@ -67,6 +108,7 @@ final class AppModel: ObservableObject {
         case .connecting: return "连接中"
         case .waiting: return "等待重连"
         case .closed: return isDemo ? nil : "未连接"
+        case .unauthorized: return "事件授权失效，请重新配对"
         }
     }
 
@@ -109,12 +151,60 @@ final class AppModel: ObservableObject {
         identities: IdentityStore = IdentityStore(),
         tokenStore: TokenStore = TokenStore(),
         bindingStore: BindingStore = BindingStore(),
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        spamFilter: SpamFilterStore? = nil,
+        contacts: ContactsService? = nil
     ) {
         self.identities = identities
         self.tokenStore = tokenStore
         self.bindingStore = bindingStore
         self.defaults = defaults
+        let resolvedFilter = spamFilter ?? SpamFilterStore()
+        let resolvedContacts = contacts ?? ContactsService()
+        self.spamFilter = resolvedFilter
+        self.contacts = resolvedContacts
+        if LaunchArguments.isUITestReset {
+            // Hermetic UI-test run: never touch the owner's real rules.
+            resolvedFilter.useEphemeralStore()
+        }
+        if LaunchArguments.enablesDemoSpamPresets {
+            for preset in SpamPreset.allCases { resolvedFilter.enable(preset: preset) }
+        }
+        observeLifecycle()
+        resolvedFilter.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.inbox?.reevaluateAll()
+                self?.syncRulesIfEnabled()
+            }
+            .store(in: &cancellables)
+    }
+
+    // MARK: Lifecycle observation
+
+    private func observeLifecycle() {
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in Task { @MainActor in self?.handleForeground() } }
+    }
+
+    private func handleForeground() {
+        guard !isDemo else {
+            Task { await contacts.refreshIfAuthorized() }
+            return
+        }
+        // Immediate reconnect attempt + snapshot reconciliation.
+        eventStream?.kick()
+        lineRunner?.kick()
+        recentsRunner?.kick()
+        Task {
+            await refreshLine()
+            await reconcileAfterGap()
+            inbox?.flushReadyOutbox()
+            await contacts.refreshIfAuthorized()
+            await cloudSync?.applicationCameForeground()
+        }
     }
 
     // MARK: Lifecycle
@@ -184,7 +274,9 @@ final class AppModel: ObservableObject {
         let demoDriver = DemoCallDriver(gateway: gateway)
         driver = demoDriver
         bindDriver(demoDriver)
-        let messages = MessageInbox(api: gateway)
+        let messages = MessageInbox(api: gateway, filter: spamFilter)
+        messages.lineReady = { true }
+        messages.isTrustedContact = { [weak self] peer in self?.isTrustedContact(peer) ?? false }
         inbox = messages
         messages.start()
         linePhase = .demo
@@ -256,6 +348,18 @@ final class AppModel: ObservableObject {
 
     func dismissExternalCallRequest() { externalCallRequest = nil }
 
+    /// Switch to the SMS tab and open the composer addressed to a contact.
+    func composeSMS(to peer: String) {
+        pendingComposePeer = peer
+        selectedTab = .messages
+    }
+
+    func consumePendingComposePeer() -> String? {
+        let value = pendingComposePeer
+        pendingComposePeer = nil
+        return value
+    }
+
     private var externalDialReason: String {
         if isDemo { return "" }
         switch linePhase {
@@ -291,6 +395,7 @@ final class AppModel: ObservableObject {
         gatewayName = binding.gatewayName ?? binding.gatewayId
         linePhase = .connecting
         let launchGeneration = sessionGeneration
+        reconciling = false
 
         // Verify the anonymous identity BEFORE opening any token-bearing REST
         // or WebSocket connection. A gateway id/fingerprint mismatch blocks all
@@ -302,6 +407,7 @@ final class AppModel: ObservableObject {
             guard launchGeneration == sessionGeneration else { return }
             switch verification {
             case .verified:
+                guard launchGeneration == self.sessionGeneration else { return }
                 self.activateLive(origin: origin, binding: binding)
             case .mismatched:
                 self.linePhase = .offline("网关身份与配对时不一致，已阻止连接以防冒用。请重新配对。")
@@ -319,15 +425,33 @@ final class AppModel: ObservableObject {
         let http = HTTPGatewayAPI(origin: origin, tokens: tokens)
         api = http
         gatewayName = binding.gatewayName ?? binding.gatewayId
+        currentGatewayScope = GatewayScope.identifier(gatewayID: binding.gatewayId)
         pushPolicy = PushReceptionPolicy(expectedGatewayId: binding.gatewayId)
+
+        let monitor = NetworkMonitor()
+        networkMonitor = monitor
+        monitor.start()
 
         let events = EventStream(origin: origin, tokens: tokens)
         eventStream = events
+        let streamGeneration = sessionGeneration
         events.onEvent = { [weak self] event in
-            Task { @MainActor in self?.handle(event: event) }
+            Task { @MainActor in
+                guard let self, streamGeneration == self.sessionGeneration else { return }
+                self.handle(event: event)
+            }
         }
         events.onState = { [weak self] state in
-            Task { @MainActor in self?.eventState = state }
+            Task { @MainActor in
+                guard let self, streamGeneration == self.sessionGeneration else { return }
+                self.eventState = state
+                if state == .open {
+                    Task { @MainActor in
+                        guard streamGeneration == self.sessionGeneration else { return }
+                        await self.reconcileAfterGap()
+                    }
+                }
+            }
         }
         events.start()
 
@@ -357,24 +481,37 @@ final class AppModel: ObservableObject {
         driver = live
         bindDriver(live)
 
-        let messages = MessageInbox(api: http)
+        let outboxStore = OutboxStore(scopeIdentifier: binding.gatewayId)
+        let messages = MessageInbox(api: http, filter: spamFilter, outboxStore: outboxStore)
+        messages.lineReady = { [weak self] in self?.isSMSLineUsable ?? false }
+        messages.isTrustedContact = { [weak self] peer in self?.isTrustedContact(peer) ?? false }
         inbox = messages
         messages.start()
 
         startPolling()
+        let bootGeneration = sessionGeneration
         Task {
             await refreshLine()
+            guard bootGeneration == sessionGeneration else { return }
             await refreshRecents()
+            guard bootGeneration == sessionGeneration else { return }
+            await reconcileAfterGap()
+            guard bootGeneration == sessionGeneration else { return }
+            messages.flushReadyOutbox()
             UIApplication.shared.registerForRemoteNotifications()
         }
+
+        configureCloudSync(binding: binding)
     }
 
     private func teardownLive() {
         sessionGeneration += 1
-        linePollTask?.cancel()
-        recentsPollTask?.cancel()
-        linePollTask = nil
-        recentsPollTask = nil
+        lineRunner?.cancel()
+        recentsRunner?.cancel()
+        lineRunner = nil
+        recentsRunner = nil
+        networkMonitor?.stop()
+        networkMonitor = nil
         eventStream?.stop()
         eventStream = nil
         pushRegistry?.stop()
@@ -386,6 +523,16 @@ final class AppModel: ObservableObject {
         api = nil
         inbox?.invalidate()
         inbox = nil
+        currentGatewayScope = nil
+        cloudSync = nil
+        cloudRecents = []
+        gatewayRecents = []
+        spamFilter.purgeCloudRestoredRules()
+        if let observer = cloudAccountObserver {
+            NotificationCenter.default.removeObserver(observer)
+            cloudAccountObserver = nil
+        }
+        reconciling = false
         activeGatewayCallIds.removeAll()
         reservedCallIds.removeAll()
         activeCall = nil
@@ -420,46 +567,127 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: Polling
+    // MARK: Polling (bounded backoff, single owner per loop)
 
     private func startPolling() {
-        linePollTask?.cancel()
-        recentsPollTask?.cancel()
-        linePollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.refreshLine()
-                try? await Task.sleep(nanoseconds: 15_000_000_000)
-            }
+        lineRunner?.cancel()
+        recentsRunner?.cancel()
+
+        let line = BackoffRunner(policy: RetryPolicy(base: 2, cap: 60))
+        lineRunner = line
+        line.start { [weak self] in
+            guard let self else { return .stop }
+            return await self.lineTick()
         }
-        recentsPollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.refreshRecents()
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
+
+        let recents = BackoffRunner(policy: RetryPolicy(base: 5, cap: 60))
+        recentsRunner = recents
+        recents.start { [weak self] in
+            guard let self else { return .stop }
+            let ok = await self.refreshRecents()
+            return ok ? .succeeded(interval: 30) : .failed(
+                classification: .retryable(retryAfter: nil), retryAfter: nil)
+        }
+    }
+
+    private func lineTick() async -> BackoffRunner.LoopDecision {
+        guard let api else { return .stop }
+        do {
+            let line = try await api.line()
+            linePhase = .online(line)
+            // Line recovered: flush any queued SMS.
+            if isSMSLineUsable { inbox?.flushReadyOutbox() }
+            return .succeeded(interval: 15)
+        } catch let error as APIError {
+            switch error {
+            case .unauthorized, .noCredentials:
+                linePhase = .offline("授权已失效，请重新配对。")
+                return .failed(classification: .authTerminal, retryAfter: nil)
+            case .rateLimited(let retryAfter):
+                let header = retryAfter.map { String($0) }
+                return .failed(classification: .retryable(retryAfter: header),
+                               retryAfter: header)
+            case .http(let status, _, _) where !(500...599).contains(status) && status != 408:
+                linePhase = .offline(error.friendlyMessage)
+                return .failed(classification: .terminal, retryAfter: nil)
+            default:
+                linePhase = .offline(error.friendlyMessage)
+                return .failed(classification: .retryable(retryAfter: nil), retryAfter: nil)
             }
+        } catch {
+            linePhase = .offline("无法连接网关，正在自动重连。")
+            return .failed(classification: .retryable(retryAfter: nil), retryAfter: nil)
         }
     }
 
     private func refreshLine() async {
-        guard let api else { return }
+        _ = await lineTick()
+    }
+
+    /// Recover events/messages/calls missed while suspended or disconnected.
+    /// Inbox reconciliation pages missed SMS by timestamp; recents refresh
+    /// catches call state. A simple generation-independent guard prevents two
+    /// concurrent passes. WS-open and foreground each call this.
+    private func reconcileAfterGap() async {
+        guard !isDemo, api != nil, !reconciling else { return }
+        reconciling = true
+        let gen = sessionGeneration
+        // Only the same session's owner may release the flag: an old pass
+        // finishing after an unpair/re-bind must not clear a newer pass.
+        defer { if gen == sessionGeneration { reconciling = false } }
+        await inbox?.reconcile()
+        guard gen == sessionGeneration else { return }
+        _ = await refreshRecents()
+    }
+
+    @discardableResult
+    func refreshRecentsPublic() async -> Bool {
+        await refreshRecents()
+    }
+
+    @discardableResult
+    private func refreshRecents() async -> Bool {
+        guard let api else { return false }
         do {
-            let line = try await api.line()
-            linePhase = .online(line)
-        } catch let error as APIError {
-            if case .unauthorized = error { linePhase = .offline("授权已失效，请重新配对。") }
-            else { linePhase = .offline(error.friendlyMessage) }
+            gatewayRecents = try await api.listCalls(limit: 100)
+            mergeRecentsForDisplay()
+            return true
         } catch {
-            linePhase = .offline("无法连接网关。")
+            AppLog.network.notice("recents refresh failed")
+            return false
         }
     }
 
-    private func refreshRecents() async {
-        guard let api else { return }
-        do {
-            recents = try await api.listCalls(limit: 100)
-        } catch {
-            // Recents failures are non-fatal; keep the previous list.
-            AppLog.network.notice("recents refresh failed")
-        }
+    /// Merge live gateway calls with read-only CloudKit-restored calls for the
+    /// current scope. Restored ids are prefixed so they can never collide with
+    /// a real gateway id or be sent back to the gateway.
+    private func mergeRecentsForDisplay() {
+        let liveIDs = Set(gatewayRecents.map(\.id))
+        let restored = cloudRecents.filter { synced in
+            guard let scope = currentGatewayScope,
+                  synced.id.hasPrefix(scope + ".") else { return false }
+            let raw = String(synced.id.dropFirst(scope.count + 1))
+            return !liveIDs.contains(raw)
+        }.compactMap(Self.cloudCallRecord)
+        recents = (gatewayRecents + restored).sorted { $0.startedAt > $1.startedAt }
+    }
+
+    private static func cloudCallRecord(_ synced: SyncedCall) -> CallRecord? {
+        guard let direction = CallDirection(rawValue: synced.direction),
+              let state = CallState(rawValue: synced.state) else { return nil }
+        return CallRecord(
+            id: "cloud:\(synced.id)",
+            gatewayID: MessageInbox.cloudGatewayMarker,
+            lineID: nil,
+            direction: direction,
+            peer: synced.peer,
+            state: state,
+            startedAt: synced.startedAt,
+            connectedAt: synced.connectedAt,
+            endedAt: synced.endedAt,
+            endReason: synced.endReason,
+            recordingId: nil, recordingState: nil, recordingDurationMs: nil
+        )
     }
 
     // MARK: Actions
@@ -467,6 +695,13 @@ final class AppModel: ObservableObject {
     func dial(_ peer: String) {
         let trimmed = peer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // Owner-configured screening applies to outgoing calls too.
+        let hits = spamFilter.callListHits(for: trimmed)
+        let screening = spamFilter.policy().screenCall(peer: trimmed, listHits: hits)
+        if case .reject(let reason) = screening {
+            blockedDialAttempt = BlockedDial(peer: trimmed, reason: reason)
+            return
+        }
         driver?.dial(peer: trimmed)
     }
 
@@ -483,11 +718,15 @@ final class AppModel: ObservableObject {
         case .lineUpdated:
             if let line = event.line() { linePhase = .online(line) }
         case .messageCreated, .messageUpdated:
-            if let message = event.message() { inbox?.apply(eventMessage: message) }
+            if let message = event.message() {
+                inbox?.apply(eventMessage: message)
+                enqueueCloudMessage(message)
+            }
         case .callIncoming:
             if let call = event.call() { handleIncoming(call) }
         case .callUpdated, .callEnded:
             (driver as? LiveCallDriver)?.ingest(event: event)
+            if let call = event.call() { enqueueCloudCall(call) }
             Task { await refreshRecents() }
         case .gatewayRestarting:
             lastError = "网关正在重启，稍后自动恢复。"
@@ -496,9 +735,201 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func isTrustedContact(_ peer: String) -> Bool {
+        guard defaults.bool(forKey: DefaultsKey.contactWhitelist) else { return false }
+        return contacts.name(forPeer: peer) != nil
+    }
+
+    var contactWhitelistEnabled: Bool {
+        get { defaults.bool(forKey: DefaultsKey.contactWhitelist) }
+        set {
+            defaults.set(newValue, forKey: DefaultsKey.contactWhitelist)
+            inbox?.reevaluateAll()
+        }
+    }
+
+    // MARK: Optional iCloud history/rules sync
+
+    private var cloudAccountObserver: NSObjectProtocol?
+
+    private func configureCloudSync(binding: GatewayBinding) {
+        // Creating the engine is safe: availability is checked (profile parsed,
+        // then the exception-guarded CKContainer/accountStatus probe) BEFORE
+        // any real CloudKit use, so an unsigned/Feather build can't crash.
+        let store = CloudSyncStore()
+        let containerID = defaults.string(forKey: CloudSettings.containerIDKey)
+            ?? CloudSync.containerIDDefault
+        let transport = CKCloudSyncTransport(containerID: containerID)
+        let engine = CloudSyncEngine(store: store, transport: transport)
+        engine.appLayer = self
+        spamFilter.onListModeChange = { [weak engine] list in
+            engine?.enqueueListSetting(AppModel.makeListSetting(list))
+        }
+        spamFilter.onListRemoved = { [weak engine] listID in
+            engine?.delete(entity: .listSetting, logicalID: listID.uuidString)
+        }
+        spamFilter.onListAdded = { [weak engine] list in
+            engine?.enqueueListSetting(AppModel.makeListSetting(list))
+        }
+        cloudSync = engine
+        let scope = GatewayScope.identifier(gatewayID: binding.gatewayId)
+        currentGatewayScope = scope
+        engine.setCurrentScope(scope)
+        engine.noteGatewayScope(scope)
+        if store.snapshot.enabled {
+            Task { await engine.enable() }
+        }
+        if cloudAccountObserver == nil {
+            cloudAccountObserver = NotificationCenter.default.addObserver(
+                forName: .CKAccountChanged, object: nil, queue: .main
+            ) { [weak self] _ in
+                // Delivered on an arbitrary queue; the closure hops to MainActor.
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    // sign-in/out/switch are validated via accountStatus and
+                    // the hashed user-record-id fence, never iCloud Drive token.
+                    await self?.cloudSync?.accountMayHaveChanged()
+                }
+            }
+        }
+    }
+
+    static func makeListSetting(_ list: NumberList) -> SyncedListSetting {
+        SyncedListSetting(
+            listID: list.id.uuidString, name: list.name, mode: list.mode.rawValue,
+            provenance: list.provenance,
+            sourceURL: list.sourceURL?.absoluteString,
+            isBundled: list.isBundled,
+            updatedAt: list.lastUpdatedAt ?? list.importedAt)
+    }
+
+    func enableCloudSync() async { await cloudSync?.enable() }
+    func disableCloudSync() {
+        cloudSync?.disable()
+        purgeCloudRestores()
+    }
+    func syncCloudNow() async { await cloudSync?.syncNow() }
+
+    /// Remove every restored (read-only) cloud row from the UI: account
+    /// change, logout, unpair or disable. Local gateway/filter data is kept.
+    private func purgeCloudRestores() {
+        inbox?.purgeCloudRestored()
+        cloudRecents = []
+        if !gatewayRecents.isEmpty { recents = gatewayRecents } else { recents = [] }
+        spamFilter.purgeCloudRestoredRules()
+    }
+
+    /// Provisioning check safe in demo mode too; never touches CloudKit when
+    /// the entitlement is missing.
+    func cloudSyncAvailability() async -> CloudSyncAvailability {
+        if let cloudSync {
+            return await cloudSync.checkAvailability()
+        }
+        // No live binding: evaluate the configured container independently.
+        let containerID = defaults.string(forKey: CloudSettings.containerIDKey)
+            ?? CloudSync.containerIDDefault
+        return await CKCloudSyncTransport(containerID: containerID).availability()
+    }
+
+    /// Scope-qualified stable cloud id. The same raw gateway id used by two
+    /// different gateways must produce two distinct cloud records; the
+    /// gatewayScope field alone cannot be the key (payload lookup is by id).
+    static func cloudLogicalID(scope: String, rawID: String) -> String {
+        "\(scope).\(rawID)"
+    }
+
+    private func rawID(fromCloudLogical logical: String, scope: String) -> String {
+        logical.hasPrefix(scope + ".") ? String(logical.dropFirst(scope.count + 1)) : logical
+    }
+
+    private func enqueueCloudMessage(_ message: MessageRecord) {
+        guard let engine = cloudSync, let scope = currentGatewayScope,
+              MessageInbox.isCloudRecordID(message.id) == false else { return }
+        engine.enqueueMessage(SyncedMessage(
+            id: Self.cloudLogicalID(scope: scope, rawID: message.id),
+            gatewayScope: scope, threadKey: message.threadKey,
+            peer: message.peer, body: message.body, direction: message.direction.rawValue,
+            status: message.status.rawValue, createdAt: message.createdAt, updatedAt: Date()
+        ))
+    }
+
+    private func enqueueCloudCall(_ call: CallRecord) {
+        guard let engine = cloudSync, let scope = currentGatewayScope,
+              call.gatewayID != MessageInbox.cloudGatewayMarker else { return }
+        engine.enqueueCall(SyncedCall(
+            id: Self.cloudLogicalID(scope: scope, rawID: call.id),
+            gatewayScope: scope, peer: call.peer ?? "",
+            direction: call.direction.rawValue, state: call.state.rawValue,
+            startedAt: call.startedAt, connectedAt: call.connectedAt, endedAt: call.endedAt,
+            endReason: call.endReason, updatedAt: Date()
+        ))
+    }
+
+    func syncRulesIfEnabled() {
+        guard let engine = cloudSync, spamFilter.applyingCloud == false else { return }
+        engine.enqueueRules(SyncedRules(
+            rules: spamFilter.rules,
+            enabledPresets: spamFilter.enabledPresets.map(\.rawValue),
+            knownSenders: Array(spamFilter.knownSenders),
+            updatedAt: Date()
+        ))
+    }
+
     private func handleIncoming(_ call: CallRecord) {
         guard activeGatewayCallIds.contains(call.id) == false else { return }
-        Task { await driver?.reportIncomingFromEvent(call) }
+        let gen = sessionGeneration
+        let driver = self.driver
+        Task {
+            await driver?.reportIncomingFromEvent(call)
+            guard gen == self.sessionGeneration else { return }
+            await applyScreening(handle: call.peer ?? "未知来电", gatewayId: call.id, generation: gen)
+        }
+    }
+
+    private func screenIncoming(peer: String) -> CallScreening {
+        let hits = spamFilter.callListHits(for: peer)
+        return spamFilter.policy().screenCall(peer: peer, listHits: hits)
+    }
+
+    /// End a still-ringing screened call PROMPTLY locally (the mandatory
+    /// CallKit report already happened), then ask the gateway to reject the
+    /// ringing leg best-effort. We never wait on the network before releasing
+    /// the system call, never end an answered/active call, and a late response
+    /// after a session switch can never touch the new driver/API.
+    private func silenceIncoming(gatewayId: String, generation: UInt64) async {
+        let api = self.api
+        let driver = self.driver
+        // Only the exact, still-ringing call is silenced.
+        guard activeGatewayCallIds.contains(gatewayId),
+              activeCall?.gatewayCallId == gatewayId,
+              activeCall?.phase == .incomingRinging else { return }
+        await driver?.endCall(gatewayId: gatewayId)
+        activeGatewayCallIds.remove(gatewayId)
+        reservedCallIds.remove(gatewayId)
+        if activeCall?.gatewayCallId == gatewayId { activeCall = nil }
+        guard let api else { return }
+        // Stable key per gateway leg: a retry after ambiguity cannot create
+        // two rejects; best-effort, never blocks the local end.
+        let key = "screen-reject-\(gatewayId)"
+        try? await api.reject(callId: gatewayId, idempotencyKey: key)
+        // The reject response belongs to the captured session only.
+        guard generation == sessionGeneration else { return }
+    }
+
+    /// Apply local screening to a push-reported call. The mandatory CallKit
+    /// report already happened; a reject now ends that reported call.
+    private func applyScreening(handle: String, gatewayId: String, generation: UInt64) async {
+        guard generation == sessionGeneration else { return }
+        let decision = screenIncoming(peer: handle)
+        switch decision {
+        case .allow:
+            break
+        case .label(let reason):
+            screenedCallNotice = ScreenedCallNotice(peer: handle, reason: reason)
+        case .reject(let reason):
+            screenedCallNotice = ScreenedCallNotice(peer: handle, reason: reason)
+            await silenceIncoming(gatewayId: gatewayId, generation: generation)
+        }
     }
 
     // MARK: APNs + VoIP token registration
@@ -538,6 +969,43 @@ final class AppModel: ObservableObject {
     }
 }
 
+// MARK: - CloudKit runtime apply
+
+extension AppModel: CloudSyncApplying {
+    func cloudSyncDidApply(_ report: CloudMergeReport, scope: String?) {
+        guard let scope = scope ?? currentGatewayScope else {
+            // No bound gateway: rules can still apply, history cannot show.
+            applyRulesReport(report)
+            return
+        }
+        guard let engine = cloudSync else { return }
+        // Replace the restored set wholesale from the converged snapshot so
+        // tombstones/LWW/token-reset results are reflected exactly.
+        inbox?.setCloudMessages(engine.messages(scope: scope), scope: scope)
+        cloudRecents = engine.calls(scope: scope)
+        mergeRecentsForDisplay()
+        applyRulesReport(report)
+        for setting in report.upsertedListSettings {
+            spamFilter.applyCloudListSetting(setting)
+        }
+        for id in report.removedListSettingIDs {
+            if let uuid = UUID(uuidString: id) { spamFilter.resetCloudListMode(uuid) }
+        }
+    }
+
+    private func applyRulesReport(_ report: CloudMergeReport) {
+        if let rules = report.rules {
+            spamFilter.applyCloudRules(rules)
+        } else if report.rulesDeleted {
+            spamFilter.purgeCloudRestoredRules()
+        }
+    }
+
+    func cloudSyncDidReset() {
+        purgeCloudRestores()
+    }
+}
+
 // MARK: - VoIP push handling
 
 extension AppModel: VoIPPushHandling {
@@ -546,6 +1014,7 @@ extension AppModel: VoIPPushHandling {
     }
 
     private func processVoIP(_ payload: VoIPPushPayload, mustReport: Bool) async {
+        let voipGeneration = sessionGeneration
         // Reserve the gateway call id synchronously BEFORE awaiting the
         // CallKit report, so a duplicate push/event converges instead of
         // presenting a second ring.
@@ -561,12 +1030,17 @@ extension AppModel: VoIPPushHandling {
 
         case .reportIncoming(let target):
             reservedCallIds.insert(target.gatewayCallId)
+            let driver = self.driver
+            let api = self.api
             let reported: Bool
             if let driver {
                 await driver.reportIncomingPush(
                     gatewayId: target.gatewayCallId, uuid: target.uuid,
                     handle: target.handle, record: nil
                 )
+                // A push completed after unpair/re-bind must not touch the new
+                // session's call sets.
+                guard voipGeneration == sessionGeneration else { return }
                 // The driver's report reflects CallKit acceptance.
                 reported = true
                 activeGatewayCallIds.insert(target.gatewayCallId)
@@ -578,7 +1052,9 @@ extension AppModel: VoIPPushHandling {
                 if mustReport { await reportPlaceholderCall() }
                 return
             }
-            reconcileIncoming(target.gatewayCallId)
+            reconcileIncoming(target.gatewayCallId, generation: voipGeneration, api: api)
+            await applyScreening(handle: target.handle, gatewayId: target.gatewayCallId,
+                                 generation: voipGeneration)
 
         case .foreignGateway, .staleReconcile:
             // Not a presentable call for this gateway/session. If the OS
@@ -587,18 +1063,22 @@ extension AppModel: VoIPPushHandling {
             if mustReport {
                 await reportPlaceholderCall()
             }
-            if decision == .staleReconcile { reconcileIncoming(payload.callId) }
+            if decision == .staleReconcile {
+                reconcileIncoming(payload.callId, generation: voipGeneration, api: api)
+            }
         }
     }
 
     /// After the minimal CallKit report, converge with real gateway state.
-    private func reconcileIncoming(_ callId: String) {
+    private func reconcileIncoming(_ callId: String, generation: UInt64, api: GatewayAPI?) {
         guard let api else { return }
         Task {
             guard let call = try? await api.fetchCall(id: callId) else {
+                guard generation == sessionGeneration else { return }
                 await refreshRecents()
                 return
             }
+            guard generation == sessionGeneration else { return }
             if call.endedAt != nil {
                 // The gateway call is already gone: end the reported system
                 // call rather than leave a ringing UI with no peer.

@@ -31,6 +31,9 @@ final class CallLifecycleTests: XCTestCase {
         XCTAssertEqual(api.dials.first?.id, uuid.uuidString.lowercased())
         XCTAssertEqual(api.dials.first?.key, uuid.uuidString)
         await waitUntil { provider.createCount == 1 }
+        // Media is created before the offer is produced; allow the lifecycle to
+        // run makeOffer + POST instead of asserting on the same runloop tick.
+        await waitUntil(timeout: 5) { api.offers.count == 1 }
         XCTAssertEqual(api.offers.count, 1, "nontrickle offer should be posted once")
 
         // Before media connects there must be no "connected" system call.

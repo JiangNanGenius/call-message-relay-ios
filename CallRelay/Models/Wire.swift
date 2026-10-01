@@ -253,7 +253,7 @@ enum MessageDirection: String, Decodable, Equatable, Sendable {
     case inbound, outbound
 }
 
-enum MessageStatus: String, Decodable, Equatable, Sendable {
+enum MessageStatus: String, Decodable, Encodable, Equatable, Sendable {
     case queued
     case submitted
     case sent

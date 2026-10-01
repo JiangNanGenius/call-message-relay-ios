@@ -398,6 +398,11 @@ final class HTTPGatewayAPI: GatewayAPI {
         var body: APIErrorBody?
         if let data { body = try? decoder.decode(APIErrorBody.self, from: data) }
         if http.statusCode == 401 || http.statusCode == 403 { return .unauthorized }
+        if http.statusCode == 429 {
+            let after = http.value(forHTTPHeaderField: "Retry-After")
+                .flatMap(TimeInterval.init)
+            return .rateLimited(retryAfter: after)
+        }
         return .http(status: http.statusCode, code: body?.code, message: body?.message)
     }
 }

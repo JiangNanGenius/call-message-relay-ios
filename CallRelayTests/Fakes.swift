@@ -184,7 +184,8 @@ final class FakeGatewayAPI: GatewayAPI {
 
     func listThreads() async throws -> [MessageThread] { threads }
 
-    func listMessages(after: Int64, limit: Int) async throws -> [MessageRecord] { [] }
+    func listMessages(after: Int64, limit: Int) async throws -> [MessageRecord] { extraMessages }
+    var extraMessages: [MessageRecord] = []
 
     func listThreadMessages(
         threadKey: String, beforeCreatedAt: Int64?, beforeID: String?, limit: Int

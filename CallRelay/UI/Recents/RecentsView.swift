@@ -1,5 +1,8 @@
 import SwiftUI
 
+/// Native Phone "Recents": plain full-width rows, round avatar, gray detail,
+/// secondary time, missed calls shown with a red number, and a blue trailing
+/// call button. Tapping a row opens detail actions (call / SMS).
 struct RecentsView: View {
     @EnvironmentObject private var model: AppModel
 
@@ -25,22 +28,42 @@ struct RecentsView: View {
                         message: "通过网关拨打或接听的通话会出现在这里。"
                     )
                 } else {
-                    List {
-                        ForEach(groupedByDay, id: \.day) { section in
-                            Section(header: Text(section.day)) {
-                                ForEach(section.calls) { call in
-                                    RecentRow(call: call)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture { model.dial(call.peer ?? "") }
-                                }
-                            }
-                        }
-                    }
-                    .listStyle(.insetGrouped)
+                    list
                 }
             }
-            .navigationTitle("最近通话")
+            .navigationTitle("通话")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("编辑") { }
+                        .disabled(true)
+                        .foregroundStyle(Color(UIColor.tertiaryLabel))
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("通话").font(.headline)
+                }
+            }
         }
+    }
+
+    private var list: some View {
+        List {
+            ForEach(groupedByDay, id: \.day) { section in
+                Section {
+                    ForEach(section.calls) { call in
+                        RecentRow(call: call,
+                                  displayName: call.peer.flatMap { model.contacts.name(forPeer: $0) },
+                                  onCall: { if let peer = call.peer { model.dial(peer) } },
+                                  onMessage: { if let peer = call.peer { model.composeSMS(to: peer) } })
+                    }
+                } header: {
+                    Text(section.day)
+                }
+            }
+        }
+        .listStyle(.plain)
+        .accessibilityIdentifier("recentsList")
+        .refreshable { _ = await model.refreshRecentsPublic() }
     }
 
     private struct DaySection {
@@ -62,41 +85,69 @@ struct RecentsView: View {
 
 private struct RecentRow: View {
     let call: CallRecord
+    let displayName: String?
+    let onCall: () -> Void
+    let onMessage: () -> Void
+    @State private var showActions = false
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.body)
-                .foregroundStyle(tint)
-                .frame(width: 28)
-                .accessibilityHidden(true)
+            PeerAvatar(diameter: 44)
             VStack(alignment: .leading, spacing: 2) {
-                Text(call.peer ?? "未知号码")
+                Text(displayName ?? call.peer ?? "未知号码")
                     .font(.body)
                     .lineLimit(1)
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isMissed ? Color.red : Color.primary)
+                HStack(spacing: 3) {
+                    Image(systemName: directionIcon)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             Spacer()
             Text(time)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Button(action: onCall) {
+                Image(systemName: "phone.fill")
+                    .font(.body)
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 40, height: 40)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("回拨")
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture { showActions = true }
+        .confirmationDialog("选择操作", isPresented: $showActions, titleVisibility: .visible) {
+            Button("拨打 \(displayName ?? call.peer ?? "")", action: onCall)
+            Button("发短信", action: onMessage)
+            Button("取消", role: .cancel) {}
+        }
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("recent-\(call.id)")
     }
 
-    private var icon: String {
-        call.direction == .inbound ? "phone.arrow.down.left" : "phone.arrow.up.right"
+    /// A missed inbound call that never connected.
+    private var isMissed: Bool {
+        call.direction == .inbound && call.connectedAt == nil
     }
 
-    private var tint: Color {
-        call.direction == .inbound ? .blue : .green
+    private var directionIcon: String {
+        call.direction == .inbound ? "arrow.down.left" : "arrow.up.right"
     }
 
     private var detail: String {
+        if let name = displayName {
+            return call.peer ?? name
+        }
         if call.connectedAt == nil, call.direction == .outbound { return "未接通" }
+        if isMissed { return "未接来电" }
         if let end = call.endedDate, let connected = call.connectedDate {
             let seconds = max(0, Int(end.timeIntervalSince(connected)))
             return "通话 \(Duration.seconds(seconds).formatted(.units(allowed: [.minutes, .seconds])))"

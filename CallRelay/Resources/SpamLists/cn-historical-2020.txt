@@ -1,0 +1,44 @@
+# 中文历史骚扰电话归档（34 个号码）
+# Historical mainland spam-call archive — 34 exact mobile numbers.
+# Source: github.com/blessing-gao/rubbish-phone, file 房地产垃圾电话.md,
+#         commit 926dc0fcd2a36d783289b6499fdf0202f8383a41 (2020-06-21).
+# License: Apache License 2.0 (see CallRelay/Resources/Licenses).
+#
+# This list is a static historical archive, last updated 2020-06-21.
+# It is NOT a current/verified spam database. It ships DISABLED. The owner
+# chooses whether matching calls are merely labelled or silenced. Entries are
+# exact 11-digit mobile numbers only — never broad prefix blocks.
+13116772397
+17342057071
+13157171192
+13281211151
+13065731092
+13003627695
+17050577652
+18258152497
+15669017101
+18267153537
+15700195006
+13819157275
+17376582900
+18258149073
+18758191256
+17739451467
+15658049073
+18868762130
+19848600295
+13148448089
+17006863291
+15558155020
+18806815993
+18368876781
+16521719159
+19817176955
+13588263529
+17857450549
+13023660965
+13023662919
+13186988230
+16225788489
+16225787024
+13073600027

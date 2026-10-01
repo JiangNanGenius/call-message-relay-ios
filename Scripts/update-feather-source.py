@@ -31,13 +31,13 @@ version = {
     "minOSVersion": info["MinimumOSVersion"],
     "size": args.ipa.stat().st_size,
     "downloadURL": f"{base}/releases/download/{args.tag}/{args.ipa.name}",
-    "localizedDescription": "首版预览：CallKit、短信收发、系统通话入口、私钥配对、PCMU 电话音频和离线演示。需自行签名；真实通话、短信与后台推送待联调。",
+    "localizedDescription": "首版预览：CallKit、短信、通讯录去重导出、垃圾过滤与号码列表、自动重连及可选私有 iCloud 同步。跟随系统外观，提供离线演示。需自行签名；iCloud 另需匹配权限与容器。真实通话、短信、后台推送及跨设备同步待联调。",
     "sha256": hashlib.sha256(args.ipa.read_bytes()).hexdigest(),
 }
 app = {
     "name": "CallRelay", "bundleIdentifier": info["CFBundleIdentifier"],
     "developerName": "JiangNanGenius", "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
-    "localizedDescription": "连接自有 Linux 蜂窝电话网关，通过 CallKit 与 WebRTC 接打电话。PolyForm Noncommercial：仅限非商业用途。提供未签名 IPA，由 Feather 使用你自己的证书和描述文件重新签名。后台来电需要包含 Push Notifications 的匹配描述文件与自有 APNs 服务。",
+    "localizedDescription": "连接自有 Linux 蜂窝电话网关，通过 CallKit 与 WebRTC 接打电话，并收发短信。PolyForm Noncommercial：仅限非商业用途。提供未签名 IPA，由 Feather 使用你自己的证书和描述文件重新签名。后台来电需要匹配的 Push Notifications 描述文件与自有 APNs 服务；iCloud 同步还需要匹配的 iCloud 权限和容器。",
     "iconURL": icon, "tintColor": "135CDC", "beta": True,
     "versions": [version], "version": version["version"], "versionDate": version["date"],
     "size": version["size"], "downloadURL": version["downloadURL"],
@@ -46,6 +46,11 @@ app = {
         {"name": "NSCameraUsageDescription", "usageDescription": info["NSCameraUsageDescription"]},
     ]},
 }
+if info.get("NSContactsUsageDescription"):
+    app["appPermissions"]["privacy"].append({
+        "name": "NSContactsUsageDescription",
+        "usageDescription": info["NSContactsUsageDescription"],
+    })
 if args.screenshot:
     for name in args.screenshot:
         if Path(name).name != name or not name.endswith(".png") or not (args.ipa.parent / name).is_file():

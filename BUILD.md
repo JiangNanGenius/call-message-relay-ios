@@ -102,13 +102,24 @@ xcodebuild test \
 （大小写/秒与毫秒/RFC3339/裸数组）、短信端点与字段（线程/对话/发送幂等/502 失败消息/
 Has-More 响应头）、端点与重定向安全、callId→UUID 稳定映射与
 VoIP 推送去重策略、PCMU-only SDP 过滤、通话阶段判定、短信收件箱（重试同键、切换模式后
-迟到响应作废、已读回执、演示路径）、CallKit handle 类型与 Intent/tel: 入口解析，以及
-带可控延迟 Fake API 的取消/迟到响应/媒体失败/远端挂断竞态。
+迟到响应作废、已读回执、演示路径、垃圾隔离/恢复、混合对话误判、断线补水幂等合并、待发箱
+重启恢复）、号码归一化（+86/0086/区号）、垃圾预设与白名单优先级、名单解析/大小上限/
+精确匹配、退避重试与错误分类（429 Retry-After/5xx/4xx/授权失效）、ICE 短暂断开恢复与
+超时结束、联系人去重分组（同名同事无共同号码仅警告）与 vCard 全量导出（每个联系人
+恰好一次、富字段保留、重叠组不双导出、+86 归一化）、CloudKit 同步（点分逻辑 id、
+飞行中再入队的新版本不被旧 ACK、并发设备 serverRecordChanged 冲突、墓碑复制失败不
+ACK、账号切换清墓碑/队列/token、token 过期全量重置、规则回环抑制、网关 scope 隔离、
+描述文件精确容器+CloudKit 服务解析、ObjC 异常边界、亚秒时间戳持久化）、事件流
+（ping 握手 .open、401 终态、429 Retry-After、kick 取消旧定时器/旧 socket 迟到回调
+不得替换新连接）、CallKit handle 类型与 Intent/tel: 入口解析，以及带可控延迟 Fake API
+的取消/迟到响应/媒体失败/远端挂断竞态。
 
 另有独立的 **CallRelayUITests**（XCUITest，UI-test target，不在单元测试 target 内），
-通过 `-callrelayDemoMode` 启动参数进入完全离线演示，走查短信列表→对话→编写→发送状态→
-设置中的系统铃声说明，并保存 `XCTAttachment(.keepAlways)` 截图；需要在已启动的模拟器
-上运行（CI 的稳定模拟器负责执行与目视检查，本机 iOS 27 beta 不启动模拟器）。
+通过 `-callrelayDemoMode -callrelayUITestReset -callrelayDemoSpamPresets` 启动参数进入
+完全离线、规则隔离的演示，走查短信列表→对话→编写→发送状态→垃圾信息隔离与恢复→规则预览
+→设置中的系统铃声说明，并保存 `XCTAttachment(.keepAlways)` 截图（明暗两种外观）；
+需要在已启动的模拟器上运行（CI 的稳定模拟器负责执行与目视检查，本机 iOS 27 beta 不启动
+模拟器）。所有演示与测试号码均为保留的 555 合成号码。
 
 ## 5. 真机无签名编译（仅编译验证，不可安装）
 
@@ -135,6 +146,28 @@ CallKit/PushKit/麦克风与 VoIP 后台模式需要描述文件与签名才能�
   ```
 - 云端 APNs Broker（用自己的 Bundle ID 与 APNs 授权）尚未实现，锁屏来电的端到端
   验证属于后续阶段。
+
+### 可选 CloudKit 重签配置
+
+未签名/Feather 基线**不**包含 iCloud 能力，App 内同步开关会安全显示“不可用”。
+要启用同账号私人同步，需在你自己的开发者账号下完成（不要把 Team/容器写死进仓库）：
+
+1. 在 Apple Developer 为该 App ID 勾选 iCloud → CloudKit，并创建私人容器，
+   例如 `iCloud.<你的BundleID>`（容器名由你账号决定）。
+2. 用包含 `com.apple.developer.icloud-services = CloudKit`、
+   `com.apple.developer.icloud-container-identifiers` 与 APNs（CloudKit 远程通知）的
+   描述文件重签。客户端启用前做两道检查：先解析 `embedded.mobileprovision`（必须精确
+   包含配置容器且声明 CloudKit 服务），再在 ObjC `@try/@catch` 保护下调用
+   `CKContainer.accountStatus` 与 `fetchUserRecordID` 实测**生效**签名权限。Feather 等
+   “宽描述文件 + 可执行文件被剥权”的情况下，CKContainer 初始化会抛 ObjC NSException
+   （Swift do/catch 无法捕获）；异常边界会把它转为“不可用”，绝不崩溃。登录判断不使用
+   iCloud Drive 的 `ubiquityIdentityToken`（CloudKit-only 账号可能没有它）。
+3. 容器标识可通过 UserDefaults `callrelay.cloudSync.containerID` 覆盖为你账号里的
+   真实容器；默认值 `iCloud.com.jiangnangenius.callrelay` 仅为示例，未在任何账号注册。
+4. 即使缺少容器，本地短信/通话/规则/导入名单功能全部照常可用；联系人同步由系统
+   “iCloud 联系人”提供，与该 CloudKit 容器无关。
+5. `CKRecord.encryptedValues` 是 CloudKit 的服务端静态加密（at rest），不要把它描述
+   成在任何 iCloud 账号设置下都保证端到端加密（高级数据保护由系统设置决定）。
 
 ## 演示模式
 

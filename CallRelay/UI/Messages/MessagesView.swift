@@ -1,8 +1,25 @@
 import SwiftUI
 
-/// SMS conversation list backed by the gateway `/threads` endpoint (live HTTP
-/// or the in-memory demo). All colors are dynamic system colors so the view
-/// follows the system light/dark appearance without a forced color scheme.
+enum MessageFilter: String, CaseIterable, Identifiable {
+    case all
+    case known
+    case unknown
+    case junk
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: return "所有信息"
+        case .known: return "已知发件人"
+        case .unknown: return "未知发件人"
+        case .junk: return "垃圾信息"
+        }
+    }
+}
+
+/// SMS conversation list with native Phone/Messages filters (all / known /
+/// unknown senders / junk), plain rows with round avatars, gray meta text and
+/// a blue trailing compose/callback style. All colors are dynamic system
+/// colors so light and dark appearance follow the system setting.
 struct MessagesView: View {
     @EnvironmentObject private var model: AppModel
 
@@ -20,15 +37,35 @@ struct MessagesView: View {
 
 private struct MessageInboxView: View {
     @ObservedObject var inbox: MessageInbox
+    @EnvironmentObject private var model: AppModel
+    @State private var filter: MessageFilter = .all
     @State private var showCompose = false
+    @State private var composeRecipient = ""
 
     var body: some View {
         NavigationStack {
-            content
-                .navigationTitle("短信")
+            content(for: inbox)
+                .navigationTitle(navigationTitle)
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu {
+                            ForEach(MessageFilter.allCases) { option in
+                                Button {
+                                    filter = option
+                                } label: {
+                                    Label(option.title, systemImage: filter == option ? "checkmark" : "")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                        }
+                        .accessibilityLabel("筛选短信")
+                        .accessibilityIdentifier("messageFilterMenu")
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
+                            composeRecipient = ""
                             showCompose = true
                         } label: {
                             Image(systemName: "square.and.pencil")
@@ -38,76 +75,172 @@ private struct MessageInboxView: View {
                     }
                 }
                 .sheet(isPresented: $showCompose) {
-                    ComposeMessageView(inbox: inbox)
+                    ComposeMessageView(inbox: inbox, initialRecipient: composeRecipient)
+                        .environmentObject(model)
                 }
-        }
+                .onChange(of: model.pendingComposePeer) { _, peer in
+                    guard let peer, !peer.isEmpty else { return }
+                    composeRecipient = peer
+                    showCompose = true
+                    _ = model.consumePendingComposePeer()
+                }
+                .onAppear {
+                    if let peer = model.consumePendingComposePeer() {
+                        composeRecipient = peer
+                        showCompose = true
+                    }
+                }
+            }
     }
 
-    @ViewBuilder
-    private var content: some View {
-        content(for: inbox)
+    private var navigationTitle: String {
+        filter == .junk ? "垃圾信息" : "短信"
     }
 
     @ViewBuilder
     private func content(for inbox: MessageInbox) -> some View {
-        if inbox.listPhase == .loading, inbox.displayThreads.isEmpty {
-            ProgressView("正在载入短信…")
-                .accessibilityIdentifier("messagesLoading")
-        } else if case .failed(let message) = inbox.listPhase, inbox.displayThreads.isEmpty {
-            LoadFailedView(message: message) {
-                Task { await inbox.refreshThreads() }
-            }
-        } else if inbox.displayThreads.isEmpty {
-            EmptyStateView(
-                icon: "ellipsis.message",
-                title: "暂无短信",
-                message: "点击右上角按钮写短信，收到的短信也会按号码显示在这里。"
-            )
-            .accessibilityIdentifier("messagesEmpty")
-        } else {
+        switch filter {
+        case .junk:
+            junkList(inbox)
+        default:
             threadList(inbox)
         }
     }
 
+    private var filteredThreads: [MessageThread] {
+        switch filter {
+        case .all: return inbox.knownThreads + inbox.unknownThreads
+        case .known: return inbox.knownThreads
+        case .unknown: return inbox.unknownThreads
+        case .junk: return inbox.junkThreads
+        }
+    }
+
     private func threadList(_ inbox: MessageInbox) -> some View {
-        List {
-            ForEach(inbox.displayThreads) { thread in
-                NavigationLink {
-                    ThreadDetailView(inbox: inbox, threadKey: thread.key, peer: thread.peer)
-                } label: {
-                    ThreadRow(thread: thread)
+        Group {
+            if inbox.listPhase == .loading, inbox.displayThreads.isEmpty {
+                ProgressView("正在载入短信…")
+                    .accessibilityIdentifier("messagesLoading")
+            } else if case .failed(let message) = inbox.listPhase, inbox.displayThreads.isEmpty {
+                LoadFailedView(message: message) { Task { await inbox.refreshThreads() } }
+            } else if filteredThreads.isEmpty {
+                EmptyStateView(
+                    icon: iconForFilter,
+                    title: emptyTitle,
+                    message: emptyMessage
+                )
+                .accessibilityIdentifier("messagesEmpty")
+            } else {
+                List {
+                    ForEach(filteredThreads) { thread in
+                        NavigationLink {
+                            ThreadDetailView(inbox: inbox, threadKey: thread.key, peer: thread.peer)
+                        } label: {
+                            ThreadRow(thread: thread,
+                                      displayName: model.contacts.name(forPeer: thread.peer))
+                        }
+                        .accessibilityIdentifier("thread-\(thread.key)")
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowSeparator(.automatic)
+                    }
                 }
-                .accessibilityIdentifier("thread-\(thread.key)")
+                .listStyle(.plain)
+                .accessibilityIdentifier("messageThreadList")
+                .refreshable { await inbox.refreshThreads() }
             }
         }
-        .listStyle(.insetGrouped)
-        .accessibilityIdentifier("messageThreadList")
-        .refreshable {
-            await inbox.refreshThreads()
+    }
+
+    private func junkList(_ inbox: MessageInbox) -> some View {
+        Group {
+            if inbox.junkThreads.isEmpty {
+                EmptyStateView(icon: "tray", title: "没有垃圾信息",
+                               message: "命中规则的短信会隔离到这里，可随时恢复；短信不会被删除。")
+                    .accessibilityIdentifier("junkEmpty")
+            } else {
+                List {
+                    ForEach(inbox.junkThreads) { thread in
+                        NavigationLink {
+                            ThreadDetailView(inbox: inbox, threadKey: thread.key,
+                                             peer: thread.peer, junk: true)
+                        } label: {
+                            ThreadRow(thread: thread,
+                                      displayName: model.contacts.name(forPeer: thread.peer),
+                                      reason: inbox.junkReason(for: thread.key))
+                        }
+                        .accessibilityIdentifier("junk-\(thread.key)")
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    }
+                }
+                .listStyle(.plain)
+                .accessibilityIdentifier("junkList")
+                .refreshable { await inbox.refreshThreads() }
+            }
         }
+    }
+
+    private var iconForFilter: String {
+        filter == .unknown ? "person.crop.circle.badge.questionmark" : "ellipsis.message"
+    }
+    private var emptyTitle: String {
+        switch filter {
+        case .unknown: return "没有未知发件人"
+        case .known: return "没有已知短信"
+        case .junk: return "没有垃圾信息"
+        case .all: return "暂无短信"
+        }
+    }
+    private var emptyMessage: String {
+        switch filter {
+        case .all: return "点击右上角按钮写短信，收到的短信也会按号码显示在这里。"
+        case .unknown: return "来自陌生号码但未命中垃圾规则的短信会显示在这里。"
+        case .known: return "联系人或你回复过的号码会显示在这里。"
+        case .junk: return "命中规则的短信会隔离到这里，可随时恢复；短信不会被删除。"
+        }
+    }
+}
+
+/// Round gray avatar shared by the message and call lists.
+struct PeerAvatar: View {
+    var diameter: CGFloat = 44
+
+    var body: some View {
+        Circle()
+            .fill(
+                LinearGradient(colors: [Color(.systemGray3), Color(.systemGray2)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .frame(width: diameter, height: diameter)
+            .overlay(
+                Image(systemName: "person.fill")
+                    .font(.system(size: diameter * 0.42))
+                    .foregroundStyle(.white.opacity(0.92))
+            )
+            .accessibilityHidden(true)
     }
 }
 
 private struct ThreadRow: View {
     let thread: MessageThread
+    var displayName: String?
+    var reason: String?
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "person.crop.circle.fill")
-                .font(.title2)
-                .foregroundStyle(Color(.secondaryLabel))
-                .accessibilityHidden(true)
-                .frame(width: 36)
+            PeerAvatar()
             VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text(thread.peer)
+                HStack(alignment: .firstTextBaseline) {
+                    Text(displayName ?? thread.peer)
                         .font(.body)
                         .lineLimit(1)
                         .foregroundStyle(.primary)
                     Spacer()
-                    Text(thread.lastMessage.createdDate, format: .dateTime.year().month().day().hour().minute())
+                    Text(thread.lastMessage.createdDate, format: .dateTime.hour().minute())
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(Color(UIColor.tertiaryLabel))
                 }
                 HStack(spacing: 4) {
                     if thread.lastMessage.direction == .outbound {
@@ -125,16 +258,20 @@ private struct ThreadRow: View {
                         Text("\(min(thread.unreadCount, 99))")
                             .font(.caption2.bold())
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
-                            .background(Color.accentColor, in: Capsule())
+                            .frame(minWidth: 20, minHeight: 20)
+                            .background(Color.accentColor, in: Circle())
                             .accessibilityLabel("未读 \(thread.unreadCount) 条")
                     }
                 }
+                if let reason {
+                    Text("疑似垃圾：\(reason)")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                }
             }
         }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
+        .contentShape(Rectangle())
     }
 }
 
@@ -146,17 +283,12 @@ struct LoadFailedView: View {
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 40))
-                .foregroundStyle(.orange)
+                .font(.system(size: 40)).foregroundStyle(.orange)
                 .accessibilityHidden(true)
             Text("载入失败").font(.headline)
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Text(message).font(.subheadline).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("重试", action: retry)
-                .buttonStyle(.bordered)
-                .controlSize(.large)
+            Button("重试", action: retry).buttonStyle(.bordered).controlSize(.large)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
