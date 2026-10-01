@@ -116,7 +116,7 @@ private struct MessageBubble: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
-                    isOutbound ? Color.accentColor : Color(.secondarySystemGroupedBackground),
+                    isOutbound ? Color("MessageBubbleColor") : Color(.secondarySystemGroupedBackground),
                     in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
                 if !isOutbound { Spacer(minLength: 48) }
