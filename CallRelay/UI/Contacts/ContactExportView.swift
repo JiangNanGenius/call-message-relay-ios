@@ -147,10 +147,12 @@ private struct ContactExportContent: View {
         defer { exporting = false }
         let chosen = mergeDuplicates ? chosenGroups : []
         do {
-            let url = try await service.exportVCard(selectedGroups: chosen)
-            shareURL = url
-            let count = service.exportCount(selectedGroups: chosen)
-            exportNote = "已生成 \(count) 条联系人的 vCard，原始通讯录未改动。"
+            // The note reports the ACTUAL serialized count from the fresh
+            // fetch (the plan-based exportCount preview can go stale when
+            // access changes between loading and exporting).
+            let outcome = try await service.exportVCard(selectedGroups: chosen)
+            shareURL = outcome.url
+            exportNote = "已生成 \(outcome.count) 条联系人的 vCard，原始通讯录未改动。"
         } catch {
             exportNote = "导出失败：\(error.localizedDescription)"
         }

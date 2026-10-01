@@ -104,8 +104,13 @@ final class MessagesUITests: XCTestCase {
         app.staticTexts["垃圾拦截规则"].tap()
         XCTAssertTrue(app.switches["preset-loanAndInvestment"].waitForExistence(timeout: 5))
         attach(named: "08-spam-rules")
+        // The preview section sits below the rule sections: scroll until the
+        // lazily-materialized button exists (same pattern as MARK 8).
         let previewButton = app.buttons["spamPreviewButton"]
-        XCTAssertTrue(previewButton.exists)
+        for _ in 0..<8 where !previewButton.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(previewButton.waitForExistence(timeout: 5))
         previewButton.tap()
         XCTAssertTrue(element(containing: "未知发件人").waitForExistence(timeout: 3))
         attach(named: "08b-spam-preview")

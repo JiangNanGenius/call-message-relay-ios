@@ -118,6 +118,60 @@ final class ContactVCardExportTests: XCTestCase {
         XCTAssertEqual(output.count, 3, "overlap falls back to individual export, never duplicated")
     }
 
+    /// Production contract: the fresh fetch may legitimately omit a contact
+    /// (limited access revoked or deleted between loading and exporting).
+    /// Exact-identifier matching must NOT fall back to positions — a selected
+    /// A+B group with A missing simply does not merge, and every accessible
+    /// contact exports exactly once with its own fields.
+    func testMissingFreshContactNeverMergesWrongPeople() {
+        let cnA = cnContact(given: "甲", phones: ["13800000001"])
+        let cnB = cnContact(given: "乙", phones: ["13800000002"])
+        let cnC = cnContact(given: "丙", phones: ["13800000003"])
+        let a = item(id: cnA.identifier, given: "甲", phones: ["13800000001"])
+        let b = item(id: cnB.identifier, given: "乙", phones: ["13800000002"])
+        let c = item(id: cnC.identifier, given: "丙", phones: ["13800000003"])
+        // Owner confirmed A+B as duplicates before access changed.
+        let groups = [ContactDeduper.Group(id: "g1", contacts: [a, b],
+                                           reason: .nameAndContact)]
+        // Fresh fetch no longer returns A.
+        let output = ContactsService.buildExport(items: [a, b, c], full: [cnB, cnC],
+                                                 selectedGroups: groups)
+        XCTAssertEqual(output.count, 2, "only accessible contacts export, each exactly once")
+        XCTAssertEqual(Set(output.map(\.identifier)),
+                       Set([cnB.identifier, cnC.identifier]),
+                       "the missing contact must not be exported or invented")
+        let exportedB = output.first { $0.identifier == cnB.identifier }
+        XCTAssertEqual(exportedB?.givenName, "乙")
+        XCTAssertEqual(exportedB?.phoneNumbers.map(\.value.stringValue), ["13800000002"],
+                       "B keeps its own fields — never merged with someone else")
+        let exportedC = output.first { $0.identifier == cnC.identifier }
+        XCTAssertEqual(exportedC?.givenName, "丙")
+    }
+
+    /// The fresh fetch order need not match the loaded list order; merges must
+    /// follow EXACT identifiers, so a reordered fetch still merges the same
+    /// real people and keeps everyone exactly once.
+    func testReorderedFreshFetchStillMergesCorrectPeople() {
+        let cnA = cnContact(given: "张", family: "三", phones: ["13800001111"])
+        let cnB = cnContact(given: "张", family: "三", phones: ["+86 138 0000 1111"])
+        let cnC = cnContact(given: "李", phones: ["13700003333"])
+        let a = item(id: cnA.identifier, given: "张", family: "三", phones: ["13800001111"])
+        let b = item(id: cnB.identifier, given: "张", family: "三", phones: ["+86 138 0000 1111"])
+        let c = item(id: cnC.identifier, given: "李", phones: ["13700003333"])
+        let groups = ContactDeduper.findDuplicates(in: [a, b, c])
+        XCTAssertEqual(groups.first?.reason, .nameAndContact)
+        // Fresh fetch returns contacts in a DIFFERENT order than the items.
+        let output = ContactsService.buildExport(items: [a, b, c],
+                                                 full: [cnC, cnA, cnB],
+                                                 selectedGroups: groups)
+        XCTAssertEqual(output.count, 2, "A+B merge once; C stays standalone")
+        let merged = output.first { $0.givenName == "张" }
+        XCTAssertNotNil(merged, "the A+B merge follows identifiers, not positions")
+        XCTAssertEqual(merged?.phoneNumbers.count, 1, "canonical +86 collapse keeps the number once")
+        let standalone = output.first { $0.identifier == cnC.identifier }
+        XCTAssertEqual(standalone?.givenName, "李")
+    }
+
     // MARK: Rich fields + native round trip
 
     func testMergePreservesRichFields() throws {

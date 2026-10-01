@@ -170,7 +170,7 @@ final class CloudSyncEngine: ObservableObject {
             store.save(snapshot)
             startPathMonitorIfNeeded()
             status = .ready
-            await syncNow(reason: "enable")
+            await syncNowJoiningCurrentGeneration(reason: "enable")
         case .transient:
             // Persist the owner's preference; the scheduled bounded retry
             // performs the first real sync when service returns.
@@ -225,9 +225,24 @@ final class CloudSyncEngine: ObservableObject {
         status = .checking
         switch await validate(gen: gen) {
         case .ready:
-            await syncNow(reason: "account-change")
+            await syncNowJoiningCurrentGeneration(reason: "account-change")
         case .needsAccount, .unavailable, .transient:
             break
+        }
+    }
+
+    /// Single-flight sync that still runs the request when the flight it may
+    /// have joined belongs to an OLDER generation: a stale owner discards the
+    /// coalesced rerun flag when it unwinds (its generation no longer
+    /// matches), which would otherwise lose this validated request and leave
+    /// the engine stuck until an unrelated trigger. `disable()` stays safe:
+    /// it clears `enabled`, so the follow-up pass short-circuits at runSync's
+    /// enabled gate.
+    private func syncNowJoiningCurrentGeneration(reason: String) async {
+        let joinedExistingFlight = inflightTask != nil
+        await syncNow(reason: reason)
+        if joinedExistingFlight, store.snapshot.enabled {
+            await syncNow(reason: reason)
         }
     }
 

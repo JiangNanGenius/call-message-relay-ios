@@ -251,6 +251,8 @@ final class EventStreamTests: XCTestCase {
         bag.sockets[0].failReceive()
         wait(for: [waiting], timeout: 3)
         stream.stop()
+        // stop() only enqueues its teardown; wait until it actually ran.
+        waitFor { bag.sockets[0].cancelled && scheduler.pending.allSatisfy(\.cancelled) }
         XCTAssertTrue(bag.sockets[0].cancelled)
         XCTAssertTrue(scheduler.pending.allSatisfy(\.cancelled))
         // A late ping/frame after stop must not crash or deliver.

@@ -260,63 +260,74 @@ final class ContactsService: ObservableObject {
         ).exportedCount
     }
 
+    /// The export result reports the URL and the ACTUAL number of contacts
+    /// serialized — never a plan-derived estimate that could drift when
+    /// access changes between the loaded list and the fresh fetch.
+    struct ExportOutcome {
+        let url: URL
+        let count: Int
+    }
+
+    /// Access changed between the loaded list and the fresh fetch (a contact
+    /// was revoked or deleted): refuse to guess and ask the owner to reload,
+    /// rather than silently exporting a wrong subset or merging wrong people.
+    enum ExportError: Error, LocalizedError {
+        case accessChanged
+        var errorDescription: String? {
+            "通讯录访问已发生变化，请返回后重新打开导出页。"
+        }
+    }
+
     /// Build a .vcf into a temporary file with the native serializer. EVERY
     /// accessible source contact is exported exactly once; only owner-selected
     /// duplicate groups are replaced by one merged contact with rich fields
     /// preserved. The system Contacts database is never modified.
-    func exportVCard(selectedGroups groups: [ContactDeduper.Group]) async throws -> URL {
+    func exportVCard(selectedGroups groups: [ContactDeduper.Group]) async throws -> ExportOutcome {
         let items = contacts
         // Fresh fetch with the full native vCard key descriptor right after
         // authorization, so rich fields (addresses, dates, URLs, org...) make
         // it into the export, not just the UI summary fields.
         let full = try fetchCNContacts(identifiers: items.map(\.id))
+        let fetchedIDs = Set(full.map(\.identifier))
+        guard items.allSatisfy({ fetchedIDs.contains($0.id) }) else {
+            throw ExportError.accessChanged
+        }
         let output = Self.buildExport(items: items, full: full, selectedGroups: groups)
         let vcfData = try CNContactVCardSerialization.data(with: output)
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("CallRelay-联系人-\(Int(Date().timeIntervalSince1970)).vcf")
         try vcfData.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        return url
+        return ExportOutcome(url: url, count: output.count)
     }
 
     /// Pure export assembly (also directly unit-testable): every source
     /// contact appears exactly once; selected, non-overlapping, fully
     /// accessible groups are replaced by one rich-field merged contact.
+    /// Members resolve by EXACT native identifier only: the fresh fetch may
+    /// legitimately omit a revoked/deleted contact, and any positional or
+    /// fuzzy fallback could merge two different real people. A member that is
+    /// missing from `full` simply disables that merge — the accessible
+    /// contacts still export individually, exactly once.
     nonisolated static func buildExport(items: [ContactItem], full: [CNContact],
                             selectedGroups groups: [ContactDeduper.Group]) -> [CNContact] {
         let plan = ContactVCardBuilder.plan(
             sourceCount: items.count, sourceIDs: items.map(\.id), selectedGroups: groups)
-        // Match item ids to contact identifiers whenever possible; when the
-        // unsaved/deserialized test contacts do not carry those ids, fall back
-        // to POSITIONAL correlation (fetchCNContacts preserves items order).
-        // The by-ID branch requires real, distinct, non-empty identifiers on
-        // BOTH sides: unsaved CNMutableContacts expose generated identifiers
-        // on modern SDKs (historically they were all ""), and an all-empty
-        // set would silently collapse the correlation dictionary.
-        let fullIDs = Set(full.map(\.identifier))
-        let itemIDs = items.map(\.id)
-        let fullIDsAreReal = !full.isEmpty && !fullIDs.contains("")
-            && fullIDs.count == full.count
-        let itemsReferToRealIDs = fullIDsAreReal
-            && Set(itemIDs).count == itemIDs.count
-            && !itemIDs.contains("")
-            && Set(itemIDs).isSubset(of: fullIDs)
-        let byID: [String: CNContact]
-        if itemsReferToRealIDs {
-            byID = Dictionary(full.map { ($0.identifier, $0) }, uniquingKeysWith: { first, _ in first })
-        } else {
-            byID = Dictionary(zip(itemIDs, full), uniquingKeysWith: { first, _ in first })
-        }
+        let byID = Dictionary(full.map { ($0.identifier, $0) },
+                              uniquingKeysWith: { first, _ in first })
 
         let accepted = groups.filter { plan.mergedGroupIDs.contains($0.id) }
         var mergedByFirstID: [String: CNMutableContact] = [:]
         var consumed = Set<String>()
         for group in accepted {
-            let members = group.contacts.compactMap { byID[$0.id] }
-            // Only merge when every member is accessible; otherwise export the
-            // accessible members individually (never silently drop a contact).
-            guard members.count == group.contacts.count, let firstID = members.first?.identifier else {
-                continue
+            // Merge only when EVERY member resolves to a real native contact
+            // from the fresh fetch (exact identifier match).
+            var members: [CNContact] = []
+            var resolvedAll = true
+            for member in group.contacts {
+                guard let cn = byID[member.id] else { resolvedAll = false; break }
+                members.append(cn)
             }
+            guard resolvedAll, let firstID = members.first?.identifier else { continue }
             mergedByFirstID[firstID] = ContactVCardBuilder.merge(members)
             members.forEach { consumed.insert($0.identifier) }
         }

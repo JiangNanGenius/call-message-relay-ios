@@ -237,9 +237,12 @@ final class CloudSyncEngineTests: XCTestCase {
 
     /// Regression for a starvation bug: a high-priority joiner that observed
     /// the completed owner task still registered kept re-awaiting it and
-    /// starved the background-priority owner's cleanup forever. Bounded
-    /// polling (never XCTWaiter) keeps this deterministic on loaded runners,
-    /// where a .background task may not be scheduled for seconds.
+    /// starved the owner's cleanup forever. Bounded polling (never XCTWaiter)
+    /// keeps this deterministic. The owner runs at DEFAULT priority: the
+    /// engine never runs syncNow below default in the app, and a
+    /// .background-priority task's post-await continuation can be starved for
+    /// seconds on a loaded CI runner, which would test the scheduler instead
+    /// of the single-flight algorithm.
     func testBackgroundOwnerHighPriorityJoinerBothReturnBounded() async {
         let fake = ScriptedCloudTransport()
         let (engine, _, _) = makeEngine(transport: fake)
@@ -248,12 +251,12 @@ final class CloudSyncEngineTests: XCTestCase {
         fake.holdPush = true
         var ownerReturned = false
         var joinerReturned = false
-        let owner = Task(priority: .background) {
+        let owner = Task {
             await engine.syncNow()
             ownerReturned = true
         }
         await waitFor { fake.inFlightCount == 1 }
-        XCTAssertEqual(fake.inFlightCount, 1, "background owner must reach the held push")
+        XCTAssertEqual(fake.inFlightCount, 1, "owner must reach the held push before the joiner")
         let joiner = Task(priority: .high) {
             await engine.syncNow()
             joinerReturned = true
@@ -682,6 +685,10 @@ final class ScriptedCloudTransport: CloudSyncTransport {
 final class HeldCloudTransport: CloudSyncTransport {
     var availabilityResult: CloudSyncAvailability = .available
     var identityResult: CloudAccountIdentity = .identified("account-1")
+    /// Result delivered specifically to the held FIRST call when released —
+    /// simulates a stale in-flight answer without poisoning the current
+    /// identity that every fresh probe must keep seeing.
+    var heldCallIdentityResult: CloudAccountIdentity?
     var holdFirstAvailability = false
     var holdFirstIdentity = false
     private var availabilityWaiters: [() -> Void] = []
@@ -719,8 +726,10 @@ final class HeldCloudTransport: CloudSyncTransport {
     func accountIdentity() async -> CloudAccountIdentity {
         if holdFirstIdentity, firstIdentity {
             firstIdentity = false
-            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-                identityWaiters.append { c.resume() }
+            return await withCheckedContinuation { (c: CheckedContinuation<CloudAccountIdentity, Never>) in
+                identityWaiters.append { [self] in
+                    c.resume(returning: heldCallIdentityResult ?? identityResult)
+                }
             }
         }
         return identityResult
@@ -766,6 +775,10 @@ extension CloudSyncEngineTests {
 
         let transport = HeldCloudTransport()
         transport.holdFirstIdentity = true
+        // The held generation-N call eventually returns the OLD account, while
+        // every CURRENT probe keeps seeing account-2 (never flip the global
+        // fixture back, which would make a legitimate fresh probe lie).
+        transport.heldCallIdentityResult = .identified("account-1")
         let engine = CloudSyncEngine(store: store, transport: transport)
 
         // Generation N sync is suspended inside accountIdentity(). The newer
@@ -789,7 +802,6 @@ extension CloudSyncEngineTests {
         XCTAssertEqual(store.snapshot.accountToken, "account-2")
 
         // The stale call finally returns the OLD identity: it must not refence.
-        transport.identityResult = .identified("account-1")
         transport.releaseIdentity()
         await waitFor(5) { changeFinished }
         XCTAssertTrue(changeFinished,
@@ -800,5 +812,9 @@ extension CloudSyncEngineTests {
         await oldSync.value
         XCTAssertEqual(store.snapshot.accountToken, "account-2",
                        "a delayed old-account identity must never overwrite the current fence")
+        // The account-change request must not be lost: the current generation
+        // actually pulls (zone ensured) and settles READY, not stuck checking.
+        XCTAssertGreaterThan(transport.ensureZoneCount, 0, "new account must ensureZone + pull")
+        XCTAssertEqual(engine.status, .ready, "coalesced current-generation sync must complete")
     }
 }
