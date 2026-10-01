@@ -133,3 +133,16 @@ CallKit/PushKit/麦克风与 VoIP 后台模式需要描述文件与签名才能�
 
 未配对时可进入「演示模式」：完全离线的内存网关，使用保留的 555 模拟号码，不联网、
 不发短信、不触发真实系统 CallKit 来电，仅用于走查界面与状态切换。设置页可模拟来电。
+
+## Feather 发布
+
+CI 在测试通过后编译 `iphoneos Release`，打包 `Payload/CallRelay.app`，保留内嵌 WebRTC，
+将未签名 IPA 保存为 `unsigned-ipa` artifact。用自己的证书在 Feather 中重新签名。
+发布者先上传 IPA 到版本固定的 GitHub Release，再执行：
+
+```sh
+./Scripts/update-feather-source.py build/CallRelay.ipa --tag v0.1.0
+```
+
+生成并提交 `feather.json`，其中版本、Bundle ID、最低 iOS、文件大小与 SHA-256 均从
+实际 IPA 提取。公开源不包含证书、私钥或描述文件。

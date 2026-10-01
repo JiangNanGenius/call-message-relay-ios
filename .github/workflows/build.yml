@@ -83,7 +83,17 @@ jobs:
           xcodebuild build \
             -project CallRelay.xcodeproj -scheme CallRelay \
             -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData-device \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Package unsigned IPA for Feather
+        run: ./Scripts/package-ipa.sh build/DerivedData-device/Build/Products/Release-iphoneos/CallRelay.app build/CallRelay.ipa
+
+      - name: Save unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ipa
+          path: build/CallRelay.ipa
 
       - name: Save test results
         if: always()

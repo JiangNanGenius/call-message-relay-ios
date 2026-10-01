@@ -12,7 +12,9 @@
 		09175A11E64EB5A180108AFA /* RecentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D50F86E7133E4C0AB2FC874A /* RecentsView.swift */; };
 		0A468E39D6CDEEB00882D760 /* DemoConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5252BE7A5377965154F12A7 /* DemoConstants.swift */; };
 		0C6CE48C385B45FB903AEB8F /* IdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED4DCDF083D3E2962363EB3 /* IdentityTests.swift */; };
+		1AA4AF6A1BC778F10756DA23 /* WebRTC-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 23DA30B41AAD7CD48A5D672E /* WebRTC-LICENSE.txt */; };
 		313D53DF0BA818844554FC5C /* Wire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65399AE40AE5F9E959667CDC /* Wire.swift */; };
+		3A58CB97BE75FC98367C5450 /* CallRelay-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = D968488F481A10FEBA845385 /* CallRelay-NOTICE.txt */; };
 		3BE25122B4D81DFE65BB38BF /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 628E25BD6BAAC8F96258A291 /* TokenStore.swift */; };
 		3C129D899260D98523A976E7 /* CallIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC1304BDE651D30727E4DB4 /* CallIdentifier.swift */; };
 		3C2919F9716340686742BAC6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50EB70B3A4C35A8F5C23B00 /* SettingsView.swift */; };
@@ -24,6 +26,7 @@
 		52F1F86137E90954ADF3B18F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9018BD33E55D204A7371F2 /* RootView.swift */; };
 		5D58E702A27616F0D2291A18 /* EventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DA399FE480E12698ADD587 /* EventStream.swift */; };
 		6BBED35DBBE589DCFED1E67E /* PushRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 398AB8C8E90C9626F1238A0D /* PushRegistry.swift */; };
+		6C7A9180784789ADD73BFD26 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 46EB85C9ECB68A468626F396 /* ThirdPartyNotices.txt */; };
 		7407094820EC6C777CA26198 /* IdentityBindingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444DD6802AFC2753B1AD8155 /* IdentityBindingPolicy.swift */; };
 		76BBDF4D0F3AC75499465427 /* DialerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5FF86542FF077ADFA588B46 /* DialerView.swift */; };
 		779556BB078733CD87ED70C3 /* CallState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570B277AE0721CACCDEF9076 /* CallState.swift */; };
@@ -41,6 +44,7 @@
 		C39E000B13B2175B6AF0ABA8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 277EF6E70492478D477ECC8D /* Assets.xcassets */; };
 		C4563CE7BD6A1FBD0B41E296 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 19C3B73CCD39434F4620A84B /* WebRTC */; };
 		C5C52EC08F103CD7FA2DC1B9 /* DeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD1D6124FBCB269EB6F0FC7 /* DeviceIdentity.swift */; };
+		D9BAACD0DC42058BD981BD9F /* CallRelay-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 23D6C5702132450ACA6B62AE /* CallRelay-LICENSE.txt */; };
 		E306C5F8B0E5C826E4A3315F /* ActiveCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7E7DF245408812D10FA4A76 /* ActiveCallView.swift */; };
 		E9C780B47D349B2F77275ABD /* CallKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98812606BAAF35C7F58B7698 /* CallKitManager.swift */; };
 		EA290D7AF96BD2F40DED138E /* CallLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E2FA0BA6159B54457B7990A /* CallLifecycleTests.swift */; };
@@ -65,6 +69,8 @@
 		0BC1304BDE651D30727E4DB4 /* CallIdentifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIdentifier.swift; sourceTree = "<group>"; };
 		191B28D96B07C9285C80237A /* GatewayBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayBinding.swift; sourceTree = "<group>"; };
 		218A231BA4DBC03932C09DB0 /* CallRelayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallRelayApp.swift; sourceTree = "<group>"; };
+		23D6C5702132450ACA6B62AE /* CallRelay-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "CallRelay-LICENSE.txt"; sourceTree = "<group>"; };
+		23DA30B41AAD7CD48A5D672E /* WebRTC-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "WebRTC-LICENSE.txt"; sourceTree = "<group>"; };
 		277EF6E70492478D477ECC8D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		2C9018BD33E55D204A7371F2 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		2FA45748307FF4B37BBF0FB1 /* CallRelay.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CallRelay.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -72,6 +78,7 @@
 		398AB8C8E90C9626F1238A0D /* PushRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistry.swift; sourceTree = "<group>"; };
 		3A772A3DADD60E9829B43C7E /* DemoCallDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoCallDriver.swift; sourceTree = "<group>"; };
 		444DD6802AFC2753B1AD8155 /* IdentityBindingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityBindingPolicy.swift; sourceTree = "<group>"; };
+		46EB85C9ECB68A468626F396 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
 		5200A77B86E1F9545F6207E5 /* CallDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDriver.swift; sourceTree = "<group>"; };
 		5414A860CAFDFACE2D75C624 /* LiveCallDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCallDriver.swift; sourceTree = "<group>"; };
 		570B277AE0721CACCDEF9076 /* CallState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallState.swift; sourceTree = "<group>"; };
@@ -96,6 +103,7 @@
 		AC3B54C00DA01EB928B0C2D1 /* CallCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallCoordinator.swift; sourceTree = "<group>"; };
 		D50F86E7133E4C0AB2FC874A /* RecentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentsView.swift; sourceTree = "<group>"; };
 		D5FF86542FF077ADFA588B46 /* DialerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialerView.swift; sourceTree = "<group>"; };
+		D968488F481A10FEBA845385 /* CallRelay-NOTICE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "CallRelay-NOTICE.txt"; sourceTree = "<group>"; };
 		DEF5C45E75AC8A3B3ED95D63 /* Fakes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fakes.swift; sourceTree = "<group>"; };
 		E143357666B2A1132FBA2858 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		E5252BE7A5377965154F12A7 /* DemoConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoConstants.swift; sourceTree = "<group>"; };
@@ -261,6 +269,7 @@
 			isa = PBXGroup;
 			children = (
 				277EF6E70492478D477ECC8D /* Assets.xcassets */,
+				EB6178F26E6DECA120A78DAC /* Licenses */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -298,6 +307,17 @@
 				96FD73019CC490571ECD09FD /* OnboardingView.swift */,
 			);
 			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		EB6178F26E6DECA120A78DAC /* Licenses */ = {
+			isa = PBXGroup;
+			children = (
+				23D6C5702132450ACA6B62AE /* CallRelay-LICENSE.txt */,
+				D968488F481A10FEBA845385 /* CallRelay-NOTICE.txt */,
+				46EB85C9ECB68A468626F396 /* ThirdPartyNotices.txt */,
+				23DA30B41AAD7CD48A5D672E /* WebRTC-LICENSE.txt */,
+			);
+			path = Licenses;
 			sourceTree = "<group>";
 		};
 		F96DA1287062DE6F9ED40636 /* App */ = {
@@ -398,6 +418,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				C39E000B13B2175B6AF0ABA8 /* Assets.xcassets in Resources */,
+				D9BAACD0DC42058BD981BD9F /* CallRelay-LICENSE.txt in Resources */,
+				3A58CB97BE75FC98367C5450 /* CallRelay-NOTICE.txt in Resources */,
+				6C7A9180784789ADD73BFD26 /* ThirdPartyNotices.txt in Resources */,
+				1AA4AF6A1BC778F10756DA23 /* WebRTC-LICENSE.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

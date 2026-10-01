@@ -49,7 +49,15 @@ final class LiveCallDriver: NSObject, CallDriver {
         Task {
             // CXStartCallAction triggers the provider, which starts the
             // gateway dial through its director (the coordinator).
-            try? await callKit.requestStartOutgoing(uuid: uuid, handle: peer)
+            do { try await callKit.requestStartOutgoing(uuid: uuid, handle: peer) }
+            catch {
+                guard currentUUID == uuid else { return }
+                current = nil
+                currentUUID = nil
+                publish()
+                onEnded?(uuid.uuidString.lowercased())
+                AppLog.callKit.notice("system rejected outgoing call request")
+            }
         }
     }
 
@@ -133,23 +141,19 @@ final class LiveCallDriver: NSObject, CallDriver {
 }
 
 extension LiveCallDriver: CallCoordinatorDelegate {
-    nonisolated func call(_ gatewayId: String, phaseChanged phase: ActiveCallPhase) {
-        Task { @MainActor in
-            guard var state = current else { return }
-            state.gatewayCallId = gatewayId
-            state.phase = phase
-            if case .active(let at) = phase { state.connectedAt = at ?? state.connectedAt }
-            current = state
-            publish()
-        }
+    func call(_ gatewayId: String, phaseChanged phase: ActiveCallPhase) {
+        guard var state = current else { return }
+        state.gatewayCallId = gatewayId
+        state.phase = phase
+        if case .active(let at) = phase { state.connectedAt = at ?? state.connectedAt }
+        current = state
+        publish()
     }
 
-    nonisolated func callDidEnd(gatewayId: String, reason: EndedCallReason) {
-        Task { @MainActor in
-            current = nil
-            currentUUID = nil
-            publish()
-            onEnded?(gatewayId)
-        }
+    func callDidEnd(gatewayId: String, reason: EndedCallReason) {
+        current = nil
+        currentUUID = nil
+        publish()
+        onEnded?(gatewayId)
     }
 }

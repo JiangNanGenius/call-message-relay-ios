@@ -37,6 +37,19 @@ xcodegen generate         # 生成 CallRelay.xcodeproj
 构建、测试、无签名真机编译、签名与 APNs 说明见 [BUILD.md](BUILD.md)。
 协议事实、安全设计与“已验证/未验证”边界见 [PROTOCOL.md](PROTOCOL.md)。
 
+## Feather 安装源
+
+在 Feather「源」中添加：
+
+```
+https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/feather.json
+```
+
+源提供首版预览的**未签名 IPA**，由 Feather 使用你自己的证书与描述文件签名后安装。
+无需上架 App Store。下载地址、版本、大小与 SHA-256 取自 GitHub Release 的实际产物。
+后台 VoIP 来电仍需匹配 Bundle ID、Push Notifications 描述文件和自有 APNs 服务；
+重新签名安装成功不代表后台推送或真实网关通话已经验收。
+
 ## 音质边界（重要）
 
 当前**网关实现**（CellBridge v2.0.6 的 UAC + WebRTC）固定 **8kHz / PCMU 64kbps

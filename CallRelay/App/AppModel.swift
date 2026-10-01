@@ -284,23 +284,29 @@ final class AppModel: ObservableObject {
     }
 
     private func bindDriver(_ driver: CallDriver) {
+        let boundGeneration = sessionGeneration
         driver.onUpdate = { [weak self] call in
             Task { @MainActor in
-                self?.activeCall = call
+                guard let self, boundGeneration == self.sessionGeneration else { return }
+                self.activeCall = call
                 if let call {
-                    self?.activeGatewayCallIds.insert(call.gatewayCallId)
+                    self.activeGatewayCallIds.insert(call.gatewayCallId)
                 }
             }
         }
         driver.onQuality = { [weak self] quality in
-            Task { @MainActor in self?.quality = quality }
+            Task { @MainActor in
+                guard let self, boundGeneration == self.sessionGeneration else { return }
+                self.quality = quality
+            }
         }
         driver.onEnded = { [weak self] gatewayId in
             Task { @MainActor in
-                self?.activeGatewayCallIds.remove(gatewayId)
-                self?.activeCall = nil
-                self?.quality = nil
-                await self?.refreshRecents()
+                guard let self, boundGeneration == self.sessionGeneration else { return }
+                self.activeGatewayCallIds.remove(gatewayId)
+                self.activeCall = nil
+                self.quality = nil
+                await self.refreshRecents()
             }
         }
     }
