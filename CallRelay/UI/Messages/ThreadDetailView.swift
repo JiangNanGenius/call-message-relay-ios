@@ -122,6 +122,10 @@ struct ThreadDetailView: View {
                     Text("删除").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
+                // .bordered does not derive its tint from the destructive
+                // role on this OS (it stays blue): make the required red
+                // destructive appearance explicit.
+                .tint(.red)
                 .accessibilityIdentifier("junkDelete")
                 Button {
                     inbox.restoreJunk(threadKey: threadKey, peer: peer)
