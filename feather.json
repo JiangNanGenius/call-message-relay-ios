@@ -1,157 +1,174 @@
 {
-  "name": "CallRelay 非商业安装源",
-  "identifier": "com.jiangnangenius.callrelay.source",
-  "subtitle": "自行签名 · 首版预览",
-  "website": "https://github.com/JiangNanGenius/call-message-relay-ios",
-  "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
-  "tintColor": "135CDC",
-  "apps": [
+ "name": "CallRelay",
+ "identifier": "com.jiangnangenius.callrelay.source",
+ "subtitle": "自行签名",
+ "website": "https://github.com/JiangNanGenius/call-message-relay-ios",
+ "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+ "tintColor": "135CDC",
+ "apps": [
+  {
+   "name": "CallRelay",
+   "bundleIdentifier": "com.jiangnangenius.callrelay",
+   "developerName": "JiangNanGenius",
+   "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
+   "localizedDescription": "0.3.5（接替 0.3.4）：修复真机反馈的来电接听与系统来电界面路径——空主叫号不再以空 handle 上报，真实号码到达后刷新系统来电界面；仅对可重试的拒绝重试一次，勿扰/黑名单等永久拒绝会给出 App 内直接接听的说明；推送路径先建立响铃状态再等待系统上报，报告完成时若通话已结束会结束系统通话而不是留下幽灵响铃。App 内直接接听不再依赖 CallKit 往返，并且只有该模式自行激活通话音频，CallKit 路径等待系统激活，音频激活失败会明确结束通话。系统通讯录仍是唯一数据源：外部清理自动刷新；vCard 重新导入无损合并，冲突逐条确认，不自动覆盖或删除。iPad 通用布局（侧边栏导航、横竖屏/分屏）与新图标。未签名，需自行签名；锁屏系统来电界面仍需 VoIP 推送服务与匹配的推送描述文件。",
+   "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+   "tintColor": "135CDC",
+   "beta": true,
+   "versions": [
     {
-      "name": "CallRelay",
-      "bundleIdentifier": "com.jiangnangenius.callrelay",
-      "developerName": "JiangNanGenius",
-      "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
-      "localizedDescription": "连接自有 Linux 蜂窝电话网关，通过 CallKit 与 WebRTC 接打电话，并收发短信。PolyForm Noncommercial：仅限非商业用途。提供未签名 IPA，由 Feather 使用你自己的证书和描述文件重新签名。后台来电需要匹配的 Push Notifications 描述文件与自有 APNs 服务；iCloud 同步还需要匹配的 iCloud 权限和容器。",
-      "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
-      "tintColor": "135CDC",
-      "beta": true,
-      "versions": [
-        {
-          "version": "0.3.4",
-          "buildVersion": "8",
-          "date": "2026-10-02T16:46:05Z",
-          "minOSVersion": "17.0",
-          "size": 7995684,
-          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/CallRelay-0.3.4-unsigned.ipa",
-          "localizedDescription": "0.3.4 修复（取代 0.3.3）：外呼在拨号后约 0.3–1.4 秒即失败——PCMU-only SDP 生成器结尾多发一个换行，WebRTC 拒绝本地协商，offer 从未发出；现已修复并加入真实 WebRTC SDK 回归测试。拨号盘改为原生 iPhone 风格：当前 SIM 号码 + 真实信号格 + 清晰下拉箭头，顶部仅一个安静的网关连接状态；号码点击不弹系统键盘，长按可粘贴/拷贝，仍由 App 键盘编辑；线路离线/未注册或线路数据过期时信号归零，未知与已知 0 格区分。首次配对无默认时自动选择可拨线路并保存；已保存但不可用的线路不会静默切换；网关偏好写入串行合并，慢的自动写入不会覆盖之后的手动选择。App 图标更新为电话听筒 + 信封（浅色/深色/着色）。网关侧修复 CSQ 99 未知信号被误报 4 格。未签名，需自行签名，并需最新网关 v2。",
-          "sha256": "756320f0606bb320bbbf69475b2c372ab3cef927061b6949fd355f32308b08e3"
-        },
-        {
-          "version": "0.3.3",
-          "buildVersion": "7",
-          "date": "2026-10-02T13:44:33Z",
-          "minOSVersion": "17.0",
-          "size": 10090740,
-          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.3/CallRelay-0.3.3-unsigned.ipa",
-          "localizedDescription": "0.3.3 修复（取代 0.3.2）：幽灵来电——网关每次连接都从序号 0 重放历史事件、App 又不携带续传游标，历史 call.incoming 被当作新来电；且 App 无法解码网关 state=\"ended\" 终态，call.ended 被丢弃导致来电界面无法清除。现在网关重放跳过已结束通话的非终态事件，App 持久化事件游标、验证重放事件仍在响铃、对账 /calls?active=true 并记住本会话终态通话，历史/已拒接来电不再响铃；线路选择在真实生产 /api/v2/lines 契约下恢复。网关控制台对已撤销密钥新增“删除密钥”（二次确认、会话+CSRF，只允许删除已撤销密钥，保留设备与历史）。未签名，需自行签名，并需最新网关 v2。",
-          "sha256": "8e4f2aa0dc47dc1da3fb2820e21541a53adb45303749e3ace6bb9cecaeb67423"
-        },
-        {
-          "version": "0.3.2",
-          "buildVersion": "6",
-          "date": "2026-10-02T11:41:15Z",
-          "minOSVersion": "17.0",
-          "size": 10082155,
-          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/CallRelay-0.3.2-unsigned.ipa",
-          "localizedDescription": "0.3.2 修复（取代 0.3.1）：授权失效与普通离线/权限不足明确区分，只有密钥或设备被撤销时才提示重新配对；过期访问令牌自动刷新并恢复事件连接，连续失败才提示并清空失效线路与本次拨号选择；线路在加载中、旧版配对、无授权、暂时不可用等状态都显示明确原因，单线路也显示当前号码，默认缺失必须显式选择；旧版 /line1、/line2 绑定提供“重新配对统一网关”迁移入口，旧绑定与本地记录在新配对成功前保留；配合更新后的网关控制台，新建配对密钥可在之后再次查看/复制（旧密钥未保存原文时诚实提示并可创建新密钥，既有设备不受影响）。未签名，需自行签名，并需最新网关 v2。",
-          "sha256": "322c6d527cf1cb666df4187b3c46a7fd425c73fc7688d3a95a096b7959378647"
-        },
-        {
-          "version": "0.3.1",
-          "buildVersion": "5",
-          "date": "2026-10-02T08:39:26Z",
-          "minOSVersion": "17.0",
-          "size": 10050193,
-          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/CallRelay-0.3.1-unsigned.ipa",
-          "localizedDescription": "0.3.1 修正预览（取代 0.3.0）：号码编辑页标题改为线路名称、当前号码只显示一次，页脚仅提示同步范围；手动号码仍可一键恢复 SIM 自动读取。其余同 0.3.0：已授权线路显示完整本机号码；默认外呼线路持久保存，拨号键盘可按次临时切换且不改默认；默认缺失、停用或无权限时必须显式选择；持有网关“管理号码”授权的密钥可在 App 内编辑号码，改动保存在网关并对其他已授权手机生效。未签名，需自行签名，并需最新网关 v2。",
-          "sha256": "4115edd35fd6c805afadac80b01094ec71b46c85e984975ea3b158347cef2490"
-        },
-        {
-          "version": "0.3.0",
-          "buildVersion": "4",
-          "date": "2026-10-02T08:20:47Z",
-          "minOSVersion": "17.0",
-          "size": 10050355,
-          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/CallRelay-0.3.0-unsigned.ipa",
-          "localizedDescription": "0.3.0 预览（取代 0.2.1）：已授权线路显示完整本机号码；默认外呼线路持久保存，拨号键盘可按次临时切换且不改默认；默认缺失、停用或无权限时必须显式选择，绝不静默改用其他线路；持有网关“管理号码”授权的密钥可在 App 内编辑本机号码或恢复 SIM 自动读取，改动保存在网关并对其他已授权手机生效；沿用统一多线路 v2、通话保持/合并/留言与离线演示模式。未签名，需自行签名，并需最新网关 v2。",
-          "sha256": "26f9af862c2028b80c410f542f0b1dda07938acade74e324f832caf46d155e3a"
-        },
-        {
-          "version": "0.2.1",
-          "buildVersion": "3",
-          "date": "2026-10-02T03:04:04Z",
-          "minOSVersion": "17.0",
-          "size": 9976999,
-          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.2.1/CallRelay-0.2.1-unsigned.ipa",
-          "localizedDescription": "0.2.1 预览（取代 0.2.0）：统一多线路网关 v2 功能不变——一次配对获得该密钥授权的全部线路、多行/多设备权限，每台手机独立注册与独立撤销，跨设备仅同步加密恢复授权；通话支持保持/恢复、第二通保持后接听，并把本机 2-3 路外呼合并为最多 4 人会议；网关语音留言收件箱与应用内播放；界面精简。本版仅修复 0.2.0 在稳定 Xcode CI 上的 CallKit 单元测试不稳定，应用行为相同。未签名，需自行签名，并需最新网关 v2。真实运营商媒体、APNs 锁屏来电、TURN 中继与两台真机云端恢复尚未联调。",
-          "sha256": "5756a380c6a448ee4323c82f3e0648dead1e15db45d59aa8275befb169a1374d"
-        },
-        {
-          "version": "0.2.0",
-          "buildVersion": "2",
-          "date": "2026-10-02T02:49:51Z",
-          "minOSVersion": "17.0",
-          "size": 9976925,
-          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.2.0/CallRelay-0.2.0-unsigned.ipa",
-          "localizedDescription": "0.2.0 预览：统一多线路网关 v2，一次配对获得该密钥授权的全部线路，支持多行/多设备权限；每台手机独立注册、独立撤销，跨设备仅同步加密恢复授权；通话支持保持/恢复、第二通保持后接听，并把本机 2-3 路外呼合并为最多 4 人会议；新增网关语音留言收件箱与应用内播放；界面精简。未签名，需在 Feather 用自己的证书重新签名，并需最新网关 v2。真实运营商媒体、APNs 锁屏来电、TURN 中继与两台真机云端恢复尚未联调。",
-          "sha256": "5345d7b0ba2aeeb8582ec57c0d572fda43a64accda324a9daf647bf3f86e3bcb"
-        },
-        {
-          "version": "0.1.0",
-          "buildVersion": "1",
-          "date": "2026-10-01T14:03:21Z",
-          "minOSVersion": "17.0",
-          "size": 9676183,
-          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/CallRelay.ipa",
-          "localizedDescription": "首版预览：CallKit、短信、通讯录去重导出、垃圾过滤与号码列表、自动重连及可选私有 iCloud 同步。跟随系统外观，提供离线演示。需自行签名；iCloud 另需匹配权限与容器。真实通话、短信、后台推送及跨设备同步待联调。",
-          "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
-        }
-      ],
-      "version": "0.3.4",
-      "versionDate": "2026-10-02T16:46:05Z",
-      "size": 7995684,
-      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/CallRelay-0.3.4-unsigned.ipa",
-      "appPermissions": {
-        "entitlements": [
-          "aps-environment"
-        ],
-        "privacy": [
-          {
-            "name": "NSMicrophoneUsageDescription",
-            "usageDescription": "通话时需要使用麦克风，将你的语音经网关发送到对方。"
-          },
-          {
-            "name": "NSCameraUsageDescription",
-            "usageDescription": "扫描网关上显示的配对二维码时需要使用相机；也可以选择粘贴配对内容。"
-          },
-          {
-            "name": "NSContactsUsageDescription",
-            "usageDescription": "用于在联系人中选择号码拨号或发短信、在最近通话/短信中显示联系人姓名，并可按你的选择将通讯录号码视为可信发件人。App 不会上传或备份你的通讯录。"
-          }
-        ]
-      },
-      "screenshotURLs": [
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-selected-sim-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-selected-sim-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/app-icon-sizes-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/app-icon-sizes-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-dialer-line-picker.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-line-menu-expanded.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-settings-lines.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/auth-lost-banner.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/auth-lost-settings.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/multiline-dialer-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/multiline-dialer-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/multiline-chooser-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/settings-lines-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/settings-lines-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/number-editor-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/number-editor-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/multiline-dialer-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/multiline-dialer-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/multiline-chooser-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-thread-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-thread-dark.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-junk-light.png",
-        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-junk-dark.png"
-      ]
+     "version": "0.3.5",
+     "buildVersion": "9",
+     "date": "2026-10-02T19:51:43Z",
+     "minOSVersion": "17.0",
+     "size": 9452040,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.5/CallRelay-0.3.5-unsigned.ipa",
+     "localizedDescription": "0.3.5（接替 0.3.4）：修复真机反馈的来电接听与系统来电界面路径——空主叫号不再以空 handle 上报，真实号码到达后刷新系统来电界面；仅对可重试的拒绝重试一次，勿扰/黑名单等永久拒绝会给出 App 内直接接听的说明；推送路径先建立响铃状态再等待系统上报，报告完成时若通话已结束会结束系统通话而不是留下幽灵响铃。App 内直接接听不再依赖 CallKit 往返，并且只有该模式自行激活通话音频，CallKit 路径等待系统激活，音频激活失败会明确结束通话。系统通讯录仍是唯一数据源：外部清理自动刷新；vCard 重新导入无损合并，冲突逐条确认，不自动覆盖或删除。iPad 通用布局（侧边栏导航、横竖屏/分屏）与新图标。未签名，需自行签名；锁屏系统来电界面仍需 VoIP 推送服务与匹配的推送描述文件。",
+     "sha256": "ee253b085ebb3c8f61dc6e3327bd771d45053872ba4559ccacfbbf31539be288"
+    },
+    {
+     "version": "0.3.4",
+     "buildVersion": "8",
+     "date": "2026-10-02T16:46:05Z",
+     "minOSVersion": "17.0",
+     "size": 7995684,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/CallRelay-0.3.4-unsigned.ipa",
+     "localizedDescription": "0.3.4 修复（取代 0.3.3）：外呼在拨号后约 0.3–1.4 秒即失败——PCMU-only SDP 生成器结尾多发一个换行，WebRTC 拒绝本地协商，offer 从未发出；现已修复并加入真实 WebRTC SDK 回归测试。拨号盘改为原生 iPhone 风格：当前 SIM 号码 + 真实信号格 + 清晰下拉箭头，顶部仅一个安静的网关连接状态；号码点击不弹系统键盘，长按可粘贴/拷贝，仍由 App 键盘编辑；线路离线/未注册或线路数据过期时信号归零，未知与已知 0 格区分。首次配对无默认时自动选择可拨线路并保存；已保存但不可用的线路不会静默切换；网关偏好写入串行合并，慢的自动写入不会覆盖之后的手动选择。App 图标更新为电话听筒 + 信封（浅色/深色/着色）。网关侧修复 CSQ 99 未知信号被误报 4 格。未签名，需自行签名，并需最新网关 v2。",
+     "sha256": "756320f0606bb320bbbf69475b2c372ab3cef927061b6949fd355f32308b08e3"
+    },
+    {
+     "version": "0.3.3",
+     "buildVersion": "7",
+     "date": "2026-10-02T13:44:33Z",
+     "minOSVersion": "17.0",
+     "size": 10090740,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.3/CallRelay-0.3.3-unsigned.ipa",
+     "localizedDescription": "0.3.3 修复（取代 0.3.2）：幽灵来电——网关每次连接都从序号 0 重放历史事件、App 又不携带续传游标，历史 call.incoming 被当作新来电；且 App 无法解码网关 state=\"ended\" 终态，call.ended 被丢弃导致来电界面无法清除。现在网关重放跳过已结束通话的非终态事件，App 持久化事件游标、验证重放事件仍在响铃、对账 /calls?active=true 并记住本会话终态通话，历史/已拒接来电不再响铃；线路选择在真实生产 /api/v2/lines 契约下恢复。网关控制台对已撤销密钥新增“删除密钥”（二次确认、会话+CSRF，只允许删除已撤销密钥，保留设备与历史）。未签名，需自行签名，并需最新网关 v2。",
+     "sha256": "8e4f2aa0dc47dc1da3fb2820e21541a53adb45303749e3ace6bb9cecaeb67423"
+    },
+    {
+     "version": "0.3.2",
+     "buildVersion": "6",
+     "date": "2026-10-02T11:41:15Z",
+     "minOSVersion": "17.0",
+     "size": 10082155,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/CallRelay-0.3.2-unsigned.ipa",
+     "localizedDescription": "0.3.2 修复（取代 0.3.1）：授权失效与普通离线/权限不足明确区分，只有密钥或设备被撤销时才提示重新配对；过期访问令牌自动刷新并恢复事件连接，连续失败才提示并清空失效线路与本次拨号选择；线路在加载中、旧版配对、无授权、暂时不可用等状态都显示明确原因，单线路也显示当前号码，默认缺失必须显式选择；旧版 /line1、/line2 绑定提供“重新配对统一网关”迁移入口，旧绑定与本地记录在新配对成功前保留；配合更新后的网关控制台，新建配对密钥可在之后再次查看/复制（旧密钥未保存原文时诚实提示并可创建新密钥，既有设备不受影响）。未签名，需自行签名，并需最新网关 v2。",
+     "sha256": "322c6d527cf1cb666df4187b3c46a7fd425c73fc7688d3a95a096b7959378647"
+    },
+    {
+     "version": "0.3.1",
+     "buildVersion": "5",
+     "date": "2026-10-02T08:39:26Z",
+     "minOSVersion": "17.0",
+     "size": 10050193,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/CallRelay-0.3.1-unsigned.ipa",
+     "localizedDescription": "0.3.1 修正预览（取代 0.3.0）：号码编辑页标题改为线路名称、当前号码只显示一次，页脚仅提示同步范围；手动号码仍可一键恢复 SIM 自动读取。其余同 0.3.0：已授权线路显示完整本机号码；默认外呼线路持久保存，拨号键盘可按次临时切换且不改默认；默认缺失、停用或无权限时必须显式选择；持有网关“管理号码”授权的密钥可在 App 内编辑号码，改动保存在网关并对其他已授权手机生效。未签名，需自行签名，并需最新网关 v2。",
+     "sha256": "4115edd35fd6c805afadac80b01094ec71b46c85e984975ea3b158347cef2490"
+    },
+    {
+     "version": "0.3.0",
+     "buildVersion": "4",
+     "date": "2026-10-02T08:20:47Z",
+     "minOSVersion": "17.0",
+     "size": 10050355,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/CallRelay-0.3.0-unsigned.ipa",
+     "localizedDescription": "0.3.0 预览（取代 0.2.1）：已授权线路显示完整本机号码；默认外呼线路持久保存，拨号键盘可按次临时切换且不改默认；默认缺失、停用或无权限时必须显式选择，绝不静默改用其他线路；持有网关“管理号码”授权的密钥可在 App 内编辑本机号码或恢复 SIM 自动读取，改动保存在网关并对其他已授权手机生效；沿用统一多线路 v2、通话保持/合并/留言与离线演示模式。未签名，需自行签名，并需最新网关 v2。",
+     "sha256": "26f9af862c2028b80c410f542f0b1dda07938acade74e324f832caf46d155e3a"
+    },
+    {
+     "version": "0.2.1",
+     "buildVersion": "3",
+     "date": "2026-10-02T03:04:04Z",
+     "minOSVersion": "17.0",
+     "size": 9976999,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.2.1/CallRelay-0.2.1-unsigned.ipa",
+     "localizedDescription": "0.2.1 预览（取代 0.2.0）：统一多线路网关 v2 功能不变——一次配对获得该密钥授权的全部线路、多行/多设备权限，每台手机独立注册与独立撤销，跨设备仅同步加密恢复授权；通话支持保持/恢复、第二通保持后接听，并把本机 2-3 路外呼合并为最多 4 人会议；网关语音留言收件箱与应用内播放；界面精简。本版仅修复 0.2.0 在稳定 Xcode CI 上的 CallKit 单元测试不稳定，应用行为相同。未签名，需自行签名，并需最新网关 v2。真实运营商媒体、APNs 锁屏来电、TURN 中继与两台真机云端恢复尚未联调。",
+     "sha256": "5756a380c6a448ee4323c82f3e0648dead1e15db45d59aa8275befb169a1374d"
+    },
+    {
+     "version": "0.2.0",
+     "buildVersion": "2",
+     "date": "2026-10-02T02:49:51Z",
+     "minOSVersion": "17.0",
+     "size": 9976925,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.2.0/CallRelay-0.2.0-unsigned.ipa",
+     "localizedDescription": "0.2.0 预览：统一多线路网关 v2，一次配对获得该密钥授权的全部线路，支持多行/多设备权限；每台手机独立注册、独立撤销，跨设备仅同步加密恢复授权；通话支持保持/恢复、第二通保持后接听，并把本机 2-3 路外呼合并为最多 4 人会议；新增网关语音留言收件箱与应用内播放；界面精简。未签名，需在 Feather 用自己的证书重新签名，并需最新网关 v2。真实运营商媒体、APNs 锁屏来电、TURN 中继与两台真机云端恢复尚未联调。",
+     "sha256": "5345d7b0ba2aeeb8582ec57c0d572fda43a64accda324a9daf647bf3f86e3bcb"
+    },
+    {
+     "version": "0.1.0",
+     "buildVersion": "1",
+     "date": "2026-10-01T14:03:21Z",
+     "minOSVersion": "17.0",
+     "size": 9676183,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/CallRelay.ipa",
+     "localizedDescription": "首版预览：CallKit、短信、通讯录去重导出、垃圾过滤与号码列表、自动重连及可选私有 iCloud 同步。跟随系统外观，提供离线演示。需自行签名；iCloud 另需匹配权限与容器。真实通话、短信、后台推送及跨设备同步待联调。",
+     "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
     }
-  ],
-  "news": []
+   ],
+   "version": "0.3.5",
+   "versionDate": "2026-10-02T19:51:43Z",
+   "size": 9452040,
+   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.5/CallRelay-0.3.5-unsigned.ipa",
+   "appPermissions": {
+    "entitlements": [
+     "aps-environment"
+    ],
+    "privacy": [
+     {
+      "name": "NSMicrophoneUsageDescription",
+      "usageDescription": "通话时需要使用麦克风，将你的语音经网关发送到对方。"
+     },
+     {
+      "name": "NSCameraUsageDescription",
+      "usageDescription": "扫描网关上显示的配对二维码时需要使用相机；也可以选择粘贴配对内容。"
+     },
+     {
+      "name": "NSContactsUsageDescription",
+      "usageDescription": "用于在联系人中选择号码拨号或发短信、在最近通话/短信中显示联系人姓名，并可按你的选择将通讯录号码视为可信发件人。App 不会上传或备份你的通讯录。"
+     }
+    ]
+   },
+   "screenshotURLs": [
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.5/adaptive-dialer-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.5/line-detail-metrics-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.5/contact-import-preview-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.5/ipad-dialer-landscape-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.5/ipad-settings-landscape-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.5/call-controls-landscape-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.5/app-icon-sizes.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-selected-sim-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-selected-sim-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/app-icon-sizes-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/app-icon-sizes-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-dialer-line-picker.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-line-menu-expanded.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-settings-lines.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/auth-lost-banner.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/auth-lost-settings.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/multiline-dialer-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/multiline-dialer-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/multiline-chooser-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/settings-lines-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/settings-lines-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/number-editor-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/number-editor-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/multiline-dialer-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/multiline-dialer-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/multiline-chooser-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-thread-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-thread-dark.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-junk-light.png",
+    "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-junk-dark.png"
+   ]
+  }
+ ],
+ "news": []
 }
