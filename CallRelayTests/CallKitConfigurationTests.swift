@@ -17,7 +17,7 @@ final class CallKitConfigurationTests: XCTestCase {
     // MARK: Configuration
 
     func testProviderConfigurationSupportsIndependentLegsPlusPendingIncoming() {
-        let manager = CallKitManager()
+        let manager = CallKitManager(subscribesToSystemCallbacks: false)
         XCTAssertGreaterThanOrEqual(
             manager.configuration.maximumCallGroups, 4,
             "three independent external legs plus one pending incoming call"
@@ -122,7 +122,11 @@ final class CallKitConfigurationTests: XCTestCase {
         uuids["call-B"] = await answer(
             "call-B", peer: "1002", coordinator: coordinator, api: api, registry: registry
         )
-        let manager = CallKitManager()
+        // These tests call the provider-delegate glue directly. Do not
+        // subscribe to real CallKit system callbacks: a host-simulator
+        // `providerDidReset` would asynchronously wipe the coordinator state
+        // under assertion (seen on stable Xcode CI).
+        let manager = CallKitManager(subscribesToSystemCallbacks: false)
         manager.director = coordinator
         return Setup(
             coordinator: coordinator, api: api, manager: manager,

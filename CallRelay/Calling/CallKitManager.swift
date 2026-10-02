@@ -83,7 +83,12 @@ final class CallKitManager: NSObject, CallKitControlling {
     /// capacities required for independent legs plus a pending incoming call.
     var configuration: CXProviderConfiguration { provider.configuration }
 
-    override init() {
+    /// - Parameter subscribesToSystemCallbacks: production passes `true`.
+    ///   Unit tests that invoke the provider-delegate action methods directly
+    ///   pass `false`: they do not need real CallKit callbacks, and a host
+    ///   simulator `providerDidReset` otherwise asynchronously reaches the
+    ///   coordinator and wipes `conference`/`tracked` mid-assertion.
+    init(subscribesToSystemCallbacks: Bool = true) {
         let config = CXProviderConfiguration()
         // Up to four concurrent system calls: three independent external legs
         // waiting for an explicit merge plus one pending incoming call. After
@@ -101,7 +106,9 @@ final class CallKitManager: NSObject, CallKitControlling {
         }
         provider = CXProvider(configuration: config)
         super.init()
-        provider.setDelegate(self, queue: nil)
+        if subscribesToSystemCallbacks {
+            provider.setDelegate(self, queue: nil)
+        }
     }
 
     // MARK: Incoming (PushKit path)
