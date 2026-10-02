@@ -97,10 +97,10 @@
           "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
         }
       ],
-      "version": "0.3.3",
-      "versionDate": "2026-10-02T13:44:33Z",
-      "size": 10090740,
-      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.3/CallRelay-0.3.3-unsigned.ipa",
+      "version": "0.3.4",
+      "versionDate": "2026-10-02T16:46:05Z",
+      "size": 7995684,
+      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/CallRelay-0.3.4-unsigned.ipa",
       "appPermissions": {
         "entitlements": [
           "aps-environment"
@@ -153,9 +153,5 @@
       ]
     }
   ],
-  "news": [],
-  "version": "0.3.4",
-  "versionDate": "2026-10-02T16:46:05Z",
-  "size": 7995684,
-  "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/CallRelay-0.3.4-unsigned.ipa"
+  "news": []
 }
