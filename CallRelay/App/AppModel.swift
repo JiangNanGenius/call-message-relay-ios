@@ -126,6 +126,16 @@ final class AppModel: ObservableObject {
     private var terminalCallIds: Set<String> = []
     private var lastSyncSeq: Int64 = 0
     private var sessionGeneration: UInt64 = 0
+    /// True once this session auto-selected a first-pairing default, so a
+    /// later refresh can never override a user choice or re-pick silently.
+    private var didAutoSelectDefault = false
+    /// Coalescing gate for gateway preference pushes. Only one PUT is in
+    /// flight; a newer choice replaces any queued one, and after the in-flight
+    /// PUT completes the latest value is re-pushed, so an older slower request
+    /// can never be the server's last write.
+    private var preferencePushGeneration: UInt64 = 0
+    private var preferencePushInFlight = false
+    private var preferencePushPending: String?
     private var pendingExternalPeer: String?
     /// Gateway call ids reserved during an in-flight CallKit report, so
     /// duplicate pushes/events cannot present a second ring while awaiting.
@@ -507,12 +517,13 @@ final class AppModel: ObservableObject {
     /// Synthetic lines shared by the demo overlay and the paired-mode
     /// screenshot fixture. All numbers are reserved 555 synthetics.
     private func syntheticPreviewLines() -> [AuthorizedLine] {
+        let unknownSignal = LaunchArguments.showsUnknownSignal
         func makeLine(id: String, name: String, phone: String?, source: String?,
-                      manage: Bool = false) -> AuthorizedLine {
+                      manage: Bool = false, bars: Int?) -> AuthorizedLine {
             AuthorizedLine(
                 id: id, name: name, enabled: true, online: true, sim: .ready,
                 operatorName: "演示运营商", registration: .registered, voice: .ready, sms: .ready,
-                signal: Signal(rssi: -70, bars: 4), activeCallId: nil,
+                signal: bars.map { Signal(rssi: -70, bars: $0) }, activeCallId: nil,
                 permissions: .all, smsLive: false,
                 identity: LineIdentity(moduleKey: nil, usbPath: nil, firmware: nil, simMasked: nil,
                                        phoneMasked: phone.map { _ in "555****1111" }, numberSource: source),
@@ -520,9 +531,10 @@ final class AppModel: ObservableObject {
             )
         }
         return [
-            makeLine(id: "line1", name: "主卡", phone: "+15550161111", source: "sim", manage: true),
-            makeLine(id: "line2", name: "流量卡", phone: "+15550162222", source: "manual"),
-            makeLine(id: "line3", name: "空卡", phone: nil, source: "empty")
+            makeLine(id: "line1", name: "主卡", phone: "+15550161111", source: "sim",
+                     manage: true, bars: unknownSignal ? nil : 4),
+            makeLine(id: "line2", name: "流量卡", phone: "+15550162222", source: "manual", bars: 4),
+            makeLine(id: "line3", name: "空卡", phone: nil, source: "empty", bars: nil)
         ]
     }
 
@@ -624,6 +636,9 @@ final class AppModel: ObservableObject {
     private func startLive(binding: GatewayBinding) {
         isDemo = false
         defaults.set(false, forKey: DefaultsKey.demo)
+        didAutoSelectDefault = false
+        preferencePushInFlight = false
+        preferencePushPending = nil
 
         let origin: GatewayOrigin
         switch GatewayOrigin.validate(
@@ -797,6 +812,9 @@ final class AppModel: ObservableObject {
         reconciling = false
         authorizedLines = []
         defaultLineId = nil
+        didAutoSelectDefault = false
+        preferencePushInFlight = false
+        preferencePushPending = nil
         temporaryDialLineId = nil
         outgoingPick = nil
         numberEditLine = nil
@@ -1224,21 +1242,28 @@ final class AppModel: ObservableObject {
             }
             authorizedLines = lines
             lineListState = .loaded
-            // Preserve a still-valid persisted default. Never silently pick a
-            // different (or the "first") line: when the default is missing,
-            // disabled or has lost permission, the user must choose.
             let persisted = bindingStore.current()?.defaultLineId
-            if let persisted,
-               let match = lines.first(where: { $0.id == persisted }),
-               match.enabled, match.permissions.hasAny {
+            if let persisted {
+                // Honor a stored user choice exactly, even when the line is
+                // temporarily unavailable or missing from this response:
+                // never silently switch to a different number. The picker
+                // explains why it cannot dial and offers a change.
                 defaultLineId = persisted
-                linePhase = .online(match.status)
-            } else if let current = defaultLineId,
-                      let match = lines.first(where: { $0.id == current }),
-                      match.enabled, match.permissions.hasAny {
-                linePhase = .online(match.status)
-            } else {
-                defaultLineId = nil
+                if let match = lines.first(where: { $0.id == persisted }) {
+                    linePhase = .online(match.status)
+                }
+            } else if let current = defaultLineId {
+                // In-session choice (picked before this refresh landed): the
+                // user's selection wins over any auto-selection.
+                if let match = lines.first(where: { $0.id == current }) {
+                    linePhase = .online(match.status)
+                }
+            } else if temporaryDialLineId == nil {
+                // First pairing with no saved choice anywhere: deterministically
+                // pick a usable authorized line and persist it. Until one is
+                // dialable the picker stays explicit; a later refresh retries,
+                // so lines arriving asynchronously are still covered.
+                await autoSelectDefaultLineIfNeeded(from: lines, generation: gen)
             }
             (driver as? LiveCallDriver)?.setDefaultLineId(defaultLineId)
             inbox?.lineIdProvider = { [weak self] in self?.defaultLineId }
@@ -1270,14 +1295,97 @@ final class AppModel: ObservableObject {
     /// (both locally and gateway-side as this device's preference).
     func selectDefaultLine(_ lineId: String) async {
         guard let line = authorizedLines.first(where: { $0.id == lineId }) else { return }
-        defaultLineId = lineId
+        applyDefaultLine(line)
+        await pushDefaultLinePreference(lineId, generation: sessionGeneration)
+    }
+
+    /// First-pairing only: deterministically select the lowest-id line that can
+    /// actually dial, then persist it as the default. Called exclusively while
+    /// no saved/in-session choice exists; state is MainActor-isolated, so it
+    /// cannot race a user selection (the user's pick lands first or the guard
+    /// below sees it and returns).
+    private func autoSelectDefaultLineIfNeeded(from lines: [AuthorizedLine], generation gen: UInt64) async {
+        guard !didAutoSelectDefault,
+              defaultLineId == nil,
+              temporaryDialLineId == nil,
+              let chosen = lines.sorted(by: { $0.id < $1.id }).first(where: \.canDialNow) else { return }
+        guard gen == sessionGeneration else { return }
+        applyDefaultLine(chosen)
+        await pushDefaultLinePreference(chosen.id, generation: gen)
+    }
+
+    /// Synchronous local application of the default choice: published state,
+    /// bound driver and the local binding store. Keeping it non-async means a
+    /// late auto-selection can never overwrite a choice the user already made.
+    private func applyDefaultLine(_ line: AuthorizedLine) {
+        didAutoSelectDefault = true
+        defaultLineId = line.id
         linePhase = .online(line.status)
-        (driver as? LiveCallDriver)?.setDefaultLineId(lineId)
+        (driver as? LiveCallDriver)?.setDefaultLineId(line.id)
         if var binding = bindingStore.current() {
-            binding.defaultLineId = lineId
+            binding.defaultLineId = line.id
             try? bindingStore.save(binding)
         }
-        _ = try? await api?.setDefaultLine(lineId, idempotencyKey: UUID().uuidString)
+    }
+
+    /// Best-effort push of the same choice to the gateway's per-device
+    /// preferences (`PUT /devices/{id}/preferences`). The local choice is
+    /// authoritative for this install. Pushes are serialized and coalesced:
+    /// an in-flight PUT for an older choice can never complete after a newer
+    /// one — the newest selection is re-pushed once the older call settles,
+    /// so the server's last write always matches the latest local choice. A
+    /// stale response after a re-bind is discarded by the generation guard.
+    private func pushDefaultLinePreference(_ lineId: String, generation gen: UInt64) async {
+        guard gen == sessionGeneration else { return }
+        if preferencePushGeneration != gen {
+            // A new session owns the gate; abandon old bookkeeping.
+            preferencePushGeneration = gen
+            preferencePushInFlight = false
+            preferencePushPending = nil
+        }
+        if preferencePushInFlight {
+            preferencePushPending = lineId
+            return
+        }
+        preferencePushInFlight = true
+        var next: String? = lineId
+        while let value = next, gen == sessionGeneration {
+            preferencePushPending = nil
+            _ = try? await api?.setDefaultLine(value, idempotencyKey: UUID().uuidString)
+            guard gen == sessionGeneration else { return }
+            next = preferencePushPending
+        }
+        if preferencePushGeneration == gen {
+            preferencePushInFlight = false
+            preferencePushPending = nil
+        }
+    }
+
+    /// True when a persisted default exists but the current line list no
+    /// longer contains it (grant removed, renamed id, or not arrived yet).
+    /// The dialer then explains instead of showing a healthy-looking line.
+    var defaultLineMissingFromList: Bool {
+        guard let defaultLineId else { return false }
+        return !authorizedLines.contains { $0.id == defaultLineId }
+    }
+
+    /// Signal bars the dialer may show for a line. Cached bars are only
+    /// trustworthy when the latest line information is fresh and the line is
+    /// actually online and registered; otherwise the row renders the honest
+    /// unknown state (empty neutral bars). A reported 0 is a real known state
+    /// ("no service") and stays 0 — distinct from unknown (nil).
+    func dialerSignalBars(for line: AuthorizedLine?) -> Int? {
+        guard let line else { return nil }
+        switch lineListState {
+        case .loading, .unavailable:
+            // The latest fetch failed or is still in flight: cached values
+            // could be stale, so do not present them as current truth.
+            return nil
+        case .unknown, .legacyBinding, .empty, .loaded:
+            break
+        }
+        guard line.online, line.registration == .registered else { return nil }
+        return line.signal?.bars
     }
 
     // MARK: Line own-number management

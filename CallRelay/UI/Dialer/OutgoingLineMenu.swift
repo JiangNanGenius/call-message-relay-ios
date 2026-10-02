@@ -32,21 +32,20 @@ struct OutgoingLineMenu: View {
                 Button("使用默认线路") { model.setTemporaryDialLine(nil) }
             }
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: "simcard")
-                    .font(.caption2)
+            // Native-Phone-like current-SIM row: true signal bars, the own
+            // number, and a subtle chevron. Plain text — no engineering chrome.
+            HStack(spacing: 6) {
+                CellularSignalBars(bars: model.dialerSignalBars(for: currentLine))
                 Text(currentLabel)
-                    .font(.caption2)
+                    .font(.subheadline)
+                    .foregroundStyle(menuColor)
                     .lineLimit(1)
-                if model.authorizedLines.count > 1 {
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 8, weight: .semibold))
-                }
+                    .minimumScaleFactor(0.6)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color(UIColor.secondaryLabel))
             }
-            .foregroundStyle(menuColor)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(Color(.tertiarySystemFill), in: Capsule())
+            .contentShape(Rectangle())
             .accessibilityIdentifier("outgoingLineMenu")
             .accessibilityHint("默认外呼线路，可临时切换")
         }
@@ -57,7 +56,7 @@ struct OutgoingLineMenu: View {
     }
 
     private var menuColor: Color {
-        currentLine?.canDialNow == true ? .secondary : .orange
+        currentLine?.canDialNow == true ? .primary : .orange
     }
 
     private var currentLine: AuthorizedLine? {
@@ -72,6 +71,11 @@ struct OutgoingLineMenu: View {
         }
         if let def = model.line(id: model.defaultLineId) {
             return def.canDialNow ? def.friendlyName : "\(def.friendlyName)（\(def.unavailableReason)）"
+        }
+        // A stored default this response no longer lists (grant removed or
+        // async arrival): explain instead of pretending it is unset.
+        if model.defaultLineId != nil {
+            return "默认线路不可用"
         }
         // A default is required but missing: say so instead of showing a
         // healthy-looking line or an empty control.

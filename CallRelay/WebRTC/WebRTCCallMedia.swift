@@ -35,6 +35,12 @@ enum SDPCodecFilter {
             }
             output.append(line)
         }
+        // SDP must end in exactly one CRLF line terminator. The split above
+        // yields a final empty component for the input's own trailing CRLF;
+        // joining and then appending another terminator produced a trailing
+        // blank line, which makes WebRTC's CreateSessionDescription return
+        // NULL ("SessionDescription is NULL.") and every offer fail locally.
+        while let last = output.last, last.isEmpty { output.removeLast() }
         return output.joined(separator: "\r\n") + "\r\n"
     }
 

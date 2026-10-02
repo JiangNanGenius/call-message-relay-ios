@@ -25,6 +25,7 @@
 		28648ECAD5F9E81C3F29200C /* SpamFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 497ACBA1F83FDC8A12937941 /* SpamFilterTests.swift */; };
 		313D53DF0BA818844554FC5C /* Wire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65399AE40AE5F9E959667CDC /* Wire.swift */; };
 		35EF280A96D3F2E61D711B93 /* ContactDeduper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F9E9861C66D806794BC5E9C /* ContactDeduper.swift */; };
+		37172BAFE0D79FF923D0A34C /* WebRTCOfferPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C39FC8D2D0EC5B4690080E60 /* WebRTCOfferPipelineTests.swift */; };
 		38975939B9CC8C6966CD7AAF /* NumberListsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45F27461DB963B2F932BE7D /* NumberListsView.swift */; };
 		3A58CB97BE75FC98367C5450 /* CallRelay-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = D968488F481A10FEBA845385 /* CallRelay-NOTICE.txt */; };
 		3BE25122B4D81DFE65BB38BF /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 628E25BD6BAAC8F96258A291 /* TokenStore.swift */; };
@@ -32,6 +33,7 @@
 		3C2919F9716340686742BAC6 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A50EB70B3A4C35A8F5C23B00 /* SettingsView.swift */; };
 		3C7DA5A42C3B8A4CB67ED8CA /* CloudSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1523FD274532D3A3E16F9189 /* CloudSettings.swift */; };
 		3F8DE7E96043E4FFD639ED61 /* MessagesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4165909DB665BF2ED9F078 /* MessagesUITests.swift */; };
+		4137608837B00C01D07EF51A /* DialerNativeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C3C40493EFE71246E0A52C /* DialerNativeUITests.swift */; };
 		443BF6287C46CF15EB9099B0 /* SpamList-CN-Historical-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 05744022AD96DC06771B2551 /* SpamList-CN-Historical-NOTICE.txt */; };
 		447EA5C4774185A7240F7804 /* MessageInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70F0E50529D24BC37088083 /* MessageInboxTests.swift */; };
 		454CB2CC2CCEC0B9EB4FF9A3 /* VoIPPushPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A66C9DBB90543E55C02CD36D /* VoIPPushPayload.swift */; };
@@ -45,6 +47,7 @@
 		5B08C2354AEF7FB3CF9FCA3F /* SpamFilterStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64D2A156D01FD72B6F4113FD /* SpamFilterStore.swift */; };
 		5D58E702A27616F0D2291A18 /* EventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DA399FE480E12698ADD587 /* EventStream.swift */; };
 		5F25DBFB70ABD293F8042ED9 /* CloudSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E8B1C2C4B334AD05FA70F48 /* CloudSyncTests.swift */; };
+		62A2F9E39BEA047EA3C0FF73 /* CellularSignalBars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371573FF9DD8843A5CDA1243 /* CellularSignalBars.swift */; };
 		66306408F391D1A8B672C502 /* MessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E6407350D96D3CBB7BFDAC /* MessagesView.swift */; };
 		69061B0EB714948B19ED87F4 /* NewConferenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6F5F2EB092E2B879856F3C0 /* NewConferenceTests.swift */; };
 		6BBED35DBBE589DCFED1E67E /* PushRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 398AB8C8E90C9626F1238A0D /* PushRegistry.swift */; };
@@ -164,6 +167,7 @@
 		30E29FCD79372F499817AF17 /* CloudSyncTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncTypes.swift; sourceTree = "<group>"; };
 		3229416404A485DD201F98DC /* CloudConvergence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudConvergence.swift; sourceTree = "<group>"; };
 		329E2138785C36E07F41EA54 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		371573FF9DD8843A5CDA1243 /* CellularSignalBars.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CellularSignalBars.swift; sourceTree = "<group>"; };
 		398AB8C8E90C9626F1238A0D /* PushRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistry.swift; sourceTree = "<group>"; };
 		3A772A3DADD60E9829B43C7E /* DemoCallDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoCallDriver.swift; sourceTree = "<group>"; };
 		3BD3FDBD2F16E7C9812308CC /* OutgoingLineSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutgoingLineSelectionTests.swift; sourceTree = "<group>"; };
@@ -221,6 +225,7 @@
 		BE8CEC9770D37E66F3A120C0 /* ContactsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsView.swift; sourceTree = "<group>"; };
 		C28C4E4E5A8D62B092922AFC /* V2Wire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V2Wire.swift; sourceTree = "<group>"; };
 		C2B34F75CD206B2EF834D234 /* OutboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutboxStore.swift; sourceTree = "<group>"; };
+		C39FC8D2D0EC5B4690080E60 /* WebRTCOfferPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebRTCOfferPipelineTests.swift; sourceTree = "<group>"; };
 		C6F5F2EB092E2B879856F3C0 /* NewConferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewConferenceTests.swift; sourceTree = "<group>"; };
 		CBA78DC07BCCADBDB5461650 /* PairingRuntimeRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingRuntimeRegressionTests.swift; sourceTree = "<group>"; };
 		D0635913B3FD20B2420AF284 /* CallRelayUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CallRelayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -232,6 +237,7 @@
 		DF1712358EAF8763B2FDF8D4 /* CallHandleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHandleTests.swift; sourceTree = "<group>"; };
 		E143357666B2A1132FBA2858 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		E29B1E29BF8F845FC3285F8A /* TestHTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHTTPServer.swift; sourceTree = "<group>"; };
+		E2C3C40493EFE71246E0A52C /* DialerNativeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialerNativeUITests.swift; sourceTree = "<group>"; };
 		E45F27461DB963B2F932BE7D /* NumberListsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumberListsView.swift; sourceTree = "<group>"; };
 		E4C8EE3BF4C8729A36FD9B58 /* CallIntentDonor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIntentDonor.swift; sourceTree = "<group>"; };
 		E5252BE7A5377965154F12A7 /* DemoConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoConstants.swift; sourceTree = "<group>"; };
@@ -373,6 +379,7 @@
 				206D825E142DCFBE6E9C0A17 /* UnifiedPairingRecoveryTests.swift */,
 				A201F54A8F28266CE1D63A30 /* V2TestSupport.swift */,
 				55C457701ED5FCBFB8643F6F /* VoicemailPlaybackTests.swift */,
+				C39FC8D2D0EC5B4690080E60 /* WebRTCOfferPipelineTests.swift */,
 				5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */,
 				D7620C89F766008B03BC07B5 /* UITests */,
 			);
@@ -493,6 +500,7 @@
 		C37E429B8CCDBCE3F03F8A26 /* Dialer */ = {
 			isa = PBXGroup;
 			children = (
+				371573FF9DD8843A5CDA1243 /* CellularSignalBars.swift */,
 				D5FF86542FF077ADFA588B46 /* DialerView.swift */,
 				E73C07502BB800A12322596B /* OutgoingLineMenu.swift */,
 			);
@@ -544,6 +552,7 @@
 		D7620C89F766008B03BC07B5 /* UITests */ = {
 			isa = PBXGroup;
 			children = (
+				E2C3C40493EFE71246E0A52C /* DialerNativeUITests.swift */,
 				8CAF007C73F29396871E0A30 /* LinePickerUITests.swift */,
 				0D4165909DB665BF2ED9F078 /* MessagesUITests.swift */,
 			);
@@ -748,6 +757,7 @@
 				E62EDB1784F00DF24A453DF1 /* UnifiedPairingRecoveryTests.swift in Sources */,
 				DBC78951A54E55ACA41BC95F /* V2TestSupport.swift in Sources */,
 				F627C7D82E267828162473C2 /* VoicemailPlaybackTests.swift in Sources */,
+				37172BAFE0D79FF923D0A34C /* WebRTCOfferPipelineTests.swift in Sources */,
 				A2D3645DDBDE78663F4D4713 /* WireCompatibilityTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -756,6 +766,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4137608837B00C01D07EF51A /* DialerNativeUITests.swift in Sources */,
 				9A0FE45E5F0347CC4C839AC8 /* LinePickerUITests.swift in Sources */,
 				3F8DE7E96043E4FFD639ED61 /* MessagesUITests.swift in Sources */,
 			);
@@ -780,6 +791,7 @@
 				E9C780B47D349B2F77275ABD /* CallKitManager.swift in Sources */,
 				B3360F6947FD32F621D3C84B /* CallRelayApp.swift in Sources */,
 				779556BB078733CD87ED70C3 /* CallState.swift in Sources */,
+				62A2F9E39BEA047EA3C0FF73 /* CellularSignalBars.swift in Sources */,
 				E3460AEC7EF0249B0BF60963 /* CloudConvergence.swift in Sources */,
 				3C7DA5A42C3B8A4CB67ED8CA /* CloudSettings.swift in Sources */,
 				272523DF263DF1874DCAA24C /* CloudSyncEngine.swift in Sources */,
@@ -905,7 +917,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -921,7 +933,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.3;
+				MARKETING_VERSION = 0.3.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1040,7 +1052,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1062,7 +1074,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.3;
+				MARKETING_VERSION = 0.3.4;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

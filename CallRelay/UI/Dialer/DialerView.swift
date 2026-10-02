@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Native Phone-style keypad: generous whitespace, subtle circular keys with
 /// normal digits and small letter captions, a single large green call button,
@@ -13,41 +14,16 @@ struct DialerView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Spacer(minLength: 8)
+                GatewayStateIndicator()
+                    .padding(.top, 4)
 
-                DialStatusLine()
-                    .padding(.bottom, 6)
+                Spacer(minLength: 6)
 
                 outgoingLinePicker
 
                 Spacer(minLength: 2)
 
-                TextField("", text: $number)
-                    .keyboardType(.phonePad)
-                    .multilineTextAlignment(.center)
-                    .textContentType(.telephoneNumber)
-                    .onChange(of: number) { _, value in
-                        let filtered = String(value.filter { "0123456789+*#".contains($0) }.prefix(32))
-                        if filtered != value { number = filtered }
-                    }
-                    .font(.system(size: 36, weight: .regular))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .frame(height: 46)
-                    .overlay(alignment: .trailing) {
-                        if !number.isEmpty {
-                            Button {
-                                number = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.title3)
-                                    .foregroundStyle(Color(UIColor.tertiaryLabel))
-                            }
-                            .padding(.trailing, 24)
-                            .accessibilityLabel("清空号码")
-                        }
-                    }
-                    .accessibilityLabel(number.isEmpty ? "号码输入框" : number)
+                DialNumberDisplay(number: $number)
 
                 if let match = contactMatch, !match.isEmpty {
                     Text(match)
@@ -200,45 +176,110 @@ struct DialKey: View {
     }
 }
 
-/// One discreet line: gateway state, never a dominant title.
-struct DialStatusLine: View {
+/// The dialer's own number display. Deliberately NOT a `TextField`: the
+/// in-app keypad is the editor, so tapping the number must never summon the
+/// system keyboard. A deliberate long-press still exposes the native
+/// paste/copy menu, and accessibility keeps the value readable.
+private struct DialNumberDisplay: View {
+    @Binding var number: String
+
+    var body: some View {
+        Text(number.isEmpty ? " " : number)
+            .font(.system(size: 36, weight: .regular))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.45)
+            .frame(maxWidth: .infinity)
+            .frame(height: 46)
+            .contentShape(Rectangle())
+            .contextMenu {
+                Button {
+                    pasteFromPasteboard()
+                } label: {
+                    Label("粘贴", systemImage: "doc.on.clipboard")
+                }
+                .disabled(pasteboardText == nil)
+                Button {
+                    UIPasteboard.general.string = number
+                } label: {
+                    Label("拷贝", systemImage: "doc.on.doc")
+                }
+                .disabled(number.isEmpty)
+            }
+            .overlay(alignment: .trailing) {
+                if !number.isEmpty {
+                    Button {
+                        number = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(Color(UIColor.tertiaryLabel))
+                    }
+                    .padding(.trailing, 24)
+                    .accessibilityLabel("清空号码")
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(number.isEmpty ? "号码" : number)
+            .accessibilityHint("长按可粘贴或拷贝")
+    }
+
+    private var pasteboardText: String? {
+        guard let raw = UIPasteboard.general.string else { return nil }
+        return String(raw.filter { "0123456789+*#".contains($0) }.prefix(32))
+    }
+
+    private func pasteFromPasteboard() {
+        guard let filtered = pasteboardText, !filtered.isEmpty else { return }
+        number = filtered
+    }
+}
+
+/// One unobtrusive gateway-connection state at the top of the dialer. It never
+/// doubles as a cellular-signal indicator (a connected gateway is not a
+/// registered SIM), and it omits operator/registered/engineering detail.
+/// Genuine disconnects and errors keep their actionable message.
+struct GatewayStateIndicator: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
+        HStack(spacing: 5) {
+            Circle()
+                .fill(dotColor)
+                .frame(width: 5, height: 5)
+            Text(text)
                 .font(.caption2)
-            Text(model.linePhase.summaryLine)
-                .font(.caption2)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
-            if !model.gatewayName.isEmpty, !model.isDemo {
-                Text("· \(model.gatewayName)").font(.caption2).lineLimit(1)
-            }
+                .minimumScaleFactor(0.7)
         }
-        .foregroundStyle(color)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(Color(.tertiarySystemFill), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
         .accessibilityIdentifier("dialerStatus")
     }
 
-    private var icon: String {
+    private var text: String {
         switch model.linePhase {
-        case .unpaired: return "slash.circle"
-        case .demo: return "wand.and.stars"
-        case .connecting: return "arrow.triangle.2.cyclepath"
-        case .online: return "dot.radiowaves.left.and.right"
-        case .offline: return "wifi.slash"
+        case .unpaired: return "未配对网关"
+        case .demo: return "演示模式"
+        case .connecting: return "正在连接网关…"
+        case .online(let line):
+            switch line.registration {
+            case .registered: return "已连接"
+            case .searching: return "正在搜索网络…"
+            case .denied: return "网络注册被拒绝"
+            case .unknown: return "网络状态未知"
+            }
+        case .offline(let message): return message
         }
     }
 
-    private var color: Color {
+    private var dotColor: Color {
         switch model.linePhase {
         case .online(let line):
-            return line.registration == .registered ? .green : .orange
-        case .demo: return .secondary
-        case .offline, .unpaired: return .secondary
+            return line.registration == .registered ? .green.opacity(0.85) : .orange
         case .connecting: return .orange
+        case .offline, .unpaired, .demo: return .secondary
         }
     }
 }

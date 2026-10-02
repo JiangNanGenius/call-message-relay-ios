@@ -111,6 +111,7 @@ final class ProductionLineContractTests: XCTestCase {
         server.start()
         defer { server.stop() }
         server.enqueue(status: 200, body: LiveGatewayFixture.linesJSON)
+        server.enqueue(status: 200, body: "{}") // default-line preference push (first pairing)
         server.enqueue(status: 200, body: "[]") // voicemail refresh after lines
         let client = try makeClient(server)
 
@@ -135,15 +136,22 @@ final class ProductionLineContractTests: XCTestCase {
         await model.testingRefreshAuthorizedLines()
         XCTAssertEqual(model.authorizedLines.map(\.id), ["line1", "line2"])
         XCTAssertEqual(model.dialableLines.map(\.id), ["line1", "line2"])
-        XCTAssertNil(model.defaultLineId, "no default yet: an explicit choice is required")
+        // First pairing with no saved choice: deterministic auto-selection of
+        // the lowest-id dialable line, persisted locally and pushed as the
+        // device preference.
+        XCTAssertEqual(model.defaultLineId, "line1", "first pairing auto-selects deterministically")
+        XCTAssertEqual(bindings.current()?.defaultLineId, "line1", "the auto-selected default is persisted")
+        XCTAssertTrue(server.paths.contains("/api/v2/devices/device-1/preferences"),
+                      "the choice is pushed to device preferences")
 
-        XCTAssertFalse(model.requestDial("10086"), "missing default must ask, never fall back")
-        XCTAssertEqual(driver.dials.count, 0)
-        XCTAssertNotNil(model.outgoingPick)
-        model.dialPending(on: "line2")
-        XCTAssertEqual(driver.dials.first?.lineId, "line2")
+        XCTAssertTrue(model.requestDial("10086"), "the auto-selected default places the call")
+        XCTAssertEqual(driver.dials.first?.lineId, "line1")
         XCTAssertEqual(driver.dials.first?.peer, "10086")
-        XCTAssertNil(model.defaultLineId, "a one-call pick never becomes the default")
+
+        // A one-call pick still never becomes the default.
+        XCTAssertTrue(model.requestDial("10087", preferredLineId: "line2"))
+        XCTAssertEqual(driver.dials.last?.lineId, "line2")
+        XCTAssertEqual(model.defaultLineId, "line1", "a one-call pick never becomes the default")
     }
 
     func testActiveCallsUsesGatewayActiveFilterAndFullVocabulary() async throws {

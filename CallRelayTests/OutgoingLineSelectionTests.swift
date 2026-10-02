@@ -161,6 +161,199 @@ final class OutgoingLineSelectionTests: XCTestCase {
         XCTAssertEqual(model.defaultLineId, "line1")
     }
 
+    // MARK: First-pairing auto-selection (default outbound line)
+
+    func testFirstPairingAutoSelectsDeterministicDialableLineAndPersists() async throws {
+        // Deliberately unsorted ids: the choice must be deterministic by id,
+        // not by list order.
+        let lines = [line(id: "line2", name: "L2", phone: "15550002222"),
+                     line(id: "line1", name: "L1", phone: "15550001111")]
+        let (model, api, driver, store) = try makeModel(lines: lines, defaultLineId: nil)
+        XCTAssertNil(model.defaultLineId)
+
+        await model.testingRefreshAuthorizedLines()
+
+        XCTAssertEqual(model.defaultLineId, "line1", "lowest-id dialable line is chosen deterministically")
+        XCTAssertEqual(store.current()?.defaultLineId, "line1", "local binding persists the choice")
+        await waitUntil { api.setDefaultLineCalls == ["line1"] }
+        XCTAssertTrue(model.requestDial("5550100"))
+        XCTAssertEqual(driver.dials.first?.lineId, "line1")
+    }
+
+    func testRelaunchRestoresPersistedDefaultWithoutReselecting() async throws {
+        let lines = [line(id: "line1", name: "L1", phone: "15550001111"),
+                     line(id: "line2", name: "L2", phone: "15550002222")]
+        let (model, api, driver, _) = try makeModel(lines: lines, defaultLineId: "line2")
+
+        await model.testingRefreshAuthorizedLines()
+
+        XCTAssertEqual(model.defaultLineId, "line2", "a restored choice is honored, never re-picked")
+        XCTAssertTrue(api.setDefaultLineCalls.isEmpty, "restore must not rewrite the gateway preference")
+        XCTAssertTrue(model.requestDial("5550100"))
+        XCTAssertEqual(driver.dials.first?.lineId, "line2")
+    }
+
+    func testUnavailablePersistedChoiceIsPreservedNotSilentlySwitched() async throws {
+        let unavailable = line(id: "line1", name: "L1", phone: "15550001111", dial: false)
+        let other = line(id: "line2", name: "L2", phone: "15550002222")
+        let (model, api, driver, store) = try makeModel(lines: [unavailable, other], defaultLineId: "line1")
+
+        await model.testingRefreshAuthorizedLines()
+
+        XCTAssertEqual(model.defaultLineId, "line1", "a previously chosen line is never swapped out silently")
+        XCTAssertFalse(model.defaultLineMissingFromList)
+        XCTAssertTrue(api.setDefaultLineCalls.isEmpty)
+        XCTAssertNil(model.resolvedDialLine(), "a non-dialable preserved default must not resolve")
+        XCTAssertFalse(model.requestDial("5550100"), "the dialer must ask, not fall back")
+        XCTAssertEqual(driver.dials.count, 0)
+        XCTAssertEqual(model.line(id: "line1")?.unavailableReason, "无外呼权限")
+    }
+
+    func testPersistedDefaultMissingFromListIsExplainedAndChangeable() async throws {
+        let other = line(id: "line2", name: "L2", phone: "15550002222")
+        let (model, api, _, store) = try makeModel(lines: [other], defaultLineId: "line1")
+
+        await model.testingRefreshAuthorizedLines()
+
+        XCTAssertEqual(model.defaultLineId, "line1")
+        XCTAssertTrue(model.defaultLineMissingFromList)
+        XCTAssertFalse(model.requestDial("5550100"))
+        XCTAssertNotNil(model.outgoingPick, "missing default offers the explicit chooser")
+        // Choosing a new line persists locally and remotely.
+        model.dialPending(on: "line2", makeDefault: true)
+        await waitUntil { store.current()?.defaultLineId == "line2" && model.defaultLineId == "line2" }
+        await waitUntil { api.setDefaultLineCalls == ["line2"] }
+    }
+
+    func testNoDialableLineWaitsThenAutoSelectsOnAsyncArrival() async throws {
+        let offline = line(id: "line1", name: "L1", phone: "15550001111", online: false)
+        let (model, api, _, _) = try makeModel(lines: [offline], defaultLineId: nil)
+
+        await model.testingRefreshAuthorizedLines()
+        XCTAssertNil(model.defaultLineId, "no usable line yet: stay explicit, do not fabricate a choice")
+        XCTAssertTrue(api.setDefaultLineCalls.isEmpty)
+
+        // The line registers a moment later (async arrival): the next refresh
+        // completes the first-pairing selection.
+        let ready = line(id: "line1", name: "L1", phone: "15550001111")
+        api.authorizedLinesStub = [ready]
+        await model.testingRefreshAuthorizedLines()
+        XCTAssertEqual(model.defaultLineId, "line1")
+        await waitUntil { api.setDefaultLineCalls == ["line1"] }
+    }
+
+    func testUserSelectionBeforeRefreshWinsOverAutoSelection() async throws {
+        let lines = [line(id: "line1", name: "L1", phone: "15550001111"),
+                     line(id: "line2", name: "L2", phone: "15550002222")]
+        let (model, api, driver, store) = try makeModel(lines: lines, defaultLineId: nil)
+
+        // The user picks explicitly before the first line refresh lands.
+        await model.selectDefaultLine("line2")
+        await model.testingRefreshAuthorizedLines()
+
+        XCTAssertEqual(model.defaultLineId, "line2", "the user's explicit choice is never overwritten")
+        XCTAssertEqual(store.current()?.defaultLineId, "line2")
+        XCTAssertTrue(model.requestDial("5550100"))
+        XCTAssertEqual(driver.dials.first?.lineId, "line2")
+        XCTAssertEqual(api.setDefaultLineCalls, ["line2"])
+    }
+
+    func testAutoSelectionDoesNotPersistWhenGatewayPushFails() async throws {
+        let lines = [line(id: "line1", name: "L1", phone: "15550001111")]
+        let (model, api, _, store) = try makeModel(lines: lines, defaultLineId: nil)
+        api.setDefaultLineError = APIError.network(URLError(.notConnectedToInternet))
+
+        await model.testingRefreshAuthorizedLines()
+
+        // Local persistence is authoritative for this install even though the
+        // gateway preference push failed; the next refresh will not re-pick.
+        XCTAssertEqual(model.defaultLineId, "line1")
+        XCTAssertEqual(store.current()?.defaultLineId, "line1")
+    }
+
+    func testSlowAutoPutCannotLandAfterManualChoice() async throws {
+        let lines = [line(id: "line1", name: "L1", phone: "15550001111"),
+                     line(id: "line2", name: "L2", phone: "15550002222")]
+        let (model, api, _, store) = try makeModel(lines: lines, defaultLineId: nil)
+        // The first-pairing auto-selection of line1 is slow server-side...
+        api.setDefaultLineDelays["line1"] = 0.4
+
+        let refresh = Task { await model.testingRefreshAuthorizedLines() }
+        await pumpMainActor()
+        // ...while the user picks line2 before line1's PUT settles.
+        await model.selectDefaultLine("line2")
+
+        await refresh.value
+        // The stale line1 write settles first, then the coalesced line2 write
+        // is sent, so the gateway's last preference always matches the user's
+        // latest choice.
+        await waitUntil(timeout: 3) { api.setDefaultLineCalls.last == "line2" }
+        XCTAssertEqual(api.setDefaultLineCalls.first, "line1")
+        XCTAssertEqual(api.setDefaultLineCalls.last, "line2",
+                       "the latest choice must be re-pushed after the stale completion")
+        XCTAssertEqual(model.defaultLineId, "line2")
+        XCTAssertEqual(store.current()?.defaultLineId, "line2")
+    }
+
+    // MARK: Dialer signal truthfulness
+
+    func testDialerSignalRequiresOnlineRegisteredFreshLine() throws {
+        let strong = line(id: "line1", name: "L1", phone: "15550001111")
+        let (model, _, _, _) = try makeModel(lines: [strong], defaultLineId: "line1")
+
+        // Fresh, online, registered: the reported 4 bars are shown.
+        var lineWithSignal = strong
+        lineWithSignal = AuthorizedLine(
+            id: strong.id, name: strong.name, enabled: true, online: true, sim: .ready,
+            operatorName: "Op", registration: .registered, voice: .ready, sms: .ready,
+            signal: Signal(rssi: -70, bars: 4), activeCallId: nil, permissions: .all,
+            smsLive: false, identity: strong.identity, phoneNumber: strong.phoneNumber,
+            canManageNumber: false, lastError: nil
+        )
+        model.authorizedLines = [lineWithSignal]
+        XCTAssertEqual(model.dialerSignalBars(for: lineWithSignal), 4)
+
+        // Known zero stays a known zero (no service), not unknown.
+        let knownZero = AuthorizedLine(
+            id: "line1", name: "L1", enabled: true, online: true, sim: .ready,
+            operatorName: "Op", registration: .registered, voice: .ready, sms: .ready,
+            signal: Signal(rssi: 0, bars: 0), activeCallId: nil, permissions: .all,
+            smsLive: false, identity: strong.identity, phoneNumber: strong.phoneNumber,
+            canManageNumber: false, lastError: nil
+        )
+        XCTAssertEqual(model.dialerSignalBars(for: knownZero), 0)
+
+        // Offline / unregistered lines must neutralize cached strong bars.
+        let offline = AuthorizedLine(
+            id: "line1", name: "L1", enabled: true, online: false, sim: .ready,
+            operatorName: "Op", registration: .registered, voice: .ready, sms: .ready,
+            signal: Signal(rssi: -70, bars: 4), activeCallId: nil, permissions: .all,
+            smsLive: false, identity: strong.identity, phoneNumber: strong.phoneNumber,
+            canManageNumber: false, lastError: nil
+        )
+        XCTAssertNil(model.dialerSignalBars(for: offline))
+        let searching = AuthorizedLine(
+            id: "line1", name: "L1", enabled: true, online: true, sim: .ready,
+            operatorName: "Op", registration: .searching, voice: .ready, sms: .ready,
+            signal: Signal(rssi: -70, bars: 4), activeCallId: nil, permissions: .all,
+            smsLive: false, identity: strong.identity, phoneNumber: strong.phoneNumber,
+            canManageNumber: false, lastError: nil
+        )
+        XCTAssertNil(model.dialerSignalBars(for: searching))
+
+        // A stale/failed line fetch also neutralizes cached bars.
+        model.lineListState = .unavailable("暂时无法获取线路列表，正在自动重试。")
+        XCTAssertNil(model.dialerSignalBars(for: lineWithSignal),
+                     "stale line data must not present cached bars as current")
+        model.lineListState = .loading
+        XCTAssertNil(model.dialerSignalBars(for: lineWithSignal))
+        model.lineListState = .loaded
+
+        // No signal report is unknown, never a fabricated strength.
+        XCTAssertNil(model.dialerSignalBars(for: strong))
+        XCTAssertNil(model.dialerSignalBars(for: nil))
+    }
+
     // MARK: Own-number editing
 
     func testSaveAndResetLineNumberGoesThroughGatewayAndUpdatesView() async throws {

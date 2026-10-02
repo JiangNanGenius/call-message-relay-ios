@@ -288,6 +288,19 @@ final class FakeGatewayAPI: GatewayAPI {
         return try setNumberResult.get()
     }
 
+    var setDefaultLineCalls: [String] = []
+    var setDefaultLineError: Error?
+    /// Per-line artificial latency so tests can force an older, slower
+    /// preference PUT to overlap a newer choice.
+    var setDefaultLineDelays: [String: TimeInterval] = [:]
+    func setDefaultLine(_ lineId: String, idempotencyKey: String) async throws {
+        if let delay = setDefaultLineDelays[lineId], delay > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        }
+        if let setDefaultLineError { throw setDefaultLineError }
+        setDefaultLineCalls.append(lineId)
+    }
+
     func answer(callId: String, idempotencyKey: String) async throws {
         answers.append(callId)
         actionLog.append("answer:\(callId)")
