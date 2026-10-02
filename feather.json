@@ -17,6 +17,16 @@
       "beta": true,
       "versions": [
         {
+          "version": "0.3.0",
+          "buildVersion": "4",
+          "date": "2026-10-02T08:20:47Z",
+          "minOSVersion": "17.0",
+          "size": 10050355,
+          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/CallRelay-0.3.0-unsigned.ipa",
+          "localizedDescription": "0.3.0 预览（取代 0.2.1）：已授权线路显示完整本机号码；默认外呼线路持久保存，拨号键盘可按次临时切换且不改默认；默认缺失、停用或无权限时必须显式选择，绝不静默改用其他线路；持有网关“管理号码”授权的密钥可在 App 内编辑本机号码或恢复 SIM 自动读取，改动保存在网关并对其他已授权手机生效；沿用统一多线路 v2、通话保持/合并/留言与离线演示模式。未签名，需自行签名，并需最新网关 v2。",
+          "sha256": "26f9af862c2028b80c410f542f0b1dda07938acade74e324f832caf46d155e3a"
+        },
+        {
           "version": "0.2.1",
           "buildVersion": "3",
           "date": "2026-10-02T03:04:04Z",
@@ -47,10 +57,10 @@
           "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
         }
       ],
-      "version": "0.2.1",
-      "versionDate": "2026-10-02T03:04:04Z",
-      "size": 9976999,
-      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.2.1/CallRelay-0.2.1-unsigned.ipa",
+      "version": "0.3.0",
+      "versionDate": "2026-10-02T08:20:47Z",
+      "size": 10050355,
+      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/CallRelay-0.3.0-unsigned.ipa",
       "appPermissions": {
         "entitlements": [
           "aps-environment"
@@ -71,6 +81,9 @@
         ]
       },
       "screenshotURLs": [
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/multiline-dialer-light.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/multiline-dialer-dark.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/multiline-chooser-dark.png",
         "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-light.png",
         "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-dark.png",
         "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-light.png",
