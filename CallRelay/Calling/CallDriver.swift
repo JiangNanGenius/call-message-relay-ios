@@ -11,7 +11,10 @@ protocol CallDriver: AnyObject {
     /// Fires when the active call ended, carrying the gateway call id.
     var onEnded: ((String) -> Void)? { get set }
 
-    func dial(peer: String)
+    /// Places an outgoing call. `lineId` is the line chosen for THIS call; nil
+    /// uses the driver's configured persistent default. A temporary choice
+    /// never changes the default.
+    func dial(peer: String, lineId: String?)
     /// VoIP push path: report to CallKit and bind the gateway call id.
     func reportIncomingPush(gatewayId: String, uuid: UUID, handle: String, record: CallRecord?) async
     /// Event/REST path for an incoming call not announced by push.

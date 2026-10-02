@@ -75,7 +75,7 @@ private struct MessageInboxView: View {
                                     Button {
                                         model.setLineFilter(line.id)
                                     } label: {
-                                        Label(line.name, systemImage: model.selectedLineFilter == line.id ? "checkmark" : "")
+                                        Label(line.friendlyName, systemImage: model.selectedLineFilter == line.id ? "checkmark" : "")
                                     }
                                 }
                             } label: {

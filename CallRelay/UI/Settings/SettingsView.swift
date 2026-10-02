@@ -111,30 +111,10 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var unifiedLineSection: some View {
-        if !model.isDemo, !model.authorizedLines.isEmpty {
-            Section("线路") {
+        if !model.authorizedLines.isEmpty {
+            Section {
                 ForEach(model.authorizedLines) { line in
-                    Button {
-                        Task { await model.selectDefaultLine(line.id) }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(line.name)
-                                HStack(spacing: 6) {
-                                    Text(line.online ? "在线" : "离线")
-                                    if line.smsLive { Text("短信实发") } else { Text("短信试运行") }
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if model.defaultLineId == line.id {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.tint)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
+                    lineRow(line)
                 }
                 if model.recoveryAvailable {
                     Button(role: .destructive) {
@@ -143,6 +123,56 @@ struct SettingsView: View {
                         Label("停用跨设备自动恢复", systemImage: "icloud.slash")
                     }
                 }
+            } header: {
+                Text("默认拨出线路")
+            } footer: {
+                if model.authorizedLines.count > 1 {
+                    Text("拨号键盘可临时切换本次外呼线路。")
+                }
+            }
+        }
+    }
+
+    private func lineRow(_ line: AuthorizedLine) -> some View {
+        // Two independent controls (default selection vs. number edit); they
+        // must not be nested so each tap resolves unambiguously.
+        HStack(spacing: 8) {
+            Button {
+                Task { await model.selectDefaultLine(line.id) }
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(line.friendlyName)
+                    if line.actualNumber != nil {
+                        Text(line.name).font(.caption2).foregroundStyle(.secondary)
+                    } else if let unavailable = line.numberUnavailableText {
+                        Text(unavailable).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    HStack(spacing: 6) {
+                        Text(line.online ? "在线" : "离线")
+                        if line.smsLive { Text("短信实发") } else { Text("短信试运行") }
+                        if line.ownNumberSource == "manual" { Text("手动号码") }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if line.canManageNumber {
+                Button {
+                    model.beginEditingLineNumber(line)
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.body)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("编辑\(line.friendlyName)号码")
+            }
+            if model.defaultLineId == line.id {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.tint)
             }
         }
     }

@@ -18,6 +18,10 @@ final class DemoCallDriver: CallDriver {
     }
 
     func dial(peer: String) {
+        dial(peer: peer, lineId: nil)
+    }
+
+    func dial(peer: String, lineId: String?) {
         guard current == nil else { return }
         let uuid = UUID()
         let clientId = uuid.uuidString

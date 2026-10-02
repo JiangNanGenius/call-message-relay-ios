@@ -27,7 +27,7 @@ struct ThreadDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    model.dial(peer)
+                    model.requestDial(peer)
                 } label: {
                     Image(systemName: "phone")
                 }

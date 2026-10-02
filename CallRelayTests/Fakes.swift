@@ -122,7 +122,31 @@ final class FakeGatewayAPI: GatewayAPI {
     var holds: [String] = []
     var resumes: [String] = []
     var dialLines: [String?] = []
+    var setNumberCalls: [(lineId: String, number: String)] = []
+    var setNumberResult: Result<AuthorizedLine, Error> = .failure(APIError.notReady("set number not configured"))
+    var authorizedLinesStub: [AuthorizedLine] = []
+    /// When armed, the next authorizedLines() call blocks until
+    /// resumeAuthorizedLines; used to deliver a stale response after rebind.
+    private var linesWaiter: CheckedContinuation<[AuthorizedLine], Error>?
+    private var linesArmed = false
+    private var numberWaiter: CheckedContinuation<AuthorizedLine, Error>?
+    private var numberArmed = false
     var mergeError: Error?
+
+    func armAuthorizedLinesWait() { linesArmed = true }
+    func resumeAuthorizedLines(with result: Result<[AuthorizedLine], Error>) {
+        if let waiter = linesWaiter {
+            linesWaiter = nil
+            waiter.resume(with: result)
+        }
+    }
+    func armSetNumberWait() { numberArmed = true }
+    func resumeSetNumber(with result: Result<AuthorizedLine, Error>) {
+        if let waiter = numberWaiter {
+            numberWaiter = nil
+            waiter.resume(with: result)
+        }
+    }
     var mergeResult: ConferenceRecord?
     var merges: [[String]] = []
     var conferenceOffers: [(conferenceId: String, sdp: String)] = []
@@ -188,6 +212,29 @@ final class FakeGatewayAPI: GatewayAPI {
     func resumeDial(_ result: Result<CallRecord, Error>) {
         dialContinuation?.resume(with: result)
         dialContinuation = nil
+    }
+
+    // MARK: Unified lines
+
+    func authorizedLines() async throws -> [AuthorizedLine] {
+        if linesArmed {
+            linesArmed = false
+            return try await withCheckedThrowingContinuation { cont in
+                linesWaiter = cont
+            }
+        }
+        return authorizedLinesStub
+    }
+
+    func setLineNumber(_ lineId: String, phoneNumber: String) async throws -> AuthorizedLine {
+        setNumberCalls.append((lineId, phoneNumber))
+        if numberArmed {
+            numberArmed = false
+            return try await withCheckedThrowingContinuation { cont in
+                numberWaiter = cont
+            }
+        }
+        return try setNumberResult.get()
     }
 
     func answer(callId: String, idempotencyKey: String) async throws {

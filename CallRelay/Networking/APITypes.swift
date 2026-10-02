@@ -101,6 +101,10 @@ protocol GatewayAPI: Sendable {
     // MARK: Unified gateway (apiVersion v2); defaults live in the extension
     func authorizedLines() async throws -> [AuthorizedLine]
     func setDefaultLine(_ lineId: String, idempotencyKey: String) async throws
+    /// Set (non-empty) or reset (empty) a line's own number. The server only
+    /// accepts it for a key holding the explicit manage-number capability.
+    @discardableResult
+    func setLineNumber(_ lineId: String, phoneNumber: String) async throws -> AuthorizedLine
     func dial(to: String, lineId: String?, clientCallId: String, idempotencyKey: String) async throws -> CallRecord
     func sendMessage(to: String, body: String, lineId: String?, idempotencyKey: String) async throws -> MessageRecord
     func listThreads(lineId: String?) async throws -> [MessageThread]
@@ -147,6 +151,9 @@ struct LineIdentity: Decodable, Equatable, Sendable {
     let firmware: String?
     let simMasked: String?
     let phoneMasked: String?
+    /// Authoritative own-number provenance: sim | manual | empty |
+    /// unsupported | sim_changed | none. Never contains a number itself.
+    let numberSource: String?
 }
 
 /// One line the signed-in device may use, including its per-line permission
@@ -166,12 +173,20 @@ struct AuthorizedLine: Decodable, Equatable, Identifiable, Sendable {
     let permissions: LinePermissions
     let smsLive: Bool
     let identity: LineIdentity?
+    /// Full own number, present only on authenticated, line-authorized
+    /// responses; absent for empty/unavailable SIMs.
+    let phoneNumber: String?
+    /// Whether THIS device's enrollment key may edit the line's own number.
+    /// Explicit, off-by-default capability; seeing the number never implies
+    /// it. Absent on older gateways (decoded as false).
+    let canManageNumber: Bool
     let lastError: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, enabled, online, sim, registration, voice, sms, signal
         case activeCallId, permissions, smsLive, identity, lastError
         case operatorName = "operator"
+        case phoneNumber, canManageNumber
     }
 
     init(from decoder: Decoder) throws {
@@ -190,16 +205,60 @@ struct AuthorizedLine: Decodable, Equatable, Identifiable, Sendable {
         permissions = (try? c.decodeIfPresent(LinePermissions.self, forKey: .permissions)) ?? .none
         smsLive = (try? c.decodeIfPresent(Bool.self, forKey: .smsLive)) ?? false
         identity = try c.decodeIfPresent(LineIdentity.self, forKey: .identity)
+        phoneNumber = try c.decodeIfPresent(String.self, forKey: .phoneNumber)
+        canManageNumber = (try? c.decodeIfPresent(Bool.self, forKey: .canManageNumber)) ?? false
         lastError = try c.decodeIfPresent(String.self, forKey: .lastError)
     }
 
     init(id: String, name: String, enabled: Bool, online: Bool, sim: SIMState, operatorName: String?,
          registration: RegistrationState, voice: VoiceAvailability, sms: SMSAvailability, signal: Signal?,
-         activeCallId: String?, permissions: LinePermissions, smsLive: Bool, identity: LineIdentity?, lastError: String?) {
+         activeCallId: String?, permissions: LinePermissions, smsLive: Bool, identity: LineIdentity?,
+         phoneNumber: String? = nil, canManageNumber: Bool = false, lastError: String?) {
         self.id = id; self.name = name; self.enabled = enabled; self.online = online; self.sim = sim
         self.operatorName = operatorName; self.registration = registration; self.voice = voice; self.sms = sms
         self.signal = signal; self.activeCallId = activeCallId; self.permissions = permissions
-        self.smsLive = smsLive; self.identity = identity; self.lastError = lastError
+        self.smsLive = smsLive; self.identity = identity; self.phoneNumber = phoneNumber
+        self.canManageNumber = canManageNumber
+        self.lastError = lastError
+    }
+
+    /// The authenticated full own number when the SIM/override provides one,
+    /// nil for empty/unavailable SIMs (never invents a number).
+    var actualNumber: String? {
+        if let number = phoneNumber?.trimmingCharacters(in: .whitespacesAndNewlines), !number.isEmpty {
+            return number
+        }
+        return nil
+    }
+
+    /// Friendly non-technical status when there is genuinely no number.
+    var numberUnavailableText: String? {
+        if actualNumber != nil { return nil }
+        switch identity?.numberSource {
+        case "empty":
+            return "SIM 未存储号码"
+        case "unsupported":
+            return "暂不可用"
+        case "sim_changed":
+            return "SIM 已更换"
+        default:
+            return nil
+        }
+    }
+
+    /// Line selector label: the own number when known, else the line name.
+    var friendlyName: String {
+        actualNumber ?? name
+    }
+
+    var ownNumberSource: String { identity?.numberSource ?? "none" }
+
+    /// Whether this line could originate a call right now. Explicit and
+    /// narrow: the line must be enabled/online, granted dial, registered and
+    /// voice-ready. A line that merely exists is never silently used.
+    var canDialNow: Bool {
+        enabled && online && permissions.dial && registration == .registered
+            && (voice == .ready || voice == .controlOnly)
     }
 
     /// Existing UI expects a LineStatus; map the unified line onto it.
@@ -273,6 +332,10 @@ extension GatewayAPI {
     }
 
     func setDefaultLine(_ lineId: String, idempotencyKey: String) async throws {
+        throw APIError.notReady("当前配对不是统一网关。")
+    }
+
+    func setLineNumber(_ lineId: String, phoneNumber: String) async throws -> AuthorizedLine {
         throw APIError.notReady("当前配对不是统一网关。")
     }
 

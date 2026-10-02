@@ -53,7 +53,13 @@ struct RecentsView: View {
                     ForEach(section.calls) { call in
                         RecentRow(call: call,
                                   displayName: call.peer.flatMap { model.contacts.name(forPeer: $0) },
-                                  onCall: { if let peer = call.peer { model.dial(peer) } },
+                                  onCall: {
+                                      if let peer = call.peer {
+                                          // Prefer the line the original call used, when it is
+                                          // still authorized; the choice is one-call-only.
+                                          model.requestDial(peer, preferredLineId: call.lineID)
+                                      }
+                                  },
                                   onMessage: { if let peer = call.peer { model.composeSMS(to: peer) } })
                     }
                 } header: {

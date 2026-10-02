@@ -10,6 +10,14 @@ extension GatewayAPI {
     /// Callers holding an existential must reach the implementation through
     /// this cast, e.g. `api.unifiedHTTP?.authorizedLines()`.
     var unifiedHTTP: HTTPGatewayAPI? { self as? HTTPGatewayAPI }
+
+    /// The concrete v2 transport, or a ready error for demo/v1 callers.
+    func unifiedRequire() throws -> HTTPGatewayAPI {
+        guard let http = unifiedHTTP else {
+            throw APIError.notReady("当前配对不是统一网关。")
+        }
+        return http
+    }
 }
 
 // MARK: - Unified gateway (apiVersion v2) request bodies
@@ -36,6 +44,12 @@ struct V2WebRTCOfferRequest: Encodable, Equatable {
 
 struct V2DevicePreferencesRequest: Encodable, Equatable {
     let defaultLineId: String
+}
+
+struct V2LineNumberRequest: Encodable, Equatable {
+    /// Non-empty sets a manual own number; empty resets the line to the
+    /// SIM-read number.
+    let phoneNumber: String
 }
 
 struct V2ConferenceCreateRequest: Encodable, Equatable {

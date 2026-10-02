@@ -56,13 +56,13 @@ private struct ContactsContent: View {
             ContactsListView(
                 service: service, query: search,
                 banner: "仅可访问你选中的联系人（iOS 受限访问），可在系统设置中更改。",
-                onCall: { model.dial($0) },
+                onCall: { model.requestDial($0) },
                 onMessage: { model.composeSMS(to: $0) }
             )
         case .full:
             ContactsListView(
                 service: service, query: search, banner: nil,
-                onCall: { model.dial($0) },
+                onCall: { model.requestDial($0) },
                 onMessage: { model.composeSMS(to: $0) }
             )
         }

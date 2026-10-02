@@ -18,6 +18,8 @@ struct DialerView: View {
                 DialStatusLine()
                     .padding(.bottom, 6)
 
+                outgoingLinePicker
+
                 Spacer(minLength: 2)
 
                 TextField("", text: $number)
@@ -76,7 +78,7 @@ struct DialerView: View {
                     Color.clear.frame(width: 64, height: 64)
                     Spacer()
                     Button {
-                        model.dial(number)
+                        model.requestDial(number)
                     } label: {
                         Image(systemName: "phone.fill")
                             .font(.system(size: 30, weight: .semibold))
@@ -120,12 +122,21 @@ struct DialerView: View {
 
     private var canDial: Bool {
         !number.trimmingCharacters(in: .whitespaces).isEmpty
-            && (model.isDemo || model.isLineUsable)
+            && (!model.dialableLines.isEmpty || model.isDemo)
     }
 
     private var contactMatch: String? {
         guard !number.isEmpty else { return nil }
         return model.contacts.name(forPeer: number)
+    }
+
+    /// Phone-like current-SIM indicator; always shown when unified lines are
+    /// known so the owner sees which number will call, even with one line.
+    @ViewBuilder
+    private var outgoingLinePicker: some View {
+        if !model.authorizedLines.isEmpty {
+            OutgoingLineMenu()
+        }
     }
 
     private func append(_ key: String) {

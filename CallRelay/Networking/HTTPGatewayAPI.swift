@@ -336,6 +336,14 @@ final class HTTPGatewayAPI: GatewayAPI {
         )
     }
 
+    func setLineNumber(_ lineId: String, phoneNumber: String) async throws -> AuthorizedLine {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
+        return try await authorizedPut(
+            "lines/\(lineId)/number",
+            body: V2LineNumberRequest(phoneNumber: phoneNumber)
+        )
+    }
+
     func registerPush(registration: PushRegistration, idempotencyKey: String) async throws {
         guard let deviceId = tokens.tokens()?.deviceId else { throw APIError.noCredentials }
         try await authorizedVoidAction(
@@ -573,6 +581,16 @@ final class HTTPGatewayAPI: GatewayAPI {
         return try await sendAuthorized(
             method: "POST", path: path, queryItems: [], bodyData: payload,
             idempotencyKey: idempotencyKey, expectedStatus: successStatus
+        )
+    }
+
+    private func authorizedPut<Input: Encodable, Output: Decodable>(
+        _ path: String, body: Input
+    ) async throws -> Output {
+        let payload = try encoder.encode(body)
+        return try await sendAuthorized(
+            method: "PUT", path: path, queryItems: [], bodyData: payload,
+            idempotencyKey: nil, expectedStatus: nil
         )
     }
 

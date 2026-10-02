@@ -340,6 +340,57 @@ final class UnifiedHTTPTransportTests: XCTestCase {
         XCTAssertEqual(body?["defaultLineId"] as? String, "line-b")
     }
 
+    func testSetLineNumberPUTsPhoneNumberAndDecodesCapability() async throws {
+        server.respond(
+            with: 200,
+            body: """
+            {"id":"line-a","name":"Line A","enabled":true,"online":true,"sim":"ready",
+             "registration":"registered","voice":"ready","sms":"ready","smsLive":true,
+             "permissions":{"receiveSms":true,"receiveCalls":true,"sendSms":true,"dial":true},
+             "identity":{"phoneMasked":"138****8000","numberSource":"manual"},
+             "phoneNumber":"13800138000","canManageNumber":true}
+            """
+        )
+        let client = try makeClient()
+        let updated = try await client.setLineNumber("line-a", phoneNumber: "13800138000")
+        XCTAssertEqual(server.lastPath, "/api/v2/lines/line-a/number")
+        XCTAssertEqual(server.lastMethod, "PUT")
+        XCTAssertEqual(updated.actualNumber, "13800138000")
+        XCTAssertEqual(updated.ownNumberSource, "manual")
+        XCTAssertTrue(updated.canManageNumber)
+        let body = jsonObject(server.lastBody.map { Data($0.utf8) })
+        XCTAssertEqual(body?["phoneNumber"] as? String, "13800138000")
+    }
+
+    func testSetLineNumberResetSendsEmptyValue() async throws {
+        server.respond(
+            with: 200,
+            body: """
+            {"id":"line-a","name":"Line A","enabled":true,"online":true,"sim":"ready",
+             "registration":"registered","voice":"ready","sms":"ready","smsLive":true,
+             "permissions":{"receiveSms":true,"receiveCalls":true,"sendSms":true,"dial":true},
+             "identity":{"phoneMasked":"","numberSource":"none"},"canManageNumber":true}
+            """
+        )
+        let client = try makeClient()
+        _ = try await client.setLineNumber("line-a", phoneNumber: "")
+        XCTAssertEqual(server.lastPath, "/api/v2/lines/line-a/number")
+        let body = jsonObject(server.lastBody.map { Data($0.utf8) })
+        XCTAssertEqual(body?["phoneNumber"] as? String, "")
+    }
+
+    func testOlderGatewayLineWithoutCapabilityDecodesFalse() throws {
+        // 0.2.1-era /api/v2/lines entry: no canManageNumber field at all.
+        let json = """
+        {"id":"line-a","name":"Line A","enabled":true,"online":true,"sim":"ready",
+         "registration":"registered","voice":"ready","sms":"ready",
+         "permissions":{"receiveSms":true,"receiveCalls":true,"sendSms":true,"dial":true},
+         "smsLive":false,"identity":{"phoneMasked":"155****1111"}}
+        """
+        let line = try JSONDecoder().decode(AuthorizedLine.self, from: Data(json.utf8))
+        XCTAssertFalse(line.canManageNumber, "missing capability must decode as false")
+    }
+
     func testEnrollPostsAnonymousExactBody() async throws {
         server.respond(
             with: 201,

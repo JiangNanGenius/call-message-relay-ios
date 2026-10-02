@@ -33,6 +33,15 @@ struct RootView: View {
             guard let peer = CallIntentRouter.peer(from: url) else { return }
             model.handleExternalDial(peer)
         }
+        .sheet(item: $model.numberEditLine) { _ in
+            LineNumberEditView().environmentObject(model)
+        }
+        .sheet(isPresented: Binding(
+            get: { model.outgoingPick != nil },
+            set: { if !$0 { model.cancelOutgoingPick() } }
+        )) {
+            OutgoingLineChooser().environmentObject(model)
+        }
         .alert(
             "暂时无法通过网关拨打",
             isPresented: Binding(

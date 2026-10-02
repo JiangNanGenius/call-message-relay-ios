@@ -21,11 +21,19 @@ enum LaunchArguments {
     /// Hermetic UI-test support flags.
     static let uiTestReset = "-callrelayUITestReset"
     static let demoEnableSpamPresets = "-callrelayDemoSpamPresets"
+    /// Screenshot-only preview: functional offline demo driver plus three
+    /// synthetic unified lines exercising the default/per-call picker.
+    static let multilinePreview = "-callrelayMultilinePreview"
+    static let showLineChooser = "-callrelayShowLineChooser"
+    static let showNumberEditor = "-callrelayShowNumberEditor"
 
     static var isUITestReset: Bool {
         ProcessInfo.processInfo.arguments.contains(uiTestReset)
     }
     static var enablesDemoSpamPresets: Bool {
         ProcessInfo.processInfo.arguments.contains(demoEnableSpamPresets)
+    }
+    static var enablesMultilinePreview: Bool {
+        ProcessInfo.processInfo.arguments.contains(multilinePreview)
     }
 }

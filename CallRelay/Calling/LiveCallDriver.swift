@@ -20,6 +20,10 @@ final class LiveCallDriver: NSObject, CallDriver {
     private var focusedGatewayId: String?
     private var uuidByGateway: [String: UUID] = [:]
     private(set) var defaultLineID: String?
+    /// Temporary line chosen for one in-flight dial, keyed by its CallKit
+    /// uuid. Cleared when the start action comes back; the default is never
+    /// mutated, so a per-call pick never persists.
+    private var pendingLineByUUID: [UUID: String] = [:]
 
     init(
         api: GatewayAPI,
@@ -48,8 +52,16 @@ final class LiveCallDriver: NSObject, CallDriver {
     }
 
     func dial(peer: String) {
+        dial(peer: peer, lineId: nil)
+    }
+
+    func dial(peer: String, lineId: String?) {
         guard current == nil else { return }
         let uuid = UUID()
+        if let lineId, !lineId.isEmpty {
+            // One-call-only override; never written to the driver default.
+            pendingLineByUUID[uuid] = lineId
+        }
         let state = ActiveCallViewState(
             gatewayCallId: uuid.uuidString, peer: peer, isOutgoing: true,
             phase: .outgoingDialing, isMuted: false, startedAt: Date(), connectedAt: nil
@@ -64,6 +76,7 @@ final class LiveCallDriver: NSObject, CallDriver {
             do { try await callKit.requestStartOutgoing(uuid: uuid, handle: peer) }
             catch {
                 guard currentUUID == uuid else { return }
+                pendingLineByUUID.removeValue(forKey: uuid)
                 current = nil
                 currentUUID = nil
                 focusedGatewayId = nil
@@ -309,7 +322,10 @@ extension LiveCallDriver: CallCoordinatorDelegate {
 
 extension LiveCallDriver: CallDirecting {
     func startOutgoing(peer: String, uuid: UUID) {
-        coordinator.startOutgoing(peer: peer, lineId: defaultLineID, uuid: uuid)
+        // Provider round-trip: recover the per-call line chosen for exactly
+        // this uuid, else the persistent default.
+        let chosen = pendingLineByUUID.removeValue(forKey: uuid) ?? defaultLineID
+        coordinator.startOutgoing(peer: peer, lineId: chosen, uuid: uuid)
     }
 
     func answerIncoming(uuid: UUID) async throws {

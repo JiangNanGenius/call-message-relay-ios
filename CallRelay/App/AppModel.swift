@@ -31,6 +31,16 @@ final class AppModel: ObservableObject {
     /// Unified gateway lines authorized for this device (v2 only).
     @Published var authorizedLines: [AuthorizedLine] = []
     @Published var defaultLineId: String?
+    /// One-call-only outgoing line chosen on the dialer. It is consumed by the
+    /// next dial and never written to the persistent default.
+    @Published var temporaryDialLineId: String?
+    /// Set when an outgoing call needs an explicit line choice; all dial entry
+    /// points present the same chooser instead of silently falling back.
+    @Published var outgoingPick: OutgoingPick?
+    /// Line currently having its own number edited in Settings.
+    @Published var numberEditLine: AuthorizedLine?
+    /// Result/error message for a line-number save or reset.
+    @Published var lineNumberNotice: String?
     /// nil shows all authorized lines; otherwise filters SMS history.
     @Published var selectedLineFilter: String?
     @Published var voicemails: [VoicemailRecord] = []
@@ -41,6 +51,13 @@ final class AppModel: ObservableObject {
         let id = UUID()
         let peer: String
         let reason: String
+    }
+
+    /// A call the user asked to place, awaiting explicit originating-line
+    /// selection. The peer alone is carried; the line is never guessed.
+    struct OutgoingPick: Identifiable, Equatable {
+        let id = UUID()
+        let peer: String
     }
 
     struct ScreenedCallNotice: Identifiable, Equatable {
@@ -219,6 +236,12 @@ final class AppModel: ObservableObject {
         if defaults.bool(forKey: DefaultsKey.demo)
             || ProcessInfo.processInfo.arguments.contains(LaunchArguments.forceDemo) {
             enterDemo(persist: false)
+            if ProcessInfo.processInfo.arguments.contains(LaunchArguments.multilinePreview) {
+                enableLinePreview()
+            }
+            if ProcessInfo.processInfo.arguments.contains(LaunchArguments.showLineChooser) {
+                outgoingPick = OutgoingPick(peer: "555-0199")
+            }
             return
         }
         guard let binding = bindingStore.current() else {
@@ -307,6 +330,8 @@ final class AppModel: ObservableObject {
         gatewayName = ""
         authorizedLines = []
         defaultLineId = nil
+        temporaryDialLineId = nil
+        outgoingPick = nil
         selectedLineFilter = nil
         voicemails = []
     }
@@ -376,6 +401,32 @@ final class AppModel: ObservableObject {
         demoGateway?.failNextOutgoingSMS = true
     }
 
+    /// Screenshot/UI-test only: overlays synthetic unified lines on the
+    /// offline demo so the default/per-call line pickers and number editor
+    /// can be rendered without a gateway. All numbers are reserved 555
+    /// synthetics; no network is touched.
+    func enableLinePreview() {
+        func makeLine(id: String, name: String, phone: String?, source: String?,
+                      manage: Bool = false) -> AuthorizedLine {
+            AuthorizedLine(
+                id: id, name: name, enabled: true, online: true, sim: .ready,
+                operatorName: "演示运营商", registration: .registered, voice: .ready, sms: .ready,
+                signal: Signal(rssi: -70, bars: 4), activeCallId: nil,
+                permissions: .all, smsLive: false,
+                identity: LineIdentity(moduleKey: nil, usbPath: nil, firmware: nil, simMasked: nil,
+                                       phoneMasked: phone.map { _ in "555****1111" }, numberSource: source),
+                phoneNumber: phone, canManageNumber: manage, lastError: nil
+            )
+        }
+        authorizedLines = [
+            makeLine(id: "line1", name: "主卡", phone: "+15550161111", source: "sim", manage: true),
+            makeLine(id: "line2", name: "流量卡", phone: "+15550162222", source: "manual"),
+            makeLine(id: "line3", name: "空卡", phone: nil, source: "empty")
+        ]
+        defaultLineId = "line1"
+        linePhase = .online(authorizedLines[0].status)
+    }
+
     // MARK: External call entry points (Intents / tel:)
 
     /// Routes a number chosen in the system Phone/Contacts UI through the same
@@ -388,11 +439,14 @@ final class AppModel: ObservableObject {
             pendingExternalPeer = peer
             return
         }
-        guard isDemo || isLineUsable else {
-            externalCallRequest = ExternalCallRequest(peer: peer, message: externalDialReason)
+        if isDemo {
+            dial(peer)
             return
         }
-        dial(peer)
+        // requestDial either starts the call, presents the line chooser, or
+        // attaches the explanatory no-fallback alert — never silently
+        // switching numbers or opening a cellular call.
+        _ = requestDial(peer)
     }
 
     private func resolvePendingExternalDial() {
@@ -430,6 +484,17 @@ final class AppModel: ObservableObject {
         case .demo:
             return ""
         }
+    }
+
+    /// Explanation when no authorized line can carry an outgoing call.
+    private var noDialableLineReason: String {
+        if authorizedLines.isEmpty {
+            return externalDialReason
+        }
+        if authorizedLines.allSatisfy({ !$0.permissions.dial }) {
+            return "当前配对密钥没有任何线路的外呼权限；请在网关上授权后再试，App 不会改用蜂窝电话呼出。"
+        }
+        return "当前没有可用的外呼线路（线路未启用、未注册或语音不可用）。请稍后重试或在设置中查看；App 不会改用其他号码或蜂窝电话呼出。"
     }
 
     // MARK: Live wiring
@@ -597,6 +662,10 @@ final class AppModel: ObservableObject {
         reconciling = false
         authorizedLines = []
         defaultLineId = nil
+        temporaryDialLineId = nil
+        outgoingPick = nil
+        numberEditLine = nil
+        lineNumberNotice = nil
         voicemails = []
         activeGatewayCallIds.removeAll()
         reservedCallIds.removeAll()
@@ -757,17 +826,99 @@ final class AppModel: ObservableObject {
 
     // MARK: Actions
 
-    func dial(_ peer: String) {
+    /// Lines that could originate a call right now: enabled, granted the dial
+    /// permission, registered and with a usable voice capability.
+    var dialableLines: [AuthorizedLine] {
+        authorizedLines.filter(\.canDialNow)
+    }
+
+    func line(id: String?) -> AuthorizedLine? {
+        guard let id else { return nil }
+        return authorizedLines.first { $0.id == id }
+    }
+
+    /// The line a call would use without further prompting: a one-call-only
+    /// pick first, then the persisted default, but only if it is dialable
+    /// now. We never silently return another line when the chosen one is
+    /// missing, disabled or has lost permission.
+    func resolvedDialLine() -> AuthorizedLine? {
+        let candidate = temporaryDialLineId ?? defaultLineId
+        guard let line = line(id: candidate), line.canDialNow else { return nil }
+        return line
+    }
+
+    /// Unified dial entry point for every UI surface. Returns true when the
+    /// call was started; false when an explicit line choice is required.
+    @discardableResult
+    func requestDial(_ rawPeer: String, preferredLineId: String? = nil) -> Bool {
+        let peer = rawPeer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !peer.isEmpty else { return false }
+        if let blocked = screenOutgoing(peer) {
+            blockedDialAttempt = blocked
+            return false
+        }
+        // Plain offline demo (no synthetic line overlay) dials directly.
+        if isDemo && authorizedLines.isEmpty {
+            dial(peer)
+            return true
+        }
+        if dialableLines.isEmpty {
+            // No line could carry the call (missing permission, disabled,
+            // unregistered or voice unavailable). Explain instead of
+            // silently using another number or falling back to cellular.
+            externalCallRequest = ExternalCallRequest(peer: peer, message: noDialableLineReason)
+            return false
+        }
+        if let preferredLineId, let line = line(id: preferredLineId), line.canDialNow {
+            temporaryDialLineId = preferredLineId
+        }
+        if resolvedDialLine() != nil {
+            dial(peer)
+            return true
+        }
+        // Default missing/unusable: ask for an explicit line, never fall back.
+        outgoingPick = OutgoingPick(peer: peer)
+        return false
+    }
+
+    /// Chooser callback: places the pending call on THIS line only. The
+    /// persistent default is untouched.
+    func dialPending(on lineId: String, makeDefault: Bool = false) {
+        guard let pick = outgoingPick, let line = line(id: lineId), line.canDialNow else { return }
+        outgoingPick = nil
+        if makeDefault {
+            Task { await selectDefaultLine(lineId) }
+        }
+        temporaryDialLineId = lineId
+        dial(pick.peer)
+    }
+
+    func cancelOutgoingPick() { outgoingPick = nil }
+
+    /// Sets the one-call-only originating line from the dialer.
+    func setTemporaryDialLine(_ lineId: String?) {
+        temporaryDialLineId = lineId
+    }
+
+    func dial(_ peer: String, lineId: String? = nil) {
         let trimmed = peer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        // Owner-configured screening applies to outgoing calls too.
-        let hits = spamFilter.callListHits(for: trimmed)
-        let screening = spamFilter.policy().screenCall(peer: trimmed, listHits: hits)
-        if case .reject(let reason) = screening {
-            blockedDialAttempt = BlockedDial(peer: trimmed, reason: reason)
+        if let blocked = screenOutgoing(trimmed) {
+            blockedDialAttempt = blocked
             return
         }
-        driver?.dial(peer: trimmed)
+        let chosen = lineId ?? temporaryDialLineId ?? defaultLineId
+        temporaryDialLineId = nil
+        driver?.dial(peer: trimmed, lineId: chosen)
+    }
+
+    private func screenOutgoing(_ peer: String) -> BlockedDial? {
+        let hits = spamFilter.callListHits(for: peer)
+        let screening = spamFilter.policy().screenCall(peer: peer, listHits: hits)
+        if case .reject(let reason) = screening {
+            return BlockedDial(peer: peer, reason: reason)
+        }
+        return nil
     }
 
     func hangup() { driver?.hangup() }
@@ -807,19 +958,39 @@ final class AppModel: ObservableObject {
 
     private func refreshAuthorizedLines() async {
         guard let api else { return }
+        let gen = sessionGeneration
         do {
             let lines = try await api.authorizedLines()
-            guard !lines.isEmpty else { return }
-            authorizedLines = lines
-            let persisted = bindingStore.current()?.defaultLineId
-            let preferred = lines.first(where: { $0.id == persisted && $0.permissions.hasAny })
-                ?? lines.first(where: { $0.permissions.hasAny })
-                ?? lines.first
-            defaultLineId = preferred?.id
-            if let preferred {
-                linePhase = .online(preferred.status)
+            guard gen == sessionGeneration else { return }
+            // A successful empty response means this device currently holds no
+            // line grants (e.g. the last key_lines row was removed): clear
+            // authorization-dependent UI instead of keeping stale lines.
+            if lines.isEmpty {
+                authorizedLines = []
+                defaultLineId = nil
+                temporaryDialLineId = nil
+                outgoingPick = nil
+                (driver as? LiveCallDriver)?.setDefaultLineId(nil)
+                return
             }
-            (driver as? LiveCallDriver)?.setDefaultLineId(preferred?.id)
+            authorizedLines = lines
+            // Preserve a still-valid persisted default. Never silently pick a
+            // different (or the "first") line: when the default is missing,
+            // disabled or has lost permission, the user must choose.
+            let persisted = bindingStore.current()?.defaultLineId
+            if let persisted,
+               let match = lines.first(where: { $0.id == persisted }),
+               match.enabled, match.permissions.hasAny {
+                defaultLineId = persisted
+                linePhase = .online(match.status)
+            } else if let current = defaultLineId,
+                      let match = lines.first(where: { $0.id == current }),
+                      match.enabled, match.permissions.hasAny {
+                linePhase = .online(match.status)
+            } else {
+                defaultLineId = nil
+            }
+            (driver as? LiveCallDriver)?.setDefaultLineId(defaultLineId)
             inbox?.lineIdProvider = { [weak self] in self?.defaultLineId }
             await refreshVoicemails()
         } catch {
@@ -827,9 +998,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Selects the default line for outgoing calls and SMS. When the chosen
-    /// line is unavailable the UI asks again instead of silently using
-    /// another number.
+    /// Selects the default line for outgoing calls and SMS and persists it
+    /// (both locally and gateway-side as this device's preference).
     func selectDefaultLine(_ lineId: String) async {
         guard let line = authorizedLines.first(where: { $0.id == lineId }) else { return }
         defaultLineId = lineId
@@ -840,6 +1010,139 @@ final class AppModel: ObservableObject {
             try? bindingStore.save(binding)
         }
         _ = try? await api?.setDefaultLine(lineId, idempotencyKey: UUID().uuidString)
+    }
+
+    // MARK: Line own-number management
+
+    /// Local validation mirrors the gateway's strict stored shape so the UI
+    /// fails fast; the server remains authoritative.
+    static func normalizedOwnNumber(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "" }
+        if trimmed.contains("*") || trimmed.contains("#") { return nil }
+        let separators = CharacterSet(charactersIn: " -()\u{00a0}\t")
+        let normalized = trimmed.components(separatedBy: separators).joined()
+        guard let regex = try? NSRegularExpression(pattern: #"^\+?[0-9]{3,20}$"#) else { return nil }
+        let range = NSRange(normalized.startIndex..., in: normalized)
+        return regex.firstMatch(in: normalized, range: range) == nil ? nil : normalized
+    }
+
+    func beginEditingLineNumber(_ line: AuthorizedLine) {
+        numberEditLine = line
+        lineNumberNotice = nil
+    }
+
+    func dismissLineNumberEditor() {
+        numberEditLine = nil
+        lineNumberNotice = nil
+    }
+
+    /// Saves a manual own number via the gateway. The key must hold the
+    /// manage-number capability server-side; other authorized phones receive
+    /// the change via line.updated.
+    @discardableResult
+    func saveLineNumber(_ raw: String) async -> Bool {
+        guard let target = numberEditLine, target.canManageNumber else {
+            lineNumberNotice = "当前配对密钥无权修改该线路号码。"
+            return false
+        }
+        guard let normalized = Self.normalizedOwnNumber(raw), !normalized.isEmpty else {
+            lineNumberNotice = "号码格式不正确：3–20 位数字，可带一个开头的 +。"
+            return false
+        }
+        let gen = sessionGeneration
+        do {
+            guard let api else {
+                lineNumberNotice = "当前配对不是统一网关。"
+                return false
+            }
+            let updated = try await api.setLineNumber(target.id, phoneNumber: normalized)
+            // A late response from a previous binding must never touch the
+            // newly bound gateway (line ids like "line1" are not unique).
+            guard gen == sessionGeneration else { return false }
+            mergeUpdatedLine(updated)
+            lineNumberNotice = "已保存"
+            numberEditLine = updated
+            return true
+        } catch let error as APIError {
+            guard gen == sessionGeneration else { return false }
+            lineNumberNotice = error.friendlyMessage
+            return false
+        } catch {
+            guard gen == sessionGeneration else { return false }
+            lineNumberNotice = "保存失败，请稍后重试。"
+            return false
+        }
+    }
+
+    /// Clears the manual override so the line returns to the SIM-read number.
+    @discardableResult
+    func resetLineNumberToAuto() async -> Bool {
+        guard let target = numberEditLine, target.canManageNumber else {
+            lineNumberNotice = "当前配对密钥无权修改该线路号码。"
+            return false
+        }
+        let gen = sessionGeneration
+        do {
+            guard let api else {
+                lineNumberNotice = "当前配对不是统一网关。"
+                return false
+            }
+            let updated = try await api.setLineNumber(target.id, phoneNumber: "")
+            guard gen == sessionGeneration else { return false }
+            mergeUpdatedLine(updated)
+            lineNumberNotice = "已恢复为 SIM 自动读取"
+            numberEditLine = updated
+            return true
+        } catch let error as APIError {
+            guard gen == sessionGeneration else { return false }
+            lineNumberNotice = error.friendlyMessage
+            return false
+        } catch {
+            guard gen == sessionGeneration else { return false }
+            lineNumberNotice = "操作失败，请稍后重试。"
+            return false
+        }
+    }
+
+    private func mergeUpdatedLine(_ updated: AuthorizedLine) {
+        if let index = authorizedLines.firstIndex(where: { $0.id == updated.id }) {
+            authorizedLines[index] = updated
+        }
+        if defaultLineId == updated.id {
+            linePhase = .online(updated.status)
+        }
+    }
+
+    // MARK: Test-only wiring
+
+    /// Bypasses pairing/network for unit tests of line selection and number
+    /// management. Never used by production code paths.
+    func configureForTesting(
+        api fake: GatewayAPI,
+        driver testDriver: CallDriver,
+        lines: [AuthorizedLine],
+        defaultLineId: String?
+    ) {
+        self.api = fake
+        self.driver = testDriver
+        isDemo = false
+        authorizedLines = lines
+        self.defaultLineId = defaultLineId
+        if let defaultLineId, let line = lines.first(where: { $0.id == defaultLineId }) {
+            linePhase = .online(line.status)
+        }
+    }
+
+    /// Drives the private line refresh in tests.
+    func testingRefreshAuthorizedLines() async {
+        await refreshAuthorizedLines()
+    }
+
+    /// Simulates a session teardown/re-bind generation bump without clearing
+    /// the published UI state, so stale-response guards can be tested.
+    func testingBumpSessionGeneration() {
+        sessionGeneration += 1
     }
 
     func setLineFilter(_ lineId: String?) {
