@@ -17,6 +17,16 @@
       "beta": true,
       "versions": [
         {
+          "version": "0.3.4",
+          "buildVersion": "8",
+          "date": "2026-10-02T16:46:05Z",
+          "minOSVersion": "17.0",
+          "size": 7995684,
+          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/CallRelay-0.3.4-unsigned.ipa",
+          "localizedDescription": "0.3.4 修复（取代 0.3.3）：外呼在拨号后约 0.3–1.4 秒即失败——PCMU-only SDP 生成器结尾多发一个换行，WebRTC 拒绝本地协商，offer 从未发出；现已修复并加入真实 WebRTC SDK 回归测试。拨号盘改为原生 iPhone 风格：当前 SIM 号码 + 真实信号格 + 清晰下拉箭头，顶部仅一个安静的网关连接状态；号码点击不弹系统键盘，长按可粘贴/拷贝，仍由 App 键盘编辑；线路离线/未注册或线路数据过期时信号归零，未知与已知 0 格区分。首次配对无默认时自动选择可拨线路并保存；已保存但不可用的线路不会静默切换；网关偏好写入串行合并，慢的自动写入不会覆盖之后的手动选择。App 图标更新为电话听筒 + 信封（浅色/深色/着色）。网关侧修复 CSQ 99 未知信号被误报 4 格。未签名，需自行签名，并需最新网关 v2。",
+          "sha256": "756320f0606bb320bbbf69475b2c372ab3cef927061b6949fd355f32308b08e3"
+        },
+        {
           "version": "0.3.3",
           "buildVersion": "7",
           "date": "2026-10-02T13:44:33Z",
@@ -111,6 +121,12 @@
         ]
       },
       "screenshotURLs": [
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-light.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-dark.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-selected-sim-light.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/native-dialer-selected-sim-dark.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/app-icon-sizes-light.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/app-icon-sizes-dark.png",
         "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-dialer-line-picker.png",
         "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-line-menu-expanded.png",
         "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-settings-lines.png",
@@ -137,5 +153,9 @@
       ]
     }
   ],
-  "news": []
+  "news": [],
+  "version": "0.3.4",
+  "versionDate": "2026-10-02T16:46:05Z",
+  "size": 7995684,
+  "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.4/CallRelay-0.3.4-unsigned.ipa"
 }
