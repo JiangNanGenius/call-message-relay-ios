@@ -17,6 +17,16 @@
       "beta": true,
       "versions": [
         {
+          "version": "0.2.0",
+          "buildVersion": "2",
+          "date": "2026-10-02T02:49:51Z",
+          "minOSVersion": "17.0",
+          "size": 9976925,
+          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.2.0/CallRelay-0.2.0-unsigned.ipa",
+          "localizedDescription": "0.2.0 预览：统一多线路网关 v2，一次配对获得该密钥授权的全部线路，支持多行/多设备权限；每台手机独立注册、独立撤销，跨设备仅同步加密恢复授权；通话支持保持/恢复、第二通保持后接听，并把本机 2-3 路外呼合并为最多 4 人会议；新增网关语音留言收件箱与应用内播放；界面精简。未签名，需在 Feather 用自己的证书重新签名，并需最新网关 v2。真实运营商媒体、APNs 锁屏来电、TURN 中继与两台真机云端恢复尚未联调。",
+          "sha256": "5345d7b0ba2aeeb8582ec57c0d572fda43a64accda324a9daf647bf3f86e3bcb"
+        },
+        {
           "version": "0.1.0",
           "buildVersion": "1",
           "date": "2026-10-01T14:03:21Z",
@@ -27,10 +37,10 @@
           "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
         }
       ],
-      "version": "0.1.0",
-      "versionDate": "2026-10-01T14:03:21Z",
-      "size": 9676183,
-      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/CallRelay.ipa",
+      "version": "0.2.0",
+      "versionDate": "2026-10-02T02:49:51Z",
+      "size": 9976925,
+      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.2.0/CallRelay-0.2.0-unsigned.ipa",
       "appPermissions": {
         "entitlements": [
           "aps-environment"

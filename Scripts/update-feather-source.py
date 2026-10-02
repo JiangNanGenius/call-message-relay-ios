@@ -31,7 +31,7 @@ version = {
     "minOSVersion": info["MinimumOSVersion"],
     "size": args.ipa.stat().st_size,
     "downloadURL": f"{base}/releases/download/{args.tag}/{args.ipa.name}",
-    "localizedDescription": "首版预览：CallKit、短信、通讯录去重导出、垃圾过滤与号码列表、自动重连及可选私有 iCloud 同步。跟随系统外观，提供离线演示。需自行签名；iCloud 另需匹配权限与容器。真实通话、短信、后台推送及跨设备同步待联调。",
+    "localizedDescription": "0.2.0 预览：统一多线路网关 v2，一次配对获得该密钥授权的全部线路，支持多行/多设备权限；每台手机独立注册、独立撤销，跨设备仅同步加密恢复授权；通话支持保持/恢复、第二通保持后接听，并把本机 2-3 路外呼合并为最多 4 人会议；新增网关语音留言收件箱与应用内播放；界面精简。未签名，需自行签名，并需最新网关 v2。真实运营商媒体、APNs 锁屏来电、TURN 中继与两台真机云端恢复尚未联调。",
     "sha256": hashlib.sha256(args.ipa.read_bytes()).hexdigest(),
 }
 app = {
