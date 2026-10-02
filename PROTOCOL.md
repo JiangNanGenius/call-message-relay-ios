@@ -143,3 +143,53 @@
 - 私有 TURN/coturn 中继在弱网与 UDP 受限时的连通（含 TURN/TLS 443 备选）。
 - APNs：自有 Push Broker、真机 VoIP 锁屏唤醒、sandbox/production 环境一致性。
 - 自有云 FRP 受限控制通道与事件重放/补同步在发布成品上的实际行为。
+
+## 统一网关 v2（callrelay.cloudforzhao.com）
+
+部署在 `https://callrelay.cloudforzhao.com` 的“统一网关”使用 `/api/v2` 基址，JSON 全
+camelCase，鉴权仍是 `Authorization: Bearer <accessToken>`，401 走既有
+`POST /api/v2/auth/refresh`（请求 `{refreshToken}`；响应含 `accessToken`、
+`refreshToken` 与 `deviceId`）。客户端按绑定中的 `apiVersion` 选择 `/api/<version>/…`；
+v1 单线 CellBridge 路径与演示模式行为不变。v2 新增接口：
+
+- 匿名发现：`GET /api/v2/identity` → `{gatewayId,gatewayName,apiVersion:"v2",mode,publicKey,
+  fingerprint}`，`fingerprint` 形如 `sha256:<hex>`；配对/恢复前后都用它做端点与
+  gatewayId/指纹绑定校验。
+- 注册：`POST /api/v2/enroll`（匿名）请求
+  `{enrollmentKey,deviceName,devicePublicKey,proof}`；`enrollmentKey` 为控制台一次性
+  `key_xxx.<secret>`，证明消息精确为
+  `keyId + "\n" + secret + "\n" + gatewayId + "\n" + deviceName`（Ed25519，公钥/证明
+  base64）。响应 `{deviceId,accessToken,refreshToken,gatewayId,gatewayName}`。注册成功后
+  客户端把 `{gatewayId,gatewayName,endpoint,fingerprint,enrollmentKey,defaultLineId}` 存为
+  Keychain 恢复凭据（`afterFirstUnlock` + 可同步；无 iCloud Keychain 权限时降级为本机
+  存储并如实标注 deviceOnly，绝不声称已同步）。
+- 设备与线路：`GET /api/v2/device` →
+  `{device:{id,name,keyId,defaultLineId},key:{id,name,allLines},lines:[AuthorizedLine]}`；
+  `GET /api/v2/lines[?line=id]`；`PUT /api/v2/devices/{id}/preferences {defaultLineId}`；
+  `PUT /api/v2/devices/{id}/push` 同 v1。**线路权限由服务端强制**，客户端不自行放行。
+- 短信：`GET /api/v2/threads[?line=id]`（线程 `key` 为 `lineID:workerKey` 前缀，消息含
+  `lineId/lineName`）；`GET /api/v2/messages?threadKey=&before=&beforeId=&limit=`（时间
+  升序，分页头为 **`X-CallRelay-Has-More`**，客户端兼容旧头）；
+  `POST /api/v2/messages {lineId,to,body}` + `Idempotency-Key` → 201（status 可能为
+  `failed`）；`POST /api/v2/messages/{id}/read` → 204（id 可含 `:`，路径段保持原样）。
+- 通话：`GET /api/v2/calls?limit=&active=&line=`；`POST /api/v2/calls
+  {lineId,to,clientCallId}` + `Idempotency-Key` → 201；动作
+  `POST /api/v2/calls/{id}/answer|reject|decline|hangup|hold|resume`（均带幂等键），
+  `dtmf` 体 `{digit}`；`POST /api/v2/calls/{id}/webrtc/offer {sdp,type:"offer"}`（**无
+  transport 字段**）→ `{sdp,type:"answer",iceMode:"host"|"relay"}`；
+  `GET /api/v2/calls/{id}/ice` → `{policy:"host"|"relay",iceServers:[…]}`。v2 通话对象用
+  `lineId`（小 d）与可选 `held/conferenceId/ownerDeviceId`，客户端解码时映射回共享
+  `CallRecord`。
+- 会议：`POST /api/v2/conferences {callIds}`、`GET /api/v2/conferences/{id}`、
+  `POST …/{id}/close`、`POST …/{id}/webrtc/offer`、
+  `POST …/{id}/legs/{callId}/hangup|hold|resume|dtmf`、
+  `POST …/{id}/split {callId}`。
+- 语音留言：`GET /api/v2/voicemails`、`GET /api/v2/voicemails/{id}`、
+  `GET /api/v2/voicemails/{id}/audio`（带 Bearer，返回 WAV 字节）。
+- 事件与补同步：`wss://<host>/api/v2/events?after=<seq>`（Bearer），信封与 v1
+  `GatewayEvent` 完全一致；**v2 没有全局 sync 游标，断线恢复以事件流 `?after=` 为
+  唯一机制**，`/sync` 在 v2 为空操作。控制台二维码/JSON 载荷为
+  `{gatewayId,gatewayName,baseURL,enrollmentKey,fingerprint,apiVersion:"v2"}`。
+- 恢复：新设备/重装后若 Keychain 中存在恢复凭据，先匿名校验
+  endpoint+gatewayId+指纹，再用**当前安装**的 Ed25519 密钥重新 enroll；服务端返回
+  `CB-ENROLL-REVOKED`（或 401/403）时标记该凭据为 blocked，不再重试。

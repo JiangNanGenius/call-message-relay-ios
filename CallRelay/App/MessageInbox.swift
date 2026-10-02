@@ -139,6 +139,9 @@ final class MessageInbox: ObservableObject {
     var isTrustedContact: ((String) -> Bool)?
     /// Updated by AppModel with real SMS-line readiness.
     var lineReady: () -> Bool = { true }
+    /// Unified gateway: line used for outgoing sends and thread filtering.
+    var lineIdProvider: (() -> String?)?
+    private var lineFilter: String?
 
     private var generation: UInt64 = 0
     private var pollTask: Task<Void, Never>?
@@ -164,6 +167,12 @@ final class MessageInbox: ObservableObject {
         self.outboxStore = outboxStore
         self.now = now
         recoverPersistedOutbox()
+    }
+
+    /// Switches the SMS history/filter scope to one authorized line (nil = all).
+    func setLineFilter(_ lineId: String?) {
+        lineFilter = lineId
+        Task { await reconcile() }
     }
 
     // MARK: Lifecycle
@@ -199,7 +208,7 @@ final class MessageInbox: ObservableObject {
         guard isValid else { return false }
         let captured = generation
         do {
-            let loaded = try await api.listThreads()
+            let loaded = try await api.listThreads(lineId: lineFilter)
             guard captured == generation else { return false }
             threads = loaded.sorted { $0.lastMessage.createdAt > $1.lastMessage.createdAt }
             rebuildCloudThreads()
@@ -518,7 +527,10 @@ final class MessageInbox: ObservableObject {
             guard isValid, captured == generation else { return }
             let message: MessageRecord
             do {
-                message = try await api.sendMessage(to: entry.to, body: entry.body, idempotencyKey: entry.idempotencyKey)
+                message = try await api.sendMessage(
+                    to: entry.to, body: entry.body, lineId: lineIdProvider?(),
+                    idempotencyKey: entry.idempotencyKey
+                )
             } catch {
                 guard captured == generation else { return }
                 self.markFailure(entryID: entry.id, error: error)

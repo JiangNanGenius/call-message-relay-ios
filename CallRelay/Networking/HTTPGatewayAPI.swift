@@ -26,14 +26,25 @@ actor TokenRefresher {
             guard (200..<300).contains(http.statusCode) else {
                 throw APIError.http(status: http.statusCode, code: Self.code(data), message: Self.message(data))
             }
-            let rotated = try decoder.decode(RefreshResponse.self, from: data)
-            // The gateway rotates and revokes the presented refresh token, and
-            // returns only the two tokens; keep the bound deviceId in place.
-            let updated = TokenSet(
-                accessToken: rotated.accessToken,
-                refreshToken: rotated.refreshToken,
-                deviceId: current.deviceId
-            )
+            // The gateway rotates and revokes the presented refresh token. v1
+            // returns only the two tokens (keep the bound deviceId); v2 echoes
+            // the deviceId, which must match the one already bound.
+            let updated: TokenSet
+            if origin.apiVersion == "v2" {
+                let rotated = try decoder.decode(V2RefreshResponse.self, from: data)
+                updated = TokenSet(
+                    accessToken: rotated.accessToken,
+                    refreshToken: rotated.refreshToken,
+                    deviceId: rotated.deviceId ?? current.deviceId
+                )
+            } else {
+                let rotated = try decoder.decode(RefreshResponse.self, from: data)
+                updated = TokenSet(
+                    accessToken: rotated.accessToken,
+                    refreshToken: rotated.refreshToken,
+                    deviceId: current.deviceId
+                )
+            }
             try store.rotate(updated, replacing: current, at: expectedEpoch)
             return updated
         }
@@ -126,10 +137,14 @@ final class HTTPGatewayAPI: GatewayAPI {
         #endif
     }
 
+    /// True when the origin is pinned to the unified gateway wire generation.
+    private var isV2: Bool { origin.apiVersion == "v2" }
+
     // MARK: Public endpoint surface
 
     func identity() async throws -> IdentityResponse {
-        // Anonymous: no bearer token, no refresh path.
+        // Anonymous: no bearer token, no refresh path. The path version comes
+        // from the origin, so this serves v1 `/identity` and v2 `/identity`.
         let request = try makeRequest(path: "identity", method: "GET", queryItems: [])
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.network(URLError(.badServerResponse)) }
@@ -138,26 +153,85 @@ final class HTTPGatewayAPI: GatewayAPI {
     }
 
     func gatewayInfo() async throws -> GatewayResponse {
-        try await authorizedGet("gateway")
+        if isV2 {
+            // v2 has no `/gateway`; the anonymous identity handshake is the
+            // discovery surface. An unreachable identity degrades to empty
+            // metadata rather than blocking the caller (the binding was already
+            // verified by PairingService/AppModel via `/identity`).
+            guard let live = try? await identity() else {
+                return GatewayResponse(id: "", name: "", lineID: nil, transport: "unified", capabilities: nil)
+            }
+            return GatewayResponse(
+                id: live.gatewayId ?? "",
+                name: live.gatewayName ?? "",
+                lineID: nil,
+                transport: "unified",
+                capabilities: nil
+            )
+        }
+        return try await authorizedGet("gateway")
     }
 
     func line() async throws -> LineStatus {
-        try await authorizedGet("line")
+        if isV2 {
+            guard let chosen = try await v2PickLine(preferred: nil) else {
+                throw APIError.http(status: 404, code: "CB-LINE-404", message: "No authorized line")
+            }
+            return chosen.status
+        }
+        return try await authorizedGet("line")
     }
 
     func listCalls(limit: Int) async throws -> [CallRecord] {
-        try await authorizedGet("calls", queryItems: [URLQueryItem(name: "limit", value: String(limit))])
+        if isV2 {
+            let views: [V2CallView] = try await authorizedGet(
+                "calls", queryItems: [URLQueryItem(name: "limit", value: String(limit))]
+            )
+            return views.map(\.callRecord)
+        }
+        return try await authorizedGet("calls", queryItems: [URLQueryItem(name: "limit", value: String(limit))])
     }
 
     func fetchCall(id: String) async throws -> CallRecord {
-        try await authorizedGet("calls/\(id)")
+        if isV2 {
+            do {
+                let view: V2CallView = try await authorizedGet("calls/\(id)")
+                return view.callRecord
+            } catch APIError.http(let status, _, _) where status == 404 || status == 405 {
+                // The unified gateway may not expose a single-call GET; fall
+                // back to the recent list before surfacing "not found".
+                let views: [V2CallView] = try await authorizedGet(
+                    "calls", queryItems: [URLQueryItem(name: "limit", value: "100")]
+                )
+                if let match = views.first(where: { $0.id == id }) { return match.callRecord }
+                throw APIError.http(status: status, code: "CB-CALL-006", message: "not found")
+            }
+        }
+        return try await authorizedGet("calls/\(id)")
     }
 
     func dial(to: String, clientCallId: String, idempotencyKey: String) async throws -> CallRecord {
+        if isV2 {
+            return try await dial(
+                to: to, lineId: nil, clientCallId: clientCallId, idempotencyKey: idempotencyKey
+            )
+        }
         let body = DialRequest(to: to, clientCallId: clientCallId)
         return try await authorizedPost(
             "calls", body: body, idempotencyKey: idempotencyKey, successStatus: 201
         )
+    }
+
+    func dial(to: String, lineId: String?, clientCallId: String, idempotencyKey: String) async throws -> CallRecord {
+        guard isV2 else {
+            return try await dial(to: to, clientCallId: clientCallId, idempotencyKey: idempotencyKey)
+        }
+        let line = try await v2DefaultLineId(preferred: lineId)
+        let body = V2DialRequest(lineId: line, to: to, clientCallId: clientCallId)
+        let view: V2CallView = try await authorizedPost(
+            "calls", body: body, idempotencyKey: idempotencyKey, successStatus: 201
+        )
+        return view.callRecord
     }
 
     func answer(callId: String, idempotencyKey: String) async throws {
@@ -168,8 +242,25 @@ final class HTTPGatewayAPI: GatewayAPI {
         try await authorizedVoidAction("calls/\(callId)/reject", idempotencyKey: idempotencyKey)
     }
 
+    /// v2-only: decline an incoming call locally without rejecting it
+    /// server-side (v1 has no equivalent endpoint).
+    func decline(callId: String, idempotencyKey: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持本地忽略来电。") }
+        try await authorizedVoidAction("calls/\(callId)/decline", idempotencyKey: idempotencyKey)
+    }
+
     func hangup(callId: String, idempotencyKey: String) async throws {
         try await authorizedVoidAction("calls/\(callId)/hangup", idempotencyKey: idempotencyKey)
+    }
+
+    func hold(callId: String, idempotencyKey: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持保持通话。") }
+        try await authorizedVoidAction("calls/\(callId)/hold", idempotencyKey: idempotencyKey)
+    }
+
+    func resume(callId: String, idempotencyKey: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持恢复通话。") }
+        try await authorizedVoidAction("calls/\(callId)/resume", idempotencyKey: idempotencyKey)
     }
 
     func dtmf(callId: String, digit: String, idempotencyKey: String) async throws {
@@ -179,6 +270,14 @@ final class HTTPGatewayAPI: GatewayAPI {
     }
 
     func webRTCOffer(callId: String, sdp: String, transport: String, idempotencyKey: String) async throws -> WebRTCAnswer {
+        if isV2 {
+            // Unified signaling is transport-agnostic: the gateway picks host
+            // or relay from `/ice` and answers with `iceMode`.
+            let body = V2WebRTCOfferRequest(sdp: sdp, type: "offer")
+            return try await authorizedPost(
+                "calls/\(callId)/webrtc/offer", body: body, idempotencyKey: idempotencyKey
+            )
+        }
         let body = WebRTCOfferRequest(sdp: sdp, type: "offer", transport: transport)
         return try await authorizedPost(
             "calls/\(callId)/webrtc/offer", body: body, idempotencyKey: idempotencyKey
@@ -186,14 +285,54 @@ final class HTTPGatewayAPI: GatewayAPI {
     }
 
     func iceConfiguration(callId: String) async throws -> ICEConfiguration {
-        try await authorizedGet("calls/\(callId)/ice")
+        if isV2 {
+            let config: V2ICEConfiguration = try await authorizedGet("calls/\(callId)/ice")
+            let servers = config.iceServers.map {
+                ICEServer(urls: $0.urls, username: $0.username ?? "", credential: $0.credential ?? "")
+            }
+            // v2 does not stamp an expiry on the ICE payload; the credentials
+            // are minted per offer, so treat them as short-lived locally.
+            let expires = RFC3339Date.formatter.string(from: Date().addingTimeInterval(3600))
+            return ICEConfiguration(policy: config.policy, iceServers: servers, expiresAt: expires)
+        }
+        return try await authorizedGet("calls/\(callId)/ice")
     }
 
     func sync(after: Int64, limit: Int) async throws -> SyncResponse {
-        try await authorizedGet(
+        if isV2 {
+            // The unified gateway has no global change-log cursor. Resume is
+            // event-driven via `wss://…/api/v2/events?after=<seq>`; there is
+            // nothing to poll here.
+            return SyncResponse(from: 0, to: 0, hasMore: false, changes: [])
+        }
+        return try await authorizedGet(
             "sync",
             queryItems: [URLQueryItem(name: "after", value: String(after)),
                          URLQueryItem(name: "limit", value: String(limit))]
+        )
+    }
+
+    // MARK: Unified gateway surface (v2)
+
+    /// `/api/v2/device`: the authenticated device, its key scope, and every
+    /// line it may use. Also the confirmation step for enrollment.
+    func device() async throws -> DeviceEnvelope {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
+        return try await authorizedGet("device")
+    }
+
+    func authorizedLines() async throws -> [AuthorizedLine] {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关，无法获取线路列表。") }
+        return try await authorizedGet("lines")
+    }
+
+    func setDefaultLine(_ lineId: String, idempotencyKey: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
+        guard let deviceId = tokens.tokens()?.deviceId else { throw APIError.noCredentials }
+        try await authorizedVoidAction(
+            "devices/\(deviceId)/preferences", method: "PUT",
+            body: V2DevicePreferencesRequest(defaultLineId: lineId),
+            idempotencyKey: idempotencyKey
         )
     }
 
@@ -210,8 +349,20 @@ final class HTTPGatewayAPI: GatewayAPI {
         try await authorizedGet("threads")
     }
 
+    func listThreads(lineId: String?) async throws -> [MessageThread] {
+        guard isV2, let lineId else { return try await listThreads() }
+        return try await authorizedGet(
+            "threads", queryItems: [URLQueryItem(name: "line", value: lineId)]
+        )
+    }
+
     func listMessages(after: Int64, limit: Int) async throws -> [MessageRecord] {
-        try await authorizedGet(
+        if isV2 {
+            // v2 pages messages per-thread with `before`/`beforeId` and has no
+            // global `after` cursor; cross-device resume is the event stream.
+            return []
+        }
+        return try await authorizedGet(
             "messages",
             queryItems: [URLQueryItem(name: "after", value: String(after)),
                          URLQueryItem(name: "limit", value: String(limit))]
@@ -238,13 +389,34 @@ final class HTTPGatewayAPI: GatewayAPI {
         // The gateway returns rows newest-first and reverses DB order into
         // ascending chronological order; trust its array order.
         let messages = try decoder.decode([MessageRecord].self, from: data)
-        let hasMore = http.value(forHTTPHeaderField: "X-CellBridge-Has-More")
-            .map { $0.lowercased() == "true" } ?? false
+        // v2 renamed the paging header; accept either so a mixed deployment
+        // still pages correctly.
+        let header = http.value(forHTTPHeaderField: "X-CallRelay-Has-More")
+            ?? http.value(forHTTPHeaderField: "X-CellBridge-Has-More")
+        let hasMore = header.map { $0.lowercased() == "true" } ?? false
         return ThreadMessagePage(messages: messages, hasMore: hasMore)
     }
 
     func sendMessage(to: String, body: String, idempotencyKey: String) async throws -> MessageRecord {
+        if isV2 {
+            return try await sendMessage(
+                to: to, body: body, lineId: nil, idempotencyKey: idempotencyKey
+            )
+        }
         let payload = SendMessageRequest(to: to, body: body)
+        return try await sendMessageData(payload, idempotencyKey: idempotencyKey)
+    }
+
+    func sendMessage(to: String, body: String, lineId: String?, idempotencyKey: String) async throws -> MessageRecord {
+        guard isV2 else {
+            return try await sendMessage(to: to, body: body, idempotencyKey: idempotencyKey)
+        }
+        let line = try await v2DefaultLineId(preferred: lineId)
+        let payload = V2SendMessageRequest(lineId: line, to: to, body: body)
+        return try await sendMessageData(payload, idempotencyKey: idempotencyKey)
+    }
+
+    private func sendMessageData<Body: Encodable>(_ payload: Body, idempotencyKey: String) async throws -> MessageRecord {
         let payloadData = try encoder.encode(payload)
         var request = try makeRequest(path: "messages", method: "POST", queryItems: [])
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -268,12 +440,98 @@ final class HTTPGatewayAPI: GatewayAPI {
         try await authorizedVoidAction("messages/\(id)/read", idempotencyKey: idempotencyKey)
     }
 
+    // MARK: Conferences (v2)
+
+    func merge(calls: [String], idempotencyKey: String) async throws -> ConferenceRecord {
+        guard isV2 else { throw APIError.notReady("当前配对不支持多方会议。") }
+        return try await authorizedPost(
+            "conferences", body: V2ConferenceCreateRequest(callIds: calls),
+            idempotencyKey: idempotencyKey
+        )
+    }
+
+    func conferenceOffer(conferenceId: String, sdp: String, idempotencyKey: String) async throws -> WebRTCAnswer {
+        let body = V2WebRTCOfferRequest(sdp: sdp, type: "offer")
+        return try await authorizedPost(
+            "conferences/\(conferenceId)/webrtc/offer", body: body, idempotencyKey: idempotencyKey
+        )
+    }
+
+    func conference(id: String) async throws -> ConferenceRecord {
+        guard isV2 else { throw APIError.notReady("当前配对不支持多方会议。") }
+        return try await authorizedGet("conferences/\(id)")
+    }
+
+    func closeConference(id: String, idempotencyKey: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持多方会议。") }
+        try await authorizedVoidAction("conferences/\(id)/close", idempotencyKey: idempotencyKey)
+    }
+
+    func removeConferenceLeg(conferenceId: String, callId: String, idempotencyKey: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持多方会议。") }
+        try await authorizedVoidAction(
+            "conferences/\(conferenceId)/legs/\(callId)/hangup", idempotencyKey: idempotencyKey
+        )
+    }
+
+    func setConferenceLegHeld(
+        conferenceId: String, callId: String, held: Bool, idempotencyKey: String
+    ) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持多方会议。") }
+        let action = held ? "hold" : "resume"
+        try await authorizedVoidAction(
+            "conferences/\(conferenceId)/legs/\(callId)/\(action)", idempotencyKey: idempotencyKey
+        )
+    }
+
+    func conferenceLegDTMF(
+        conferenceId: String, callId: String, digit: String, idempotencyKey: String
+    ) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持多方会议。") }
+        try await authorizedVoidAction(
+            "conferences/\(conferenceId)/legs/\(callId)/dtmf",
+            body: DTMPFRequest(digit: digit), idempotencyKey: idempotencyKey
+        )
+    }
+
+    func splitConference(id: String, callId: String, idempotencyKey: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持多方会议。") }
+        try await authorizedVoidAction(
+            "conferences/\(id)/split",
+            body: V2ConferenceSplitRequest(callId: callId), idempotencyKey: idempotencyKey
+        )
+    }
+
+    // MARK: Voicemail (v2)
+
+    func listVoicemails() async throws -> [VoicemailRecord] {
+        guard isV2 else { return [] }
+        return try await authorizedGet("voicemails")
+    }
+
+    func voicemailAudio(id: String) async throws -> Data {
+        guard isV2 else { throw APIError.notReady("当前配对不支持语音留言。") }
+        var request = try makeRequest(path: "voicemails/\(id)/audio", method: "GET", queryItems: [])
+        request.setValue("audio/wav, application/octet-stream", forHTTPHeaderField: "Accept")
+        let (data, response) = try await performWithTokenRefresh(request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.network(URLError(.badServerResponse)) }
+        guard (200..<300).contains(http.statusCode) else { throw try error(from: http, data: data) }
+        return data
+    }
+
     // MARK: Unauthenticated pairing endpoints
 
     func completePairing(_ request: PairingCompleteRequest) async throws -> DeviceCredentials {
         try await anonymousRequest(
             "pairing/complete", method: "POST", body: request, successStatus: 200
         )
+    }
+
+    /// Unified-gateway enrollment. Anonymous by design: the one-time key plus
+    /// the Ed25519 proof are the credentials being exchanged.
+    func enroll(_ request: EnrollmentRequest) async throws -> EnrollmentResponse {
+        guard isV2 else { throw APIError.notReady("当前网关不是统一网关。") }
+        return try await anonymousRequest("enroll", method: "POST", body: request, successStatus: nil)
     }
 
     // MARK: Request core
@@ -351,16 +609,50 @@ final class HTTPGatewayAPI: GatewayAPI {
         }
     }
 
+    /// `successStatus == nil` accepts any 2xx (v2 enroll may answer 200/201).
     private func anonymousRequest<Input: Encodable, Output: Decodable>(
-        _ path: String, method: String, body: Input, successStatus: Int
+        _ path: String, method: String, body: Input, successStatus: Int?
     ) async throws -> Output {
         var request = try makeRequest(path: path, method: method, queryItems: [])
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.network(URLError(.badServerResponse)) }
-        guard http.statusCode == successStatus else { throw try error(from: http, data: data) }
+        if let successStatus {
+            guard http.statusCode == successStatus else { throw try error(from: http, data: data) }
+        } else {
+            guard (200..<300).contains(http.statusCode) else { throw try error(from: http, data: data) }
+        }
         return try decoder.decode(Output.self, from: data)
+    }
+
+    // MARK: v2 line helpers
+
+    /// Authorized-line discovery. `/device` is the cheapest place to learn the
+    /// owner's default line, so dial/SMS without an explicit lineId resolves
+    /// there; the display-only `line()` picks the busiest line per the UI
+    /// convention (active call first).
+    private func v2PickLine(preferred: String?) async throws -> AuthorizedLine? {
+        let lines = try await authorizedLines()
+        if let preferred, let match = lines.first(where: { $0.id == preferred }) { return match }
+        if let busy = lines.first(where: { $0.activeCallId != nil }) { return busy }
+        return lines.first
+    }
+
+    private func v2DefaultLineId(preferred: String?) async throws -> String {
+        // An explicit line (from authorizedLines) is authoritative; the server
+        // enforces line permissions, so a local re-check only costs a round
+        // trip.
+        if let preferred, !preferred.isEmpty { return preferred }
+        let envelope = try await device()
+        let available = envelope.lines.filter(\.enabled)
+        if let configured = envelope.device.defaultLineId,
+           available.contains(where: { $0.id == configured }) {
+            return configured
+        }
+        if let idle = available.first(where: { $0.activeCallId == nil }) { return idle.id }
+        if let first = available.first { return first.id }
+        throw APIError.http(status: 404, code: "CB-LINE-404", message: "No authorized line")
     }
 
     private func makeRequest(path: String, method: String, queryItems: [URLQueryItem]) throws -> URLRequest {

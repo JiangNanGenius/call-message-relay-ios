@@ -120,16 +120,14 @@ final class MessagesUITests: XCTestCase {
         attach(named: "08b-spam-preview")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        // MARK: 8. Settings documents system ringing/audio behavior
-        for _ in 0..<6 where !element(containing: "系统默认（CallKit）").isHittable {
+        // MARK: 8. Settings shows concise call/audio state
+        for _ in 0..<6 where !element(containing: "系统 CallKit").isHittable {
             app.swipeUp()
         }
         XCTAssertTrue(app.staticTexts["铃声与来电"].waitForExistence(timeout: 5))
-        XCTAssertTrue(element(containing: "系统默认（CallKit）").exists)
-        XCTAssertTrue(app.staticTexts.containing(
-            NSPredicate(format: "label CONTAINS %@", "CallKit 使用系统来电界面")
-        ).firstMatch.exists)
-        attach(named: "09-settings-ringtone")
+        XCTAssertTrue(element(containing: "系统 CallKit").exists)
+        XCTAssertTrue(element(containing: "听筒 / 扬声器 / 蓝牙").exists)
+        attach(named: "09-settings-call-audio")
     }
 
     private func element(containing text: String) -> XCUIElement {

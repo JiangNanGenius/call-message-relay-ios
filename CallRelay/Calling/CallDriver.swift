@@ -25,4 +25,36 @@ protocol CallDriver: AnyObject {
     func setMuted(_ muted: Bool)
     func setSpeaker(_ enabled: Bool)
     func reset()
+
+    // MARK: Unified gateway multi-call/conference surface
+    /// Current active (unheld) call, when any.
+    var activeCallRecord: CallRecord? { get }
+    /// Calls answered on this device and currently held.
+    var heldCallRecords: [CallRecord] { get }
+    /// Non-nil while this device hosts a merged conference.
+    var conferenceRecord: ConferenceRecord? { get }
+    /// Default line used for outgoing calls/legs.
+    func setDefaultLineId(_ lineId: String?)
+    func holdActive()
+    func resume(callId: String)
+    /// Merge the active call and held calls (2-3 external legs) into a conference.
+    func mergeHeldCalls()
+    func endConferenceLeg(callId: String)
+    func holdConferenceLeg(callId: String, held: Bool)
+    func playConferenceDTMF(_ digit: String, callId: String?)
+    func splitConference(callId: String)
+}
+
+extension CallDriver {
+    var activeCallRecord: CallRecord? { nil }
+    var heldCallRecords: [CallRecord] { [] }
+    var conferenceRecord: ConferenceRecord? { nil }
+    func setDefaultLineId(_ lineId: String?) {}
+    func holdActive() {}
+    func resume(callId: String) {}
+    func mergeHeldCalls() {}
+    func endConferenceLeg(callId: String) {}
+    func holdConferenceLeg(callId: String, held: Bool) {}
+    func playConferenceDTMF(_ digit: String, callId: String?) {}
+    func splitConference(callId: String) {}
 }

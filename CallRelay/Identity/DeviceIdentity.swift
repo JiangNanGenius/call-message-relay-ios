@@ -31,6 +31,46 @@ public final class DeviceIdentity {
         let message = [pairingId, secret, gatewayId, deviceName].joined(separator: "\n")
         return try privateKey.signature(for: Data(message.utf8))
     }
+
+    /// Unified-gateway enrollment proof over the exact upstream message:
+    /// `keyId\nsecret\ngatewayId\ndeviceName`, where `enrollmentKey` is the
+    /// console-issued `key_xxx.<secret>`.
+    func enrollmentProof(enrollmentKey: String, gatewayId: String, deviceName: String) throws -> Data {
+        guard let parts = EnrollmentKeyParts(enrollmentKey) else { throw EnrollmentKeyError.malformed }
+        return try enrollmentProof(
+            keyId: parts.keyId, secret: parts.secret, gatewayId: gatewayId, deviceName: deviceName
+        )
+    }
+
+    func enrollmentProof(keyId: String, secret: String, gatewayId: String, deviceName: String) throws -> Data {
+        let message = [keyId, secret, gatewayId, deviceName].joined(separator: "\n")
+        return try privateKey.signature(for: Data(message.utf8))
+    }
+}
+
+/// The two proof components of a `key_xxx.<secret>` enrollment key.
+struct EnrollmentKeyParts: Equatable {
+    let keyId: String
+    let secret: String
+
+    init(keyId: String, secret: String) {
+        self.keyId = keyId
+        self.secret = secret
+    }
+
+    init?(_ raw: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let separator = trimmed.firstIndex(of: ".") else { return nil }
+        let keyId = String(trimmed[..<separator])
+        let secret = String(trimmed[trimmed.index(after: separator)...])
+        guard !keyId.isEmpty, !secret.isEmpty else { return nil }
+        self.keyId = keyId
+        self.secret = secret
+    }
+}
+
+enum EnrollmentKeyError: Error, Equatable {
+    case malformed
 }
 
 /// Persists the device Ed25519 key and bound gateway metadata in the Keychain.
@@ -84,20 +124,47 @@ public final class IdentityStore: @unchecked Sendable {
 
 // MARK: - Keychain abstraction (testable)
 
-enum KeychainAccessibility {
+enum KeychainAccessibility: Equatable {
+    /// Local-device-only protection for the device key and bearer tokens.
     case afterFirstUnlockThisDeviceOnly
+    /// Sync-capable protection (iCloud Keychain); required for the recovery
+    /// grant, which may not use the *ThisDeviceOnly suffix.
+    case afterFirstUnlock
     case whenUnlockedThisDeviceOnly
 }
 
 protocol KeychainWrapping {
     func readData(service: String, account: String) -> Data?
+    func readData(service: String, account: String, synchronizable: Bool) -> Data?
     func saveData(_ data: Data, service: String, account: String, accessibility: KeychainAccessibility) throws
+    func saveData(
+        _ data: Data, service: String, account: String,
+        accessibility: KeychainAccessibility, synchronizable: Bool
+    ) throws
     func delete(service: String, account: String)
+    func delete(service: String, account: String, synchronizable: Bool)
     func readString(service: String, account: String) -> String?
     func saveString(_ value: String, service: String, account: String, accessibility: KeychainAccessibility) throws
 }
 
 extension KeychainWrapping {
+    /// Defaults keep every existing (device-only) call site source compatible;
+    /// synchronizable-aware conformers override the explicit variants.
+    func readData(service: String, account: String, synchronizable: Bool) -> Data? {
+        readData(service: service, account: account)
+    }
+
+    func saveData(
+        _ data: Data, service: String, account: String,
+        accessibility: KeychainAccessibility, synchronizable: Bool
+    ) throws {
+        try saveData(data, service: service, account: account, accessibility: accessibility)
+    }
+
+    func delete(service: String, account: String, synchronizable: Bool) {
+        delete(service: service, account: account)
+    }
+
     func readString(service: String, account: String) -> String? {
         readData(service: service, account: account).flatMap { String(data: $0, encoding: .utf8) }
     }
@@ -109,7 +176,11 @@ extension KeychainWrapping {
 
 struct SystemKeychain: KeychainWrapping {
     func readData(service: String, account: String) -> Data? {
-        var query = baseQuery(service: service, account: account)
+        readData(service: service, account: account, synchronizable: false)
+    }
+
+    func readData(service: String, account: String, synchronizable: Bool) -> Data? {
+        var query = baseQuery(service: service, account: account, synchronizable: synchronizable, anyOnRead: synchronizable)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
@@ -119,10 +190,20 @@ struct SystemKeychain: KeychainWrapping {
     }
 
     func saveData(_ data: Data, service: String, account: String, accessibility: KeychainAccessibility) throws {
-        let existing = readData(service: service, account: account)
+        try saveData(
+            data, service: service, account: account,
+            accessibility: accessibility, synchronizable: false
+        )
+    }
+
+    func saveData(
+        _ data: Data, service: String, account: String,
+        accessibility: KeychainAccessibility, synchronizable: Bool
+    ) throws {
+        let existing = readData(service: service, account: account, synchronizable: synchronizable)
         let protection = secAccessible(accessibility)
         if existing != nil {
-            let query = baseQuery(service: service, account: account)
+            let query = baseQuery(service: service, account: account, synchronizable: synchronizable, anyOnRead: false)
             let update: [String: Any] = [
                 kSecValueData as String: data,
                 kSecAttrAccessible as String: protection
@@ -131,7 +212,7 @@ struct SystemKeychain: KeychainWrapping {
             guard status == errSecSuccess else { throw KeychainError.unhandled(status) }
             return
         }
-        var attributes = baseQuery(service: service, account: account)
+        var attributes = baseQuery(service: service, account: account, synchronizable: synchronizable, anyOnRead: false)
         attributes[kSecValueData as String] = data
         attributes[kSecAttrAccessible as String] = protection
         let status = SecItemAdd(attributes as CFDictionary, nil)
@@ -139,22 +220,37 @@ struct SystemKeychain: KeychainWrapping {
     }
 
     func delete(service: String, account: String) {
-        let query = baseQuery(service: service, account: account)
+        delete(service: service, account: account, synchronizable: false)
+    }
+
+    func delete(service: String, account: String, synchronizable: Bool) {
+        let query = baseQuery(service: service, account: account, synchronizable: synchronizable, anyOnRead: synchronizable)
         SecItemDelete(query as CFDictionary)
     }
 
-    private func baseQuery(service: String, account: String) -> [String: Any] {
-        [
+    private func baseQuery(
+        service: String, account: String, synchronizable: Bool, anyOnRead: Bool
+    ) -> [String: Any] {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
+        if anyOnRead {
+            // Find both the synced copy and this device's local fallback.
+            query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        } else {
+            query[kSecAttrSynchronizable as String] = synchronizable ? kCFBooleanTrue : kCFBooleanFalse
+        }
+        return query
     }
 
     private func secAccessible(_ value: KeychainAccessibility) -> CFString {
         switch value {
         case .afterFirstUnlockThisDeviceOnly:
             return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        case .afterFirstUnlock:
+            return kSecAttrAccessibleAfterFirstUnlock
         case .whenUnlockedThisDeviceOnly:
             return kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         }

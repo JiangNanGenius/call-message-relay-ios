@@ -51,11 +51,20 @@ import AVFoundation
 final class FakeMediaProvider: MediaSessionProviding {
     let session: FakeMediaSession
     var createCount = 0
+    /// When true, each request yields a fresh fake so per-call teardown can be
+    /// observed (the default shared instance mirrors the old single-call tests).
+    var createsNewSessions = false
+    private(set) var created: [FakeMediaSession] = []
 
     init(session: FakeMediaSession) { self.session = session }
 
     func makeSession() -> CallMediaSession {
         createCount += 1
+        if createsNewSessions {
+            let clone = FakeMediaSession()
+            created.append(clone)
+            return clone
+        }
         return session
     }
 }
@@ -70,6 +79,7 @@ final class FakeCallKit: CallKitControlling {
     var connected: [UUID] = []
     var ended: [(uuid: UUID, reason: CXCallEndedReason)] = []
     var startRequests: [UUID] = []
+    var heldReports: [(uuid: UUID, held: Bool)] = []
 
     func reportIncoming(uuid: UUID, handle: String, isVideo: Bool) async -> Bool {
         incoming.append((uuid, handle))
@@ -79,6 +89,7 @@ final class FakeCallKit: CallKitControlling {
     func reportOutgoingConnecting(uuid: UUID) { connecting.append(uuid) }
     func reportConnected(uuid: UUID, startedAt: Date?) { connected.append(uuid) }
     func reportEnded(uuid: UUID, reason: CXCallEndedReason) async { ended.append((uuid, reason)) }
+    func reportHeld(uuid: UUID, held: Bool) { heldReports.append((uuid, held)) }
     func requestEnd(uuid: UUID) async throws {}
     func requestAnswer(uuid: UUID) async throws {}
     func requestMute(uuid: UUID, muted: Bool) async throws {}
@@ -104,6 +115,25 @@ final class FakeGatewayAPI: GatewayAPI {
     var hangups: [String] = []
     var dtmfs: [(id: String, digit: String)] = []
     var offers: [String] = []
+
+    // Unified multi-call / conference surface
+    var holdError: Error?
+    var resumeError: Error?
+    var holds: [String] = []
+    var resumes: [String] = []
+    var dialLines: [String?] = []
+    var mergeError: Error?
+    var mergeResult: ConferenceRecord?
+    var merges: [[String]] = []
+    var conferenceOffers: [(conferenceId: String, sdp: String)] = []
+    var closeConferences: [String] = []
+    var removedLegs: [(conferenceId: String, callId: String)] = []
+    var legHolds: [(conferenceId: String, callId: String, held: Bool)] = []
+    var legDTMFs: [(conferenceId: String, callId: String, digit: String)] = []
+    var splits: [(conferenceId: String, callId: String)] = []
+    var conferenceSnapshot: ConferenceRecord?
+    /// Ordered trace of call-affecting commands, used to assert ordering.
+    var actionLog: [String] = []
 
     // SMS surface
     var threads: [MessageThread] = []
@@ -139,6 +169,7 @@ final class FakeGatewayAPI: GatewayAPI {
 
     func dial(to: String, clientCallId: String, idempotencyKey: String) async throws -> CallRecord {
         dials.append(IdemCall(id: clientCallId, key: idempotencyKey, to: to))
+        actionLog.append("dial:\(to)")
         onDialEntered?()
         if autoResumeDial {
             return try dialResult.get()
@@ -148,14 +179,36 @@ final class FakeGatewayAPI: GatewayAPI {
         }
     }
 
+    func dial(to: String, lineId: String?, clientCallId: String, idempotencyKey: String) async throws -> CallRecord {
+        dialLines.append(lineId)
+        if let lineId { actionLog.append("dialLine:\(lineId)") }
+        return try await dial(to: to, clientCallId: clientCallId, idempotencyKey: idempotencyKey)
+    }
+
     func resumeDial(_ result: Result<CallRecord, Error>) {
         dialContinuation?.resume(with: result)
         dialContinuation = nil
     }
 
-    func answer(callId: String, idempotencyKey: String) async throws { answers.append(callId) }
+    func answer(callId: String, idempotencyKey: String) async throws {
+        answers.append(callId)
+        actionLog.append("answer:\(callId)")
+    }
     func reject(callId: String, idempotencyKey: String) async throws { rejects.append(callId) }
-    func hangup(callId: String, idempotencyKey: String) async throws { hangups.append(callId) }
+    func hangup(callId: String, idempotencyKey: String) async throws {
+        hangups.append(callId)
+        actionLog.append("hangup:\(callId)")
+    }
+    func hold(callId: String, idempotencyKey: String) async throws {
+        holds.append(callId)
+        actionLog.append("hold:\(callId)")
+        if let holdError { throw holdError }
+    }
+    func resume(callId: String, idempotencyKey: String) async throws {
+        resumes.append(callId)
+        actionLog.append("resume:\(callId)")
+        if let resumeError { throw resumeError }
+    }
     func dtmf(callId: String, digit: String, idempotencyKey: String) async throws {
         dtmfs.append((callId, digit))
     }
@@ -179,6 +232,54 @@ final class FakeGatewayAPI: GatewayAPI {
         SyncResponse(from: after, to: after, hasMore: false, changes: [])
     }
     func registerPush(registration: PushRegistration, idempotencyKey: String) async throws {}
+
+    // MARK: Conference (unified v2)
+
+    func merge(calls: [String], idempotencyKey: String) async throws -> ConferenceRecord {
+        merges.append(calls)
+        actionLog.append("merge:\(calls.joined(separator: ","))")
+        if let mergeError { throw mergeError }
+        if let mergeResult { return mergeResult }
+        throw APIError.notReady("会议未配置")
+    }
+
+    func conference(id: String) async throws -> ConferenceRecord {
+        if let conferenceSnapshot { return conferenceSnapshot }
+        throw APIError.notReady("会议未配置")
+    }
+
+    func conferenceOffer(
+        conferenceId: String, sdp: String, idempotencyKey: String
+    ) async throws -> WebRTCAnswer {
+        conferenceOffers.append((conferenceId, sdp))
+        actionLog.append("conferenceOffer:\(conferenceId)")
+        if let offerError { throw offerError }
+        return WebRTCAnswer(sdp: "v=0\r\n", type: "answer", iceMode: "relay")
+    }
+
+    func closeConference(id: String, idempotencyKey: String) async throws {
+        closeConferences.append(id)
+        actionLog.append("closeConference:\(id)")
+    }
+
+    func removeConferenceLeg(conferenceId: String, callId: String, idempotencyKey: String) async throws {
+        removedLegs.append((conferenceId, callId))
+        actionLog.append("removeLeg:\(callId)")
+    }
+
+    func setConferenceLegHeld(conferenceId: String, callId: String, held: Bool, idempotencyKey: String) async throws {
+        legHolds.append((conferenceId, callId, held))
+        actionLog.append(held ? "legHold:\(callId)" : "legResume:\(callId)")
+    }
+
+    func conferenceLegDTMF(conferenceId: String, callId: String, digit: String, idempotencyKey: String) async throws {
+        legDTMFs.append((conferenceId, callId, digit))
+    }
+
+    func splitConference(id: String, callId: String, idempotencyKey: String) async throws {
+        splits.append((id, callId))
+        actionLog.append("split:\(callId)")
+    }
 
     // MARK: SMS
 
@@ -235,12 +336,25 @@ func waitUntil(timeout: TimeInterval = 3, _ condition: @MainActor () -> Bool) as
     }
 }
 
-func makeCallRecord(id: String, state: CallState, direction: CallDirection = .outbound, peer: String = "555-0123") -> CallRecord {
+func makeCallRecord(
+    id: String,
+    state: CallState,
+    direction: CallDirection = .outbound,
+    peer: String = "555-0123",
+    startedAt: Int64? = nil
+) -> CallRecord {
     let now = Date().unixMilliseconds
     return CallRecord(
         id: id, gatewayID: "gw", lineID: "gw:line", direction: direction, peer: peer,
-        state: state, startedAt: now - 1000,
+        state: state, startedAt: startedAt ?? now - 1000,
         connectedAt: state == .active ? now : nil, endedAt: nil, endReason: nil,
         recordingId: nil, recordingState: nil, recordingDurationMs: nil
+    )
+}
+
+func makeConferenceRecord(id: String = "conf-1", legs: [CallRecord]) -> ConferenceRecord {
+    ConferenceRecord(
+        id: id, hostDeviceId: "device-1", state: "active",
+        createdAt: Date().unixMilliseconds, graceDeadline: nil, legs: legs
     )
 }

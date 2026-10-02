@@ -11,6 +11,52 @@ struct GatewayBinding: Codable, Equatable {
     var transport: String
     var pairedAt: Date
     var allowLoopbackHTTP: Bool
+    /// Wire API generation of the bound gateway: "v1" per-line CellBridge
+    /// worker or "v2" unified gateway. Bindings written before this field
+    /// existed decode as v1.
+    var apiVersion: String
+    /// Unified-gateway default line captured at enrollment (nil for v1).
+    var defaultLineId: String?
+
+    init(
+        gatewayId: String,
+        gatewayName: String?,
+        endpoint: String,
+        fingerprint: String,
+        transport: String,
+        pairedAt: Date,
+        allowLoopbackHTTP: Bool,
+        apiVersion: String = "v1",
+        defaultLineId: String? = nil
+    ) {
+        self.gatewayId = gatewayId
+        self.gatewayName = gatewayName
+        self.endpoint = endpoint
+        self.fingerprint = fingerprint
+        self.transport = transport
+        self.pairedAt = pairedAt
+        self.allowLoopbackHTTP = allowLoopbackHTTP
+        self.apiVersion = apiVersion
+        self.defaultLineId = defaultLineId
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case gatewayId, gatewayName, endpoint, fingerprint, transport, pairedAt
+        case allowLoopbackHTTP, apiVersion, defaultLineId
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        gatewayId = try c.decode(String.self, forKey: .gatewayId)
+        gatewayName = try c.decodeIfPresent(String.self, forKey: .gatewayName)
+        endpoint = try c.decode(String.self, forKey: .endpoint)
+        fingerprint = try c.decode(String.self, forKey: .fingerprint)
+        transport = try c.decode(String.self, forKey: .transport)
+        pairedAt = try c.decode(Date.self, forKey: .pairedAt)
+        allowLoopbackHTTP = try c.decode(Bool.self, forKey: .allowLoopbackHTTP)
+        apiVersion = (try? c.decodeIfPresent(String.self, forKey: .apiVersion)) ?? "v1"
+        defaultLineId = try c.decodeIfPresent(String.self, forKey: .defaultLineId)
+    }
 }
 
 /// The pairing material pasted or scanned on the iPhone. It mirrors the
@@ -27,9 +73,46 @@ struct PairingPayload: Equatable {
     var baseURL: String?
     var mode: String?
 
+    // MARK: Unified-gateway (v2) enrollment variant
+
+    /// Console-issued one-time enrollment key `key_xxx.<secret>`.
+    var enrollmentKey: String?
+    var apiVersion: String?
+    var gatewayName: String?
+
+    init(
+        gatewayId: String,
+        pairingId: String,
+        oneTimeSecret: String,
+        expiresAt: Int64,
+        fingerprint: String,
+        baseURL: String?,
+        mode: String?,
+        enrollmentKey: String? = nil,
+        apiVersion: String? = nil,
+        gatewayName: String? = nil
+    ) {
+        self.gatewayId = gatewayId
+        self.pairingId = pairingId
+        self.oneTimeSecret = oneTimeSecret
+        self.expiresAt = expiresAt
+        self.fingerprint = fingerprint
+        self.baseURL = baseURL
+        self.mode = mode
+        self.enrollmentKey = enrollmentKey
+        self.apiVersion = apiVersion
+        self.gatewayName = gatewayName
+    }
+
+    var isEnrollment: Bool { !(enrollmentKey ?? "").isEmpty }
+
     var expiryDate: Date { Date(unixSeconds: expiresAt) }
-    var isExpired: Bool { expiryDate <= Date() }
-    var transport: String { mode == "pocket" ? "pocket" : "tailnet" }
+    /// Enrollment keys are revoked server-side, not time-boxed by the payload.
+    var isExpired: Bool { isEnrollment ? false : expiryDate <= Date() }
+    var transport: String {
+        if isEnrollment { return "unified" }
+        return mode == "pocket" ? "pocket" : "tailnet"
+    }
 }
 
 enum PairingPayloadError: Error, Equatable, LocalizedError {
@@ -63,6 +146,34 @@ enum PairingPayloadParser {
         guard let gatewayId = string("gatewayId"), !gatewayId.isEmpty else {
             return .failure(.missingField("gatewayId"))
         }
+
+        let enrollmentKey = string("enrollmentKey")
+        let apiVersion = string("apiVersion")
+        if let enrollmentKey, !enrollmentKey.isEmpty {
+            // Unified-gateway console payload: no pairingId/oneTimeSecret and
+            // no expiry; revocation is server-side.
+            guard let fingerprint = string("fingerprint"), !fingerprint.isEmpty else {
+                return .failure(.missingField("fingerprint"))
+            }
+            return .success(PairingPayload(
+                gatewayId: gatewayId,
+                pairingId: string("pairingId") ?? "",
+                oneTimeSecret: string("oneTimeSecret") ?? "",
+                expiresAt: 0,
+                fingerprint: fingerprint,
+                baseURL: string("baseURL"),
+                mode: string("mode"),
+                enrollmentKey: enrollmentKey,
+                apiVersion: apiVersion ?? "v2",
+                gatewayName: string("gatewayName")
+            ))
+        }
+        if apiVersion?.lowercased() == "v2" {
+            return .failure(.missingField("enrollmentKey"))
+        }
+
+        // Legacy per-line pairing payload. Field order preserves the v1 error
+        // precedence existing callers/tests rely on.
         guard let pairingId = string("pairingId"), !pairingId.isEmpty else {
             return .failure(.missingField("pairingId"))
         }

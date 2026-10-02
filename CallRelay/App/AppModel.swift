@@ -28,6 +28,12 @@ final class AppModel: ObservableObject {
     /// Selected main tab; shared so Contacts can hand a number to Messages.
     @Published var selectedTab: AppTab = .keypad
     @Published var pendingComposePeer: String?
+    /// Unified gateway lines authorized for this device (v2 only).
+    @Published var authorizedLines: [AuthorizedLine] = []
+    @Published var defaultLineId: String?
+    /// nil shows all authorized lines; otherwise filters SMS history.
+    @Published var selectedLineFilter: String?
+    @Published var voicemails: [VoicemailRecord] = []
 
     enum AppTab: String { case keypad, contacts, messages, recents, settings }
 
@@ -215,12 +221,58 @@ final class AppModel: ObservableObject {
             enterDemo(persist: false)
             return
         }
-        guard let binding = bindingStore.current(), tokenStore.tokens() != nil else {
+        guard let binding = bindingStore.current() else {
             teardownLive()
             linePhase = .unpaired
             return
         }
-        startLive(binding: binding)
+        if tokenStore.tokens() != nil {
+            startLive(binding: binding)
+            return
+        }
+        // A same-iCloud recovery grant lets a restored installation enroll
+        // again with its own fresh device identity. A revoked grant stays
+        // blocked until the owner explicitly acts.
+        let service = restorePairingService()
+        if service.hasRecoveryGrant() {
+            linePhase = .connecting
+            Task {
+                let outcome = await service.recover(
+                    tokens: tokenStore, identities: identities, bindings: bindingStore
+                )
+                switch outcome {
+                case .success:
+                    if let restored = bindingStore.current() {
+                        startLive(binding: restored)
+                    } else {
+                        linePhase = .unpaired
+                    }
+                case .failure(let failure):
+                    linePhase = .unpaired
+                    pairingError = failure.errorDescription
+                }
+            }
+            return
+        }
+        teardownLive()
+        linePhase = .unpaired
+    }
+
+    private func restorePairingService() -> PairingService {
+        if let pairingService { return pairingService }
+        let service = PairingService(identities: identities, tokens: tokenStore, bindings: bindingStore)
+        pairingService = service
+        return service
+    }
+
+    var recoveryAvailable: Bool { restorePairingService().hasRecoveryGrant() }
+
+    /// Disables cross-device automatic restoration for this gateway. Local
+    /// sign-out (unpair) intentionally keeps the grant; this is the explicit
+    /// "stop restoring on my other devices" action.
+    func disableCrossDeviceRecovery() {
+        restorePairingService().disableRecovery()
+        objectWillChange.send()
     }
 
     // MARK: Pairing
@@ -253,6 +305,10 @@ final class AppModel: ObservableObject {
         recents = []
         activeCall = nil
         gatewayName = ""
+        authorizedLines = []
+        defaultLineId = nil
+        selectedLineFilter = nil
+        voicemails = []
     }
 
     /// Re-run the anonymous identity verification and, if it matches, connect.
@@ -384,7 +440,8 @@ final class AppModel: ObservableObject {
 
         let origin: GatewayOrigin
         switch GatewayOrigin.validate(
-            binding.endpoint, allowLoopbackHTTP: binding.allowLoopbackHTTP
+            binding.endpoint, allowLoopbackHTTP: binding.allowLoopbackHTTP,
+            apiVersion: binding.apiVersion
         ) {
         case .success(let value): origin = value
         case .failure:
@@ -479,18 +536,23 @@ final class AppModel: ObservableObject {
             callKit: manager, mediaProvider: WebRTCMediaProvider(), registry: identityRegistry
         )
         driver = live
+        live.setDefaultLineId(binding.defaultLineId)
         bindDriver(live)
 
         let outboxStore = OutboxStore(scopeIdentifier: binding.gatewayId)
         let messages = MessageInbox(api: http, filter: spamFilter, outboxStore: outboxStore)
         messages.lineReady = { [weak self] in self?.isSMSLineUsable ?? false }
+        messages.lineIdProvider = { [weak self] in self?.defaultLineId }
         messages.isTrustedContact = { [weak self] peer in self?.isTrustedContact(peer) ?? false }
         inbox = messages
+        messages.setLineFilter(selectedLineFilter)
         messages.start()
 
         startPolling()
         let bootGeneration = sessionGeneration
         Task {
+            await refreshAuthorizedLines()
+            guard bootGeneration == sessionGeneration else { return }
             await refreshLine()
             guard bootGeneration == sessionGeneration else { return }
             await refreshRecents()
@@ -533,6 +595,9 @@ final class AppModel: ObservableObject {
             cloudAccountObserver = nil
         }
         reconciling = false
+        authorizedLines = []
+        defaultLineId = nil
+        voicemails = []
         activeGatewayCallIds.removeAll()
         reservedCallIds.removeAll()
         activeCall = nil
@@ -717,6 +782,7 @@ final class AppModel: ObservableObject {
         switch event.type {
         case .lineUpdated:
             if let line = event.line() { linePhase = .online(line) }
+            Task { await refreshAuthorizedLines() }
         case .messageCreated, .messageUpdated:
             if let message = event.message() {
                 inbox?.apply(eventMessage: message)
@@ -731,8 +797,64 @@ final class AppModel: ObservableObject {
         case .gatewayRestarting:
             lastError = "网关正在重启，稍后自动恢复。"
         default:
-            break
+            if event.type.rawValue.hasPrefix("voicemail.") {
+                Task { await refreshVoicemails() }
+            }
         }
+    }
+
+    // MARK: Unified lines / voicemail
+
+    private func refreshAuthorizedLines() async {
+        guard let api else { return }
+        do {
+            let lines = try await api.authorizedLines()
+            guard !lines.isEmpty else { return }
+            authorizedLines = lines
+            let persisted = bindingStore.current()?.defaultLineId
+            let preferred = lines.first(where: { $0.id == persisted && $0.permissions.hasAny })
+                ?? lines.first(where: { $0.permissions.hasAny })
+                ?? lines.first
+            defaultLineId = preferred?.id
+            if let preferred {
+                linePhase = .online(preferred.status)
+            }
+            (driver as? LiveCallDriver)?.setDefaultLineId(preferred?.id)
+            inbox?.lineIdProvider = { [weak self] in self?.defaultLineId }
+            await refreshVoicemails()
+        } catch {
+            // Keep the existing line phase; the legacy /line poll still runs.
+        }
+    }
+
+    /// Selects the default line for outgoing calls and SMS. When the chosen
+    /// line is unavailable the UI asks again instead of silently using
+    /// another number.
+    func selectDefaultLine(_ lineId: String) async {
+        guard let line = authorizedLines.first(where: { $0.id == lineId }) else { return }
+        defaultLineId = lineId
+        linePhase = .online(line.status)
+        (driver as? LiveCallDriver)?.setDefaultLineId(lineId)
+        if var binding = bindingStore.current() {
+            binding.defaultLineId = lineId
+            try? bindingStore.save(binding)
+        }
+        _ = try? await api?.setDefaultLine(lineId, idempotencyKey: UUID().uuidString)
+    }
+
+    func setLineFilter(_ lineId: String?) {
+        selectedLineFilter = lineId
+        inbox?.setLineFilter(lineId)
+    }
+
+    func refreshVoicemails() async {
+        guard let api else { voicemails = []; return }
+        voicemails = (try? await api.listVoicemails()) ?? []
+    }
+
+    func voicemailData(_ id: String) async -> Data? {
+        guard let api else { return nil }
+        return try? await api.voicemailAudio(id: id)
     }
 
     private func isTrustedContact(_ peer: String) -> Bool {

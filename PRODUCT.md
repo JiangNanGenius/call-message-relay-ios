@@ -47,3 +47,11 @@ The pinned gateway protocol is available as a read-only reference in the adjacen
 ## Undecided
 
 CallRelay is a working name chosen for this first implementation. Domain, signing team, final Bundle ID and cloud deployment are not yet provided. Default interface language is Simplified Chinese based on the owner's communication; follow system appearance and accessibility settings.
+
+## 统一网关 (v2) 增量
+
+- 一次扫码/粘贴配对即可获得该密钥授权的全部线路；每台手机独立注册、独立撤销。
+- 短信与通话历史带线路标签，可筛选；外呼与发送默认使用所选线路，线路不可用时要求重新选择，不会静默改号。
+- 支持保持/恢复、第二通来电保持后接听、把本机接听的 2-3 路外呼合并为最多 4 人会议；会议中可单独保持/移除/对选中线路发 DTMF。
+- 无人接听或设备确实不可达时，网关播放问候语与提示音后录制语音留言；留言按线路接听权限隔离，可在 App 内播放。
+- 跨设备恢复只同步加密恢复授权，设备私钥与访问令牌始终只留本机；撤销的设备不会自动重新注册。

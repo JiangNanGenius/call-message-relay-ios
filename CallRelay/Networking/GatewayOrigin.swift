@@ -15,11 +15,30 @@ struct GatewayOrigin: Hashable, Sendable {
     let port: Int?
     let scheme: String
     let isLoopbackHTTP: Bool
+    /// Wire API generation: `v1` is the per-line CellBridge worker, `v2` the
+    /// unified gateway. It only selects the `/api/<version>/...` path segment.
+    let apiVersion: String
 
     private static let loopbackNames: Set<String> = ["localhost", "127.0.0.1", "::1", "[::1]"]
 
-    static func validate(_ raw: String, allowLoopbackHTTP: Bool = false) -> Result<GatewayOrigin, EndpointError> {
+    /// Only `v` + digits is ever a valid version segment, so a hostile payload
+    /// cannot smuggle `/`, `..`, `?` or `#` into the URL path.
+    static func normalizedAPIVersion(_ raw: String?) -> String? {
+        let value = (raw ?? "v1").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard value.count >= 2, value.count <= 8, value.first == "v",
+              value.dropFirst().allSatisfy(\.isNumber) else { return nil }
+        return value
+    }
+
+    static func validate(
+        _ raw: String,
+        allowLoopbackHTTP: Bool = false,
+        apiVersion: String = "v1"
+    ) -> Result<GatewayOrigin, EndpointError> {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let normalizedVersion = normalizedAPIVersion(apiVersion) else {
+            return .failure(.unsupportedAPIVersion(apiVersion))
+        }
         guard let url = URL(string: trimmed),
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let host = components.host?.lowercased(),
@@ -58,7 +77,8 @@ struct GatewayOrigin: Hashable, Sendable {
             host: host,
             port: components.port,
             scheme: scheme,
-            isLoopbackHTTP: scheme == "http" && loopback
+            isLoopbackHTTP: scheme == "http" && loopback,
+            apiVersion: normalizedVersion
         ))
     }
 
@@ -69,23 +89,38 @@ struct GatewayOrigin: Hashable, Sendable {
         return h == "::1"
     }
 
+    /// Copy of this origin pinned to another wire API generation. Returns nil
+    /// for anything that is not `v<digits>` rather than silently downgrading.
+    func withAPIVersion(_ version: String) -> GatewayOrigin? {
+        guard let normalized = Self.normalizedAPIVersion(version) else { return nil }
+        return GatewayOrigin(
+            baseURL: baseURL, host: host, port: port, scheme: scheme,
+            isLoopbackHTTP: isLoopbackHTTP, apiVersion: normalized
+        )
+    }
+
     /// Absolute URL for an API path such as `calls`.
     func apiURL(_ path: String, queryItems: [URLQueryItem] = []) -> URL {
         var components = URLComponents(
-            url: baseURL.appendingPathComponent("api/v1").appendingPathComponent(path),
+            url: baseURL.appendingPathComponent("api/\(apiVersion)").appendingPathComponent(path),
             resolvingAgainstBaseURL: false
         )!
         if !queryItems.isEmpty { components.queryItems = queryItems }
         return components.url!
     }
 
-    var websocketEventsURL: URL {
+    var websocketEventsURL: URL { websocketEventsURL(after: nil) }
+
+    /// v2 event streams resume with `?after=<last seq>`; v1 ignores the cursor
+    /// (the caller may pass it defensively, the query simply stays absent).
+    func websocketEventsURL(after seq: Int64?) -> URL {
         var components = URLComponents()
         components.scheme = scheme == "https" ? "wss" : "ws"
         components.host = host
         components.port = port
         let base = baseURL.path.hasSuffix("/") ? String(baseURL.path.dropLast()) : baseURL.path
-        components.path = "\(base)/api/v1/events"
+        components.path = "\(base)/api/\(apiVersion)/events"
+        if let seq { components.queryItems = [URLQueryItem(name: "after", value: String(seq))] }
         return components.url!
     }
 
@@ -123,6 +158,7 @@ enum EndpointError: Error, Equatable, LocalizedError {
     case userinfoNotAllowed
     case fragmentNotAllowed
     case plaintextRequiresLoopback
+    case unsupportedAPIVersion(String)
     case crossOriginRedirect
     case redirectToInsecureScheme
 
@@ -133,6 +169,7 @@ enum EndpointError: Error, Equatable, LocalizedError {
         case .userinfoNotAllowed: return "网关地址不能包含用户名或密码。"
         case .fragmentNotAllowed: return "网关地址不能包含片段（#）。"
         case .plaintextRequiresLoopback: return "仅允许在调试时对本机 localhost 使用 HTTP，其他地址必须使用 HTTPS。"
+        case .unsupportedAPIVersion(let v): return "网关 API 版本无效：\(v)。"
         case .crossOriginRedirect: return "网关把请求重定向到了不同来源，已阻止以免凭据泄露。"
         case .redirectToInsecureScheme: return "重定向会降低连接安全性，已阻止。"
         }

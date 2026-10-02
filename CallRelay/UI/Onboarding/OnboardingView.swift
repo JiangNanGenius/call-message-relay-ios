@@ -19,7 +19,7 @@ struct OnboardingView: View {
                             .accessibilityHidden(true)
                         Text("CallRelay")
                             .font(.largeTitle).bold()
-                        Text("把你的蜂窝网关 SIM 通话接到 iPhone。先在同一网络或 Tailnet 下完成一次配对。")
+                        Text("扫码或粘贴控制台生成的配对内容，即可连接你的号码与设备。")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -27,7 +27,7 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                Section("配对数据") {
+                Section("配对内容") {
                     TextEditor(text: $payloadText)
                         .frame(minHeight: 120)
                         .font(.system(.body, design: .monospaced))
@@ -44,16 +44,15 @@ struct OnboardingView: View {
                     }
                 }
 
-                Section("网关地址（可选）") {
-                    TextField("https://gateway.example.com", text: $endpoint)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Toggle("允许本机 HTTP 调试（仅 localhost）", isOn: $allowLoopbackHTTP)
-                        .font(.subheadline)
-                    Text("留空时使用配对数据中的 baseURL。远程地址必须使用 HTTPS。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Section {
+                    DisclosureGroup("高级选项") {
+                        TextField("https://gateway.example.com", text: $endpoint)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Toggle("允许本机 HTTP 调试（仅 localhost）", isOn: $allowLoopbackHTTP)
+                            .font(.subheadline)
+                    }
                 }
 
                 if let error = model.pairingError {
@@ -89,16 +88,15 @@ struct OnboardingView: View {
                     .controlSize(.large)
                 }
 
+                #if DEBUG
                 Section {
                     Button {
                         model.enterDemo()
                     } label: {
-                        Label("进入演示模式", systemImage: "wand.and.stars")
+                        Label("演示模式（离线）", systemImage: "wand.and.stars")
                     }
-                    Text("演示模式完全离线，使用保留的模拟号码，不会联网、不发短信、不发起真实通话或系统来电。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
+                #endif
             }
             .navigationTitle("配对网关")
             .navigationBarTitleDisplayMode(.inline)

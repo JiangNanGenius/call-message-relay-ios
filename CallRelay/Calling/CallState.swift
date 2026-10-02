@@ -14,6 +14,8 @@ enum ActiveCallPhase: Equatable, Sendable {
     case ending
     case ended(reason: String?)
     case failed(message: String)
+    /// Answered on this device but currently held by the gateway.
+    case held
 
     var isLive: Bool {
         switch self {
@@ -33,6 +35,7 @@ enum ActiveCallPhase: Equatable, Sendable {
         case .ending: return "正在挂断…"
         case .ended: return "通话结束"
         case .failed(let m): return m
+        case .held: return "已保持"
         }
     }
 }

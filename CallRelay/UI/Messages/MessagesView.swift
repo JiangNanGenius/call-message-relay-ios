@@ -63,6 +63,37 @@ private struct MessageInboxView: View {
                         .accessibilityLabel("筛选短信")
                         .accessibilityIdentifier("messageFilterMenu")
                     }
+                    if model.authorizedLines.count > 1 {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Menu {
+                                Button {
+                                    model.setLineFilter(nil)
+                                } label: {
+                                    Label("全部线路", systemImage: model.selectedLineFilter == nil ? "checkmark" : "")
+                                }
+                                ForEach(model.authorizedLines) { line in
+                                    Button {
+                                        model.setLineFilter(line.id)
+                                    } label: {
+                                        Label(line.name, systemImage: model.selectedLineFilter == line.id ? "checkmark" : "")
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "simcard.2")
+                            }
+                            .accessibilityLabel("按线路筛选")
+                        }
+                    }
+                    if !model.isDemo {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            NavigationLink {
+                                VoicemailView()
+                            } label: {
+                                Image(systemName: "recordingtape")
+                            }
+                            .accessibilityLabel("语音留言")
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             composeRecipient = ""
@@ -132,6 +163,16 @@ private struct MessageInboxView: View {
                 .accessibilityIdentifier("messagesEmpty")
             } else {
                 List {
+                    if !model.isDemo {
+                        Section {
+                            NavigationLink {
+                                VoicemailView()
+                            } label: {
+                                Label(model.voicemails.isEmpty ? "语音留言" : "语音留言（\(model.voicemails.count)）",
+                                      systemImage: "recordingtape")
+                            }
+                        }
+                    }
                     ForEach(filteredThreads) { thread in
                         NavigationLink {
                             ThreadDetailView(inbox: inbox, threadKey: thread.key, peer: thread.peer)

@@ -13,6 +13,7 @@ struct SettingsView: View {
                 }
 
                 connectionSection
+                unifiedLineSection
 
                 Section("短信与来电") {
                     NavigationLink {
@@ -42,7 +43,7 @@ struct SettingsView: View {
                 if !model.isDemo {
                     Section("网关") {
                         detailRow(title: "名称", value: model.gatewayName.isEmpty ? "—" : model.gatewayName)
-                        detailRow(title: "推送令牌", value: model.voipTokenHex == nil ? "未注册（需真机 APNs）" : "VoIP 已注册")
+                        detailRow(title: "锁屏来电", value: model.voipTokenHex == nil ? "未注册（需真机）" : "已注册")
                     }
 
                     Section {
@@ -50,7 +51,7 @@ struct SettingsView: View {
                         Button(role: .destructive) {
                             showUnpairConfirm = true
                         } label: {
-                            Label("解除配对并清除本机凭据", systemImage: "trash")
+                            Label("退出这台手机", systemImage: "iphone.slash")
                         }
                     }
                 } else {
@@ -60,31 +61,13 @@ struct SettingsView: View {
                 }
 
                 Section("铃声与来电") {
-                    detailRow(title: "来电铃声", value: "系统默认（CallKit）")
-                    Label("CallKit 使用系统来电界面显示来电，并播放系统默认铃声。",
-                          systemImage: "bell")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Label("通话中可切换听筒、扬声器或蓝牙，并使用手机音量键调整音量。",
-                          systemImage: "speaker.wave.2")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    detailRow(title: "来电界面", value: "系统 CallKit")
+                    detailRow(title: "音频路由", value: "听筒 / 扬声器 / 蓝牙")
                     if let url = URL(string: UIApplication.openSettingsURLString) {
                         Link(destination: url) {
                             Label("在系统设置中管理本 App 权限", systemImage: "gear")
                         }
                     }
-                    Text("静音开关、勿扰模式与蓝牙耳机的实际响铃/播放行为以真机系统为准；App 不能读取或选择 iPhone 个人铃声，也不提供自定义铃声下载。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("音频与通话") {
-                    infoRow("语音编码", "PCMU（G.711 µ-law）· 8 kHz 单声道")
-                    infoRow("回声消除 / 降噪 / 自动增益", "由 WebRTC 音频处理开启")
-                    infoRow("音频路由", "听筒、扬声器与蓝牙，遵循系统通话音频")
-                    Text("当前网关实现固定 8kHz/PCMU，并非 HD/宽带音质；如未来硬件与网关支持宽带，需要整条链路升级。")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section("关于") {
@@ -97,11 +80,11 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
-            .alert("解除配对？", isPresented: $showUnpairConfirm) {
+            .alert("退出这台手机？", isPresented: $showUnpairConfirm) {
                 Button("取消", role: .cancel) {}
-                Button("解除配对", role: .destructive) { model.unpair() }
+                Button("退出", role: .destructive) { model.unpair() }
             } message: {
-                Text("将删除本机私钥、访问令牌和网关绑定，需要重新配对才能使用。")
+                Text("仅退出这台手机，其他设备不受影响。")
             }
         }
     }
@@ -123,6 +106,44 @@ struct SettingsView: View {
             Button {
                 model.demoArmNextSMSFailure()
             } label: { Label("让下一条演示短信发送失败（可重试）", systemImage: "exclamationmark.bubble") }
+        }
+    }
+
+    @ViewBuilder
+    private var unifiedLineSection: some View {
+        if !model.isDemo, !model.authorizedLines.isEmpty {
+            Section("线路") {
+                ForEach(model.authorizedLines) { line in
+                    Button {
+                        Task { await model.selectDefaultLine(line.id) }
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(line.name)
+                                HStack(spacing: 6) {
+                                    Text(line.online ? "在线" : "离线")
+                                    if line.smsLive { Text("短信实发") } else { Text("短信试运行") }
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if model.defaultLineId == line.id {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                if model.recoveryAvailable {
+                    Button(role: .destructive) {
+                        model.disableCrossDeviceRecovery()
+                    } label: {
+                        Label("停用跨设备自动恢复", systemImage: "icloud.slash")
+                    }
+                }
+            }
         }
     }
 

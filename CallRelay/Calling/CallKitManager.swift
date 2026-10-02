@@ -13,8 +13,18 @@ protocol CallDirecting: AnyObject {
     func endCall(uuid: UUID, reason: EndedCallReason)
     func setMuted(uuid: UUID, muted: Bool)
     func playDTMF(uuid: UUID, digit: String)
+    /// Hold/resume one call; throws when the gateway rejects the transition.
+    func setHeld(uuid: UUID, held: Bool) async throws
+    /// Group or leave a group as requested by the system call UI: a non-nil
+    /// group UUID merges the active/held calls, nil pulls one call back out.
+    func setGroup(uuid: UUID, groupUUID: UUID?) async throws
     /// The system reset all calls: stop media/cancel work and converge state.
     func handleProviderReset()
+}
+
+extension CallDirecting {
+    func setHeld(uuid: UUID, held: Bool) async throws {}
+    func setGroup(uuid: UUID, groupUUID: UUID?) async throws {}
 }
 
 /// Minimal reporting used when a VoIP push must be reported but its payload is
@@ -43,6 +53,9 @@ protocol CallKitControlling: AnyObject {
     func reportOutgoingConnecting(uuid: UUID)
     func reportConnected(uuid: UUID, startedAt: Date?)
     func reportEnded(uuid: UUID, reason: CXCallEndedReason) async
+    /// Refreshes the call's hold/group capabilities after a coordinator-side
+    /// hold or resume (CallKit has no programmatic "set held" report).
+    func reportHeld(uuid: UUID, held: Bool)
     func requestEnd(uuid: UUID) async throws
     func requestAnswer(uuid: UUID) async throws
     func requestMute(uuid: UUID, muted: Bool) async throws
@@ -50,7 +63,10 @@ protocol CallKitControlling: AnyObject {
     func invalidate()
 }
 
-/// Owns the CXProvider and CXCallController for exactly one active line. The
+/// Owns the CXProvider and CXCallController. Every external leg is its own
+/// CallKit call (up to three awaiting an explicit merge plus one pending
+/// incoming call); the hosted conference is a CallKit group of at most the
+/// three external legs, because the host is this app and never a CXCall. The
 /// provider reports the system call UI; gateway truth arrives from the
 /// coordinator and drives fulfill/fail so the UI never shows connected from a
 /// REST 201 alone.
@@ -58,13 +74,25 @@ final class CallKitManager: NSObject, CallKitControlling {
     private let provider: CXProvider
     private let callController = CXCallController()
     private(set) var activeUUID: UUID?
+    /// Every CallKit call this provider has reported and not yet ended.
+    private var knownUUIDs: Set<UUID> = []
 
     weak var director: CallDirecting?
 
+    /// The provider's live configuration, exposed so tests can assert the
+    /// capacities required for independent legs plus a pending incoming call.
+    var configuration: CXProviderConfiguration { provider.configuration }
+
     override init() {
         let config = CXProviderConfiguration()
-        config.maximumCallGroups = 1
-        config.maximumCallsPerCallGroup = 1
+        // Up to four concurrent system calls: three independent external legs
+        // waiting for an explicit merge plus one pending incoming call. After
+        // a merge the conference itself is a single group of those external
+        // legs (the host is this app, not a CXCall). The backend's four-person
+        // cap (host + 3 external legs) stays authoritative; CallKit only
+        // bounds what the system can present.
+        config.maximumCallGroups = 4
+        config.maximumCallsPerCallGroup = 4
         config.supportsVideo = false
         config.supportedHandleTypes = [.generic, .phoneNumber]
         config.includesCallsInRecents = true
@@ -83,19 +111,26 @@ final class CallKitManager: NSObject, CallKitControlling {
     @discardableResult
     func reportIncoming(uuid: UUID, handle: String, isVideo: Bool = false) async -> Bool {
         let handleValue = CXHandle(type: CallKitManager.handleType(for: handle), value: handle)
-        let update = CXCallUpdate()
-        update.remoteHandle = handleValue
-        update.hasVideo = isVideo
-        update.supportsDTMF = true
-        update.supportsHolding = false
-        update.supportsGrouping = false
-        update.supportsUngrouping = false
+        let update = standardUpdate(handle: handleValue, isVideo: isVideo)
 
-        return await withCheckedContinuation { continuation in
+        let ok = await withCheckedContinuation { continuation in
             provider.reportNewIncomingCall(with: uuid, update: update) { error in
                 continuation.resume(returning: error == nil)
             }
         }
+        if ok { knownUUIDs.insert(uuid) }
+        return ok
+    }
+
+    private func standardUpdate(handle: CXHandle?, isVideo: Bool) -> CXCallUpdate {
+        let update = CXCallUpdate()
+        if let handle { update.remoteHandle = handle }
+        update.hasVideo = isVideo
+        update.supportsDTMF = true
+        update.supportsHolding = true
+        update.supportsGrouping = true
+        update.supportsUngrouping = true
+        return update
     }
 
     // MARK: Outgoing (UI path)
@@ -133,10 +168,19 @@ final class CallKitManager: NSObject, CallKitControlling {
     // MARK: End / fail
 
     func reportEnded(uuid: UUID, reason: CXCallEndedReason) async {
+        knownUUIDs.remove(uuid)
+        if activeUUID == uuid { activeUUID = nil }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             provider.reportCall(with: uuid, endedAt: Date(), reason: reason)
             continuation.resume()
         }
+    }
+
+    /// CallKit cannot be told a call is on hold programmatically; re-reporting
+    /// the update keeps hold/group capabilities accurate for the system UI.
+    func reportHeld(uuid: UUID, held: Bool) {
+        guard knownUUIDs.contains(uuid) else { return }
+        provider.reportCall(with: uuid, updated: standardUpdate(handle: nil, isVideo: false))
     }
 
     func requestEnd(uuid: UUID) async throws {
@@ -175,16 +219,14 @@ extension CallKitManager: CXProviderDelegate {
     func providerDidReset(_ provider: CXProvider) {
         AppLog.callKit.info("provider reset")
         activeUUID = nil
+        knownUUIDs.removeAll()
         Task { @MainActor in director?.handleProviderReset() }
     }
 
     func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
         activeUUID = action.callUUID
-        let update = CXCallUpdate()
-        update.remoteHandle = action.handle
-        update.hasVideo = false
-        update.supportsDTMF = true
-        update.supportsHolding = false
+        knownUUIDs.insert(action.callUUID)
+        let update = standardUpdate(handle: action.handle, isVideo: false)
         provider.reportCall(with: action.callUUID, updated: update)
         // Donate so the call appears in the system Phone Recents and tapping
         // it there relaunches this app via INStartCallIntent.
@@ -215,9 +257,44 @@ extension CallKitManager: CXProviderDelegate {
     func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         let uuid = action.callUUID
         let reason: EndedCallReason = activeUUID == uuid ? .userHungUp : .remoteEnded
+        knownUUIDs.remove(uuid)
         Task { @MainActor in director?.endCall(uuid: uuid, reason: reason) }
         action.fulfill()
         if activeUUID == uuid { activeUUID = nil }
+    }
+
+    func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
+        // Fulfill only after the gateway accepts the transition so the system
+        // UI never shows a hold that the carrier does not have.
+        Task { @MainActor in
+            do {
+                try await director?.setHeld(uuid: action.callUUID, held: action.isOnHold)
+                action.fulfill()
+            } catch {
+                AppLog.callKit.notice("gateway hold/resume failed; failing CXSetHeldCallAction")
+                action.fail()
+            }
+        }
+    }
+
+    func provider(_ provider: CXProvider, perform action: CXSetGroupCallAction) {
+        // CXSetUngroupCallAction does not exist in this project's SDK
+        // (iPhoneSimulator27.0); CallKit expresses "leave the group" as this
+        // same action with `callUUIDToGroupWith == nil`. Both directions are
+        // reconciled by the coordinator, and fulfill/fail reflects the actual
+        // gateway merge/split result so the system UI is never told a group
+        // exists that the carrier does not have.
+        Task { @MainActor in
+            do {
+                try await director?.setGroup(
+                    uuid: action.callUUID, groupUUID: action.callUUIDToGroupWith
+                )
+                action.fulfill()
+            } catch {
+                AppLog.callKit.notice("gateway grouping failed; failing CXSetGroupCallAction")
+                action.fail()
+            }
+        }
     }
 
     func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
