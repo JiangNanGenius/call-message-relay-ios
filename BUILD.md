@@ -182,12 +182,12 @@ CI 在测试通过后编译 `iphoneos Release`，打包 `Payload/CallRelay.app`�
 `CallRelay-0.3.1-unsigned.ipa`，另附 `SHA256SUMS`），再执行：
 
 ```sh
-./Scripts/update-feather-source.py build/release-v0.3.0/CallRelay-0.3.1-unsigned.ipa --tag v0.3.0
+./Scripts/update-feather-source.py build/release-v0.3.1/CallRelay-0.3.1-unsigned.ipa --tag v0.3.1
 ```
 
 生成并提交 `feather.json`，其中版本、Bundle ID、最低 iOS、文件大小与 SHA-256 均从
 实际 IPA 提取，下载地址固定为
-`https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/CallRelay-0.3.1-unsigned.ipa`。
+`https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/CallRelay-0.3.1-unsigned.ipa`。
 该脚本会重建整份源（只保留当前版本）；若要在 `versions` 中保留旧版本条目与既有截图，
 需在生成结果上手工补回，或直接编辑已提交的 `feather.json`。公开源不包含证书、私钥或
 描述文件。
