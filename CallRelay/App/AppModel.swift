@@ -116,6 +116,14 @@ final class AppModel: ObservableObject {
     private var gatewayRecents: [CallRecord] = []
     private var cloudRecents: [SyncedCall] = []
     private var activeGatewayCallIds: Set<String> = []
+    /// Synchronous reservation for event-driven incoming reports so a replayed
+    /// or duplicated `call.incoming` cannot ring twice before the driver's
+    /// async state lands.
+    private var reportingIncomingIds: Set<String> = []
+    /// Call ids this session knows to be terminal (ended/rejected/declined).
+    /// A durable replay must never ring one of these again, no matter how
+    /// fresh its `createdAt` looks or whether it carries a timestamp at all.
+    private var terminalCallIds: Set<String> = []
     private var lastSyncSeq: Int64 = 0
     private var sessionGeneration: UInt64 = 0
     private var pendingExternalPeer: String?
@@ -668,7 +676,10 @@ final class AppModel: ObservableObject {
         networkMonitor = monitor
         monitor.start()
 
-        let events = EventStream(origin: origin, tokens: tokens)
+        // Persist the resume cursor per gateway+installation so an app
+        // relaunch or reconnect never replays already-processed call events.
+        let cursorKey = "\(binding.gatewayId):\(tokens.tokens()?.deviceId ?? "unbound")"
+        let events = EventStream(origin: origin, tokens: tokens, cursorKey: cursorKey)
         eventStream = events
         let streamGeneration = sessionGeneration
         events.onEvent = { [weak self] event in
@@ -796,6 +807,8 @@ final class AppModel: ObservableObject {
         authRecoveryMessage = nil
         eventAuthRecoveryKicks = 0
         activeGatewayCallIds.removeAll()
+        reportingIncomingIds.removeAll()
+        terminalCallIds.removeAll()
         reservedCallIds.removeAll()
         activeCall = nil
         quality = nil
@@ -822,6 +835,9 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 guard let self, boundGeneration == self.sessionGeneration else { return }
                 self.activeGatewayCallIds.remove(gatewayId)
+                self.reportingIncomingIds.remove(gatewayId)
+                // Reject/hangup/remote end: never let this id ring again.
+                self.terminalCallIds.insert(gatewayId)
                 self.activeCall = nil
                 self.quality = nil
                 await self.refreshRecents()
@@ -984,6 +1000,8 @@ final class AppModel: ObservableObject {
         await inbox?.reconcile()
         guard gen == sessionGeneration else { return }
         _ = await refreshRecents()
+        guard gen == sessionGeneration else { return }
+        await reconcileActiveCalls()
     }
 
     @discardableResult
@@ -1152,10 +1170,17 @@ final class AppModel: ObservableObject {
                 enqueueCloudMessage(message)
             }
         case .callIncoming:
-            if let call = event.call() { handleIncoming(call) }
+            if let call = event.call() { handleIncoming(call, eventCreatedAt: event.createdDate) }
         case .callUpdated, .callEnded:
             (driver as? LiveCallDriver)?.ingest(event: event)
-            if let call = event.call() { enqueueCloudCall(call) }
+            if let call = event.call() {
+                if call.isFinished || call.state == .ending {
+                    // Remember terminal calls for this session so a later
+                    // replay (whatever its timestamp) can never re-ring them.
+                    terminalCallIds.insert(call.id)
+                }
+                enqueueCloudCall(call)
+            }
             Task { await refreshRecents() }
         case .gatewayRestarting:
             lastError = "网关正在重启，稍后自动恢复。"
@@ -1393,6 +1418,16 @@ final class AppModel: ObservableObject {
         _ = await lineTick()
     }
 
+    /// Drives the reconnect/launch active-call reconciliation in tests.
+    func testingReconcileActiveCalls() async {
+        await reconcileActiveCalls()
+    }
+
+    /// Feeds one decoded event through the production handler in tests.
+    func testingHandleEvent(_ event: GatewayEvent) {
+        handle(event: event)
+    }
+
     /// Simulates a session teardown/re-bind generation bump without clearing
     /// the published UI state, so stale-response guards can be tested.
     func testingBumpSessionGeneration() {
@@ -1554,14 +1589,82 @@ final class AppModel: ObservableObject {
         ))
     }
 
-    private func handleIncoming(_ call: CallRecord) {
-        guard activeGatewayCallIds.contains(call.id) == false else { return }
+    /// A replayed `call.incoming` older than this is never trusted blindly:
+    /// it must still be ringing on the gateway before it may ring the phone.
+    /// Live events stay immediate. Clock skew only costs a verification round
+    /// trip, never a missed live call.
+    private static let staleIncomingEventAge: TimeInterval = 60
+
+    /// `authoritative` is true only when the caller itself came from a fresh
+    /// `GET /calls?active=true` snapshot; event-driven calls always go through
+    /// the staleness/verification path.
+    private func handleIncoming(_ call: CallRecord, eventCreatedAt: Date?, authoritative: Bool = false) {
+        // Only an actually-ringing inbound call may ever be surfaced.
+        guard call.direction == .inbound,
+              call.state == .incomingRinging,
+              !call.isFinished else { return }
+        // A call this session already saw end (or the user rejected) can never
+        // ring again, no matter how recent the replayed event claims to be.
+        guard !terminalCallIds.contains(call.id),
+              !activeGatewayCallIds.contains(call.id),
+              !reportingIncomingIds.contains(call.id) else { return }
+        reportingIncomingIds.insert(call.id)
         let gen = sessionGeneration
         let driver = self.driver
+        let api = self.api
+        let needsVerification = !authoritative && (eventCreatedAt.map {
+            Date().timeIntervalSince($0) > Self.staleIncomingEventAge
+        } ?? true)
         Task {
-            await driver?.reportIncomingFromEvent(call)
+            var incoming = call
+            if needsVerification {
+                // Durable replay can surface a call that ended while we were
+                // away (or one the user already rejected). Only a currently
+                // ringing gateway call may be reported.
+                guard let api,
+                      let fresh = try? await api.fetchCall(id: call.id) else {
+                    if gen == self.sessionGeneration { self.reportingIncomingIds.remove(call.id) }
+                    return
+                }
+                incoming = fresh
+            }
             guard gen == self.sessionGeneration else { return }
-            await applyScreening(handle: call.peer ?? "未知来电", gatewayId: call.id, generation: gen)
+            // A terminal event may have arrived while the verification fetch
+            // was in flight; it must win over the older ringing snapshot.
+            guard !terminalCallIds.contains(call.id),
+                  incoming.direction == .inbound,
+                  incoming.state == .incomingRinging,
+                  !incoming.isFinished else {
+                reportingIncomingIds.remove(call.id)
+                return
+            }
+            await driver?.reportIncomingFromEvent(incoming)
+            guard gen == self.sessionGeneration else { return }
+            await applyScreening(handle: incoming.peer ?? "未知来电", gatewayId: incoming.id, generation: gen)
+            if gen == self.sessionGeneration { self.reportingIncomingIds.remove(incoming.id) }
+        }
+    }
+
+    /// Converges local call state with the gateway after a stream gap or
+    /// launch. Ghost rings (a local incoming call the gateway no longer has)
+    /// are released, and a genuinely still-ringing call that no delivered
+    /// event carried is surfaced exactly once.
+    private func reconcileActiveCalls() async {
+        guard let api, !isDemo else { return }
+        let gen = sessionGeneration
+        guard let active = try? await api.activeCalls() else { return }
+        guard gen == sessionGeneration else { return }
+        let activeIDs = Set(active.map(\.id))
+        if let live = driver as? LiveCallDriver {
+            for id in live.ghostRingingCallIds(olderThan: 10)
+            where !activeIDs.contains(id) && !reportingIncomingIds.contains(id) {
+                await live.endCall(gatewayId: id)
+                guard gen == sessionGeneration else { return }
+                activeGatewayCallIds.remove(id)
+            }
+        }
+        for call in active where call.state == .incomingRinging && !activeGatewayCallIds.contains(call.id) {
+            handleIncoming(call, eventCreatedAt: nil, authoritative: true)
         }
     }
 
@@ -1587,6 +1690,9 @@ final class AppModel: ObservableObject {
         // never clear the NEW session's sets or active call.
         guard generation == sessionGeneration else { return }
         activeGatewayCallIds.remove(gatewayId)
+        reportingIncomingIds.remove(gatewayId)
+        // A locally rejected screened call is terminal for this session.
+        terminalCallIds.insert(gatewayId)
         reservedCallIds.remove(gatewayId)
         if activeCall?.gatewayCallId == gatewayId { activeCall = nil }
         guard let api else { return }

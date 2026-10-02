@@ -52,6 +52,11 @@ final class EventStream {
     private let maxAttempts: Int
     private let scheduler: DelayedScheduling
     private let makeSocket: SocketFactory
+    /// Optional persistent resume cursor (v2). Without it every reconnect
+    /// replays the durable log from sequence zero, which resurrects calls
+    /// that have already ended.
+    private let cursorKey: String?
+    private let defaults: UserDefaults
 
     private var task: EventSocket?
     private var stopped = false
@@ -65,6 +70,10 @@ final class EventStream {
     private var pathMonitor: NWPathMonitor?
     private var wasReachable = true
     private var foregroundObserver: NSObjectProtocol?
+    /// Highest event sequence already delivered to the owner. Sent as
+    /// `?after=` on the next connect so a resume never replays old call
+    /// events as live state, and persisted so an app relaunch resumes too.
+    private(set) var cursor: Int64?
 
     var onEvent: ((GatewayEvent) -> Void)?
     var onState: ((StreamState) -> Void)?
@@ -105,7 +114,9 @@ final class EventStream {
         maxAttempts: Int = .max,
         scheduler: DelayedScheduling? = nil,
         socketFactory: SocketFactory? = nil,
-        queue: DispatchQueue? = nil
+        queue: DispatchQueue? = nil,
+        cursorKey: String? = nil,
+        defaults: UserDefaults = .standard
     ) {
         self.origin = origin
         self.tokens = tokens
@@ -114,6 +125,12 @@ final class EventStream {
         self.maxAttempts = maxAttempts
         self.queue = queue ?? DispatchQueue(label: "callrelay.eventstream")
         self.scheduler = scheduler ?? WallScheduler()
+        self.cursorKey = cursorKey
+        self.defaults = defaults
+        if let cursorKey, let stored = defaults.object(forKey: "callrelay.eventCursor.\(cursorKey)") as? NSNumber,
+           stored.int64Value > 0 {
+            self.cursor = stored.int64Value
+        }
         let config = URLSessionConfiguration.ephemeral
         config.httpCookieStorage = nil
         config.timeoutIntervalForRequest = 30
@@ -213,7 +230,7 @@ final class EventStream {
             onState?(.unauthorized)
             return
         }
-        let url = origin.websocketEventsURL
+        let url = origin.websocketEventsURL(after: cursor)
         var request = URLRequest(url: url)
         request.setValue("Bearer \(set.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -287,6 +304,14 @@ final class EventStream {
     private func deliver(_ data: Data) {
         do {
             let event = try decoder.decode(GatewayEvent.self, from: data)
+            // Advance the resume cursor even for events the owner ignores:
+            // they were delivered, so they must never replay.
+            if event.seq > (cursor ?? 0) {
+                cursor = event.seq
+                if let cursorKey {
+                    defaults.set(NSNumber(value: event.seq), forKey: "callrelay.eventCursor.\(cursorKey)")
+                }
+            }
             onEvent?(event)
         } catch {
             // Category only; the raw error/JSON may include a peer number.

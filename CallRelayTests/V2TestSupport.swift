@@ -126,6 +126,11 @@ final class ScriptedHTTPServer: @unchecked Sendable {
         return captured.compactMap { $0.request.url?.path }
     }
 
+    var queries: [String?] {
+        lock.lock(); defer { lock.unlock() }
+        return captured.map { $0.request.url?.query }
+    }
+
     var bodies: [Data?] {
         lock.lock(); defer { lock.unlock() }
         return captured.map(\.body)

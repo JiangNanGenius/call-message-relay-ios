@@ -126,6 +126,15 @@ final class LiveCallDriver: NSObject, CallDriver {
         coordinator.ingest(event: event)
     }
 
+    /// Local incoming calls that have been ringing at least `seconds`; the
+    /// owner releases these if the gateway's active list no longer has them.
+    func ghostRingingCallIds(olderThan seconds: TimeInterval) -> [String] {
+        let now = Date()
+        return coordinator.ringingIncomingCalls
+            .filter { now.timeIntervalSince($0.startedAt) >= seconds }
+            .map(\.id)
+    }
+
     func hangup() {
         // The red button ends the whole hosted conference (close + all calls).
         if coordinator.conferenceRecord != nil {

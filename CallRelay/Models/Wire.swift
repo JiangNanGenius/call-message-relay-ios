@@ -206,6 +206,29 @@ enum CallState: String, Decodable, Equatable, Sendable {
 
     var isTerminal: Bool { self == .idle || self == .ending }
     var isMediaConnected: Bool { self == .active }
+
+    /// Maps the full unified-gateway state vocabulary onto the client's
+    /// presentation states. The gateway also emits `ended`, `held`,
+    /// `answering` and `voicemail_*`; without this mapping a synthesized
+    /// `CallState` decode fails, the whole event is dropped, and an ended
+    /// call (or a replayed historical ring) can never clear.
+    static func serverState(_ raw: String?) -> CallState {
+        if let raw, let known = CallState(rawValue: raw) { return known }
+        switch raw {
+        case "ended", "failed":
+            return .idle
+        case "held":
+            return .active
+        case "answering":
+            return .connecting
+        case "voicemail", "voicemail_recording", "voicemail_greeting":
+            return .ending
+        default:
+            // Unknown non-terminal state: keep the call visible rather than
+            // silently ending a live call.
+            return .recovering
+        }
+    }
 }
 
 /// A call as returned by `/calls`, embedded in events, or delivered live.
@@ -236,6 +259,38 @@ struct CallRecord: Decodable, Equatable, Identifiable, Sendable {
     var endedDate: Date? { endedAt.map(Date.init(unixMilliseconds:)) }
 
     var isFinished: Bool { endedAt != nil || state == .idle }
+}
+
+extension CallRecord {
+    /// Tolerant decode of the shared event/REST shape. The synthesized decoder
+    /// threw on the gateway's richer state vocabulary (`ended`, `held`,
+    /// `answering`, `voicemail_*`), which silently dropped `call.ended` and
+    /// left dead calls on screen. Optional fields are best-effort so one
+    /// unexpected value can never invalidate a whole call update.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // A call record without a real id is meaningless: refusing it here
+        // stops a line/status payload or a malformed frame from ever being
+        // manufactured into a phantom call.
+        let decodedID = try c.decode(String.self, forKey: .id)
+        guard !decodedID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .id, in: c, debugDescription: "call id must not be empty")
+        }
+        id = decodedID
+        gatewayID = try? c.decodeIfPresent(String.self, forKey: .gatewayID)
+        lineID = try? c.decodeIfPresent(String.self, forKey: .lineID)
+        direction = (try? c.decodeIfPresent(CallDirection.self, forKey: .direction)) ?? .outbound
+        peer = try? c.decodeIfPresent(String.self, forKey: .peer)
+        state = CallState.serverState(try? c.decodeIfPresent(String.self, forKey: .state))
+        startedAt = (try? c.decodeIfPresent(Int64.self, forKey: .startedAt)) ?? 0
+        connectedAt = try? c.decodeIfPresent(Int64.self, forKey: .connectedAt)
+        endedAt = try? c.decodeIfPresent(Int64.self, forKey: .endedAt)
+        endReason = try? c.decodeIfPresent(String.self, forKey: .endReason)
+        recordingId = try? c.decodeIfPresent(String.self, forKey: .recordingId)
+        recordingState = try? c.decodeIfPresent(String.self, forKey: .recordingState)
+        recordingDurationMs = try? c.decodeIfPresent(Int64.self, forKey: .recordingDurationMs)
+    }
 }
 
 // MARK: - Messages (SMS)

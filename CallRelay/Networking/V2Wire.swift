@@ -132,7 +132,7 @@ struct V2CallView: Decodable {
             lineID: lineId,
             direction: direction.flatMap(CallDirection.init(rawValue:)) ?? .outbound,
             peer: peer,
-            state: state.flatMap(CallState.init(rawValue:)) ?? .idle,
+            state: CallState.serverState(state),
             startedAt: startedAt ?? 0,
             connectedAt: connectedAt,
             endedAt: endedAt,

@@ -192,6 +192,21 @@ final class HTTPGatewayAPI: GatewayAPI {
         return try await authorizedGet("calls", queryItems: [URLQueryItem(name: "limit", value: String(limit))])
     }
 
+    func activeCalls() async throws -> [CallRecord] {
+        if isV2 {
+            // `active=true` is the gateway's authoritative "ended_at IS NULL"
+            // filter; never approximate it from a recent-history page.
+            let views: [V2CallView] = try await authorizedGet(
+                "calls", queryItems: [
+                    URLQueryItem(name: "active", value: "true"),
+                    URLQueryItem(name: "limit", value: "50")
+                ]
+            )
+            return views.map(\.callRecord)
+        }
+        return try await listCalls(limit: 100).filter { !$0.isFinished }
+    }
+
     func fetchCall(id: String) async throws -> CallRecord {
         if isV2 {
             do {

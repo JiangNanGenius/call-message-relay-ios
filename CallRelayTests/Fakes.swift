@@ -209,7 +209,33 @@ final class FakeGatewayAPI: GatewayAPI {
         return LineStatus.demoReady()
     }
     func listCalls(limit: Int) async throws -> [CallRecord] { [] }
+    /// Reconciliation stub: tests arm the gateway's active set explicitly.
+    var activeCallsStub: [CallRecord] = []
+    var activeCallsError: Error?
+    private(set) var activeCallsCallCount = 0
+    func activeCalls() async throws -> [CallRecord] {
+        activeCallsCallCount += 1
+        if let activeCallsError { throw activeCallsError }
+        return activeCallsStub
+    }
+    /// When armed, the next fetchCall parks until resumeFetchCall, so tests
+    /// can interleave a terminal event during the verification await.
+    private var fetchWaiter: CheckedContinuation<CallRecord, Error>?
+    private var fetchArmed = false
+    func armFetchCallWait() { fetchArmed = true }
+    var fetchCallParked: Bool { fetchWaiter != nil }
+    func resumeFetchCall(with result: Result<CallRecord, Error>) {
+        fetchWaiter?.resume(with: result)
+        fetchWaiter = nil
+    }
     func fetchCall(id: String) async throws -> CallRecord {
+        if fetchArmed {
+            fetchArmed = false
+            return try await withCheckedThrowingContinuation { cont in
+                fetchWaiter = cont
+            }
+        }
+        if let match = activeCallsStub.first(where: { $0.id == id }) { return match }
         if let activeRecordForPoll { return activeRecordForPoll }
         throw APIError.http(status: 404, code: "CB-CALL-006", message: "not found")
     }

@@ -164,6 +164,18 @@ final class CallCoordinator: NSObject {
 
     func isTracking(callId: String) -> Bool { tracked[callId] != nil }
 
+    /// Gateway ids of incoming calls still ringing locally, with the moment
+    /// their ring started. Reconnect reconciliation releases the ones the
+    /// gateway no longer lists, without touching calls that just arrived.
+    var ringingIncomingCalls: [(id: String, startedAt: Date)] {
+        tracked.compactMap { key, entry in
+            guard let record = entry.record,
+                  record.state == .incomingRinging,
+                  !record.isFinished else { return nil }
+            return (key, record.startedDate)
+        }
+    }
+
     /// Default line used for outgoing calls.
     func setDefaultLineId(_ lineId: String?) { defaultLineId = lineId }
 

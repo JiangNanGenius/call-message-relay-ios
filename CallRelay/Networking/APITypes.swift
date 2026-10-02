@@ -73,6 +73,10 @@ protocol GatewayAPI: Sendable {
     func gatewayInfo() async throws -> GatewayResponse
     func line() async throws -> LineStatus
     func listCalls(limit: Int) async throws -> [CallRecord]
+    /// Calls the gateway still considers live (ended_at IS NULL on v2). Used
+    /// to reconcile reconnects and to keep a replayed history from leaving a
+    /// ghost ring or hiding a genuinely still-ringing call.
+    func activeCalls() async throws -> [CallRecord]
     func fetchCall(id: String) async throws -> CallRecord
     func dial(to: String, clientCallId: String, idempotencyKey: String) async throws -> CallRecord
     func answer(callId: String, idempotencyKey: String) async throws
@@ -344,6 +348,12 @@ struct ConferenceRecord: Decodable, Equatable, Identifiable, Sendable {
 extension GatewayAPI {
     func authorizedLines() async throws -> [AuthorizedLine] {
         throw APIError.notReady("当前配对不是统一网关，无法获取线路列表。")
+    }
+
+    /// v1/demo fallback: active = recent calls that never finished. The live
+    /// v2 transport overrides this with the gateway's `active=true` filter.
+    func activeCalls() async throws -> [CallRecord] {
+        try await listCalls(limit: 100).filter { !$0.isFinished }
     }
 
     func setDefaultLine(_ lineId: String, idempotencyKey: String) async throws {
