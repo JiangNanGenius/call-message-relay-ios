@@ -41,10 +41,9 @@ final class ContactsStoreWriter: ContactStoreWriting, @unchecked Sendable {
         self.store = store
     }
 
-    private static let richKeys: [CNKeyDescriptor] = [
+    static let richKeys: [CNKeyDescriptor] = [
         CNContactVCardSerialization.descriptorForRequiredKeys(),
         CNContactThumbnailImageDataKey as CNKeyDescriptor,
-        CNContactNoteKey as CNKeyDescriptor,
         CNContactNonGregorianBirthdayKey as CNKeyDescriptor,
         CNContactPhoneticOrganizationNameKey as CNKeyDescriptor
     ]

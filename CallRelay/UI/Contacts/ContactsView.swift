@@ -39,7 +39,7 @@ private struct ContactsContent: View {
                             NavigationLink {
                                 ContactImportView(service: service)
                             } label: {
-                                Label("导入并合并到系统通讯录", systemImage: "square.and.arrow.down")
+                                Label("导入联系人", systemImage: "square.and.arrow.down")
                             }
                         } label: {
                             Image(systemName: "ellipsis.circle")
@@ -201,7 +201,7 @@ struct RequestAccessView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Color(.systemBackground))
         .accessibilityIdentifier("contactsPermission")
     }
 }

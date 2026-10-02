@@ -29,7 +29,7 @@ struct SettingsView: View {
                     NavigationLink {
                         ContactExportView()
                     } label: {
-                        Label("联系人整理与导入", systemImage: "person.crop.circle.badge.checkmark")
+                        Label("通讯录导入与整理", systemImage: "person.crop.circle.badge.checkmark")
                     }
                 }
 
@@ -71,6 +71,11 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            // Readable centered column on iPad while the grouped background
+            // extends across the whole detail pane (no stark white margins).
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("设置")
             .alert("退出这台手机？", isPresented: $showUnpairConfirm) {
                 Button("取消", role: .cancel) {}

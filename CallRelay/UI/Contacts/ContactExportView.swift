@@ -74,7 +74,7 @@ private struct ContactExportContent: View {
                 exportSection
             }
         }
-        .navigationTitle("联系人整理")
+        .navigationTitle("通讯录整理")
         .navigationBarTitleDisplayMode(.inline)
         .task { if !loaded { loaded = true; await reload() } }
         .sheet(item: sheetBinding) { wrapper in
@@ -130,7 +130,7 @@ private struct ContactExportContent: View {
     }
 
     @ViewBuilder private var reimportSection: some View {
-        Section("导入并合并回系统通讯录") {
+        Section("导入联系人") {
             NavigationLink {
                 ContactImportView(service: service)
             } label: {

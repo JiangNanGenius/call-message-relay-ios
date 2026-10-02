@@ -27,7 +27,7 @@ final class ContactMergeUITests: XCTestCase {
         let tools = app.descendants(matching: .any)["contactsTools"].firstMatch
         XCTAssertTrue(tools.waitForExistence(timeout: 5))
         tools.tap()
-        let importItem = app.buttons["导入并合并到系统通讯录"].firstMatch
+        let importItem = app.buttons["导入联系人"].firstMatch
         XCTAssertTrue(importItem.waitForExistence(timeout: 5))
         importItem.tap()
 

@@ -385,7 +385,9 @@ final class LiveCallDriver: NSObject, CallDriver {
                 }
             }
             do {
-                try await self.coordinator.answerIncoming(uuid: uuid)
+                // Explicit direct-answer mode: no system call exists, so this
+                // session owns voice-chat activation.
+                try await self.coordinator.answerIncomingDirect(uuid: uuid)
             } catch {
                 if error is CancellationError { return }
                 AppLog.call.error("in-app answer failed")

@@ -281,7 +281,8 @@ final class CallCoordinator: NSObject {
                 self.delegate?.callGroupChanged()
                 self.publishPhase()
                 do {
-                    try await self.establishMedia(callId: call.id, uuid: uuid, generation: gen)
+                    try await self.establishMedia(
+                        callId: call.id, uuid: uuid, generation: gen, selfManagedAudio: false)
                 } catch is CancellationError {
                     return
                 } catch {
@@ -318,7 +319,19 @@ final class CallCoordinator: NSObject {
     /// Gateway answer only (awaited by the provider so fulfill/fail reflects
     /// the real answer). Media is started afterwards and never blocks
     /// fulfillment.
+    /// CallKit-driven answer: the system call already exists, so CallKit owns
+    /// audio activation and the media session must not self-activate.
     func answerIncoming(uuid: UUID) async throws {
+        try await performAnswer(uuid: uuid, directAudio: false)
+    }
+
+    /// Direct in-app answer with no system call: this session explicitly owns
+    /// its voice-chat activation (no `didActivate` will ever arrive).
+    func answerIncomingDirect(uuid: UUID) async throws {
+        try await performAnswer(uuid: uuid, directAudio: true)
+    }
+
+    private func performAnswer(uuid: UUID, directAudio: Bool) async throws {
         guard let gatewayId = await gatewayId(for: uuid) else {
             AppLog.call.error("answer with no known gateway call")
             throw APIError.notReady("未知的来电，无法接听。")
@@ -334,21 +347,23 @@ final class CallCoordinator: NSObject {
             guard activeGatewayId == current else { throw CancellationError() }
             _ = bumpGeneration()
             parkActiveCall(current)
-            try await answerTarget(gatewayId, uuid: uuid, gen: generation)
+            try await answerTarget(gatewayId, uuid: uuid, gen: generation, directAudio: directAudio)
             return
         }
         let gen = bumpGeneration()
-        try await answerTarget(gatewayId, uuid: uuid, gen: gen)
+        try await answerTarget(gatewayId, uuid: uuid, gen: gen, directAudio: directAudio)
     }
 
-    private func answerTarget(_ gatewayId: String, uuid: UUID, gen: UInt64) async throws {
+    private func answerTarget(
+        _ gatewayId: String, uuid: UUID, gen: UInt64, directAudio: Bool
+    ) async throws {
         try await api.answer(callId: gatewayId, idempotencyKey: UUID().uuidString)
         guard gen == generation else { throw CancellationError() }
         knownUUIDs[uuid] = gatewayId
         var entry = tracked[gatewayId] ?? TrackedCall(record: nil, held: false, muted: false)
         entry.held = false
         tracked[gatewayId] = entry
-        activate(callId: gatewayId, uuid: uuid, gen: gen)
+        activate(callId: gatewayId, uuid: uuid, gen: gen, selfManagedAudio: directAudio)
     }
 
     /// Registers an incoming call reported via push/event before media exists.
@@ -374,7 +389,11 @@ final class CallCoordinator: NSObject {
     }
 
     /// Makes the given tracked call active, replacing any old media session.
-    private func activate(callId: String, uuid: UUID, gen: UInt64) {
+    /// `selfManagedAudio` is true only for a direct in-app answer with no
+    /// system call; every other path leaves activation to CallKit.
+    private func activate(
+        callId: String, uuid: UUID, gen: UInt64, selfManagedAudio: Bool = false
+    ) {
         activeGatewayId = callId
         latestGateway = tracked[callId]?.record
         latestMedia = .idle
@@ -398,12 +417,15 @@ final class CallCoordinator: NSObject {
         mediaTask = Task { [weak self] in
             guard let self else { return }
             do {
-                try await self.establishMedia(callId: callId, uuid: uuid, generation: gen)
+                try await self.establishMedia(
+                    callId: callId, uuid: uuid, generation: gen,
+                    selfManagedAudio: selfManagedAudio)
             } catch is CancellationError {
                 return
             } catch {
                 guard gen == self.generation else { return }
-                await self.failActiveCall(message: "音频连接失败。")
+                let message = (error as? MediaError)?.errorDescription ?? "音频连接失败。"
+                await self.failActiveCall(message: message)
             }
         }
     }
@@ -606,12 +628,8 @@ final class CallCoordinator: NSObject {
         media = session
         // CallKit may activate audio before the ICE request returns. Replay the
         // current activation so a newly created media session cannot stay mute.
-        // When no system call exists (direct in-app answer), activate the
-        // session ourselves or the negotiated audio path would stay silent.
         if let activated = AudioSessionBridge.shared.activeSession {
             session.audioActivated(with: activated)
-        } else {
-            session.activateAudioWithoutCallKit()
         }
         session.onState = { [weak self] state in
             Task { @MainActor in
@@ -919,7 +937,9 @@ final class CallCoordinator: NSObject {
 
     // MARK: Media
 
-    private func establishMedia(callId: String, uuid: UUID, generation gen: UInt64) async throws {
+    private func establishMedia(
+        callId: String, uuid: UUID, generation gen: UInt64, selfManagedAudio: Bool
+    ) async throws {
         let ice = try await api.iceConfiguration(callId: callId)
         guard gen == self.generation else { throw CancellationError() }
 
@@ -927,12 +947,15 @@ final class CallCoordinator: NSObject {
         media = session
         // CallKit may activate audio before the ICE request returns. Replay the
         // current activation so a newly created media session cannot stay mute.
-        // When no system call exists (direct in-app answer), activate the
-        // session ourselves or the negotiated audio path would stay silent.
+        // ONLY the explicit direct-answer mode self-activates; a CallKit-owned
+        // call must wait for its (possibly delayed) didActivate.
         if let activated = AudioSessionBridge.shared.activeSession {
             session.audioActivated(with: activated)
-        } else {
-            session.activateAudioWithoutCallKit()
+        } else if selfManagedAudio {
+            guard session.activateAudioWithoutCallKit() else {
+                session.close()
+                throw MediaError.audioActivationFailed
+            }
         }
         let relayOnly = transport == "tailnet"
         session.onState = { [weak self] state in

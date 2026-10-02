@@ -1,5 +1,6 @@
 import XCTest
 import CallKit
+import AVFoundation
 @testable import CallRelay
 
 /// Incoming-call regressions for the real-phone feedback after 0.3.4:
@@ -313,6 +314,64 @@ final class IncomingAnswerTests: XCTestCase {
 
         XCTAssertEqual(media.activateWithoutCallKitCount, 1,
                        "direct in-app answer must activate the voice-chat session itself")
+    }
+
+    func testCallKitDrivenAnswerWaitsForDelayedSystemActivation() async throws {
+        let api = FakeGatewayAPI()
+        let callKit = FakeCallKit()
+        let media = FakeMediaSession()
+        let registry = CallIdentityRegistry()
+        let driver = LiveCallDriver(
+            api: api, transport: "tailnet", callKit: callKit,
+            mediaProvider: FakeMediaProvider(session: media), registry: registry
+        )
+        if let session = AudioSessionBridge.shared.activeSession {
+            AudioSessionBridge.shared.didDeactivate(session)
+        }
+        let call = makeCallRecord(
+            id: "line1:in-delayed", state: .incomingRinging, direction: .inbound, peer: "138"
+        )
+        await driver.reportIncomingFromEvent(call)
+        let uuid = await registry.uuid(for: call.id)
+        let resolved = try XCTUnwrap(uuid)
+        try await driver.answerIncoming(uuid: resolved)
+        await waitUntil(timeout: 5) { api.answers == [call.id] }
+        XCTAssertEqual(media.activateWithoutCallKitCount, 0,
+                       "a CallKit-owned call must never self-activate audio")
+
+        // Media is being established; the system's didActivate arrives late.
+        await waitUntil { media.makeOfferCount == 1 }
+        let session = AVAudioSession()
+        AudioSessionBridge.shared.didActivate(session)
+        await waitUntil { media.activationCount == 1 }
+        XCTAssertEqual(media.activationCount, 1,
+                       "a delayed CallKit activation must still reach the media session")
+        AudioSessionBridge.shared.didDeactivate(session)
+    }
+
+    func testDirectAnswerAudioFailureEndsCallHonestly() async {
+        let api = FakeGatewayAPI()
+        let callKit = FakeCallKit()
+        let media = FakeMediaSession()
+        media.activateWithoutCallKitResult = false
+        let driver = LiveCallDriver(
+            api: api, transport: "tailnet", callKit: callKit,
+            mediaProvider: FakeMediaProvider(session: media)
+        )
+        if let session = AudioSessionBridge.shared.activeSession {
+            AudioSessionBridge.shared.didDeactivate(session)
+        }
+        callKit.reportIncomingResult = false
+        let call = makeCallRecord(
+            id: "line1:in-noaudio", state: .incomingRinging, direction: .inbound, peer: "138"
+        )
+        await driver.reportIncomingFromEvent(call)
+        driver.answerCurrent()
+        await waitUntil(timeout: 5) { api.answers == [call.id] }
+        await waitUntil(timeout: 5) { api.hangups == [call.id] }
+
+        XCTAssertEqual(api.hangups, [call.id],
+                       "a failed direct-answer audio activation must not pretend the call is usable")
     }
 
     // MARK: Generation / async safety

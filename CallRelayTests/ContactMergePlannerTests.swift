@@ -202,7 +202,7 @@ final class ContactMergePlannerTests: XCTestCase {
         let b = CNMutableContact()
         b.givenName = "张"
         b.note = "新备注"
-        XCTAssertEqual(ContactMergePlanner.rawConflicts(imported: b, existing: a), ["备注"])
+        XCTAssertEqual(ContactMergePlanner.rawConflicts(imported: b, existing: a), ["备注（当前签名无备注权限）"])
 
         let c = CNMutableContact()
         c.givenName = "章"
@@ -229,6 +229,66 @@ final class ContactMergePlannerTests: XCTestCase {
                       "an explicit extension must be kept as its own number")
         XCTAssertEqual(merged.imageData, Data([9, 9, 9]),
                        "an imported photo fills an empty existing image losslessly")
+    }
+
+
+    // MARK: Restricted note entitlement
+
+    func testNoteBearingImportIsReviewBlocked() {
+        let existing = [item("e1", "张", "三", phones: ["13800001111"])]
+        var importedItem = item("i1", "张", "三", phones: ["13800001111"])
+        importedItem.note = "重要备注"
+        let plan = ContactMergePlanner.importPlan(imported: [importedItem], existing: existing)
+        XCTAssertEqual(plan.entries.first?.kind, .review)
+        XCTAssertNil(plan.entries.first?.operation)
+        XCTAssertTrue(plan.entries.first?.detail.contains("备注") ?? false)
+    }
+
+    func testNoteBearingNewContactIsReviewBlocked() {
+        var importedItem = item("i1", "赵", "六", phones: ["13500005555"])
+        importedItem.note = "备注"
+        let plan = ContactMergePlanner.importPlan(imported: [importedItem], existing: [])
+        XCTAssertEqual(plan.entries.first?.kind, .review)
+        XCTAssertNil(plan.entries.first?.operation)
+    }
+
+    func testSparseContactConversionNeverReadsUnfetchedNote() {
+        // Simulates a contact fetched WITHOUT the restricted note key: the
+        // conversion must not raise and must read the note as empty.
+        let sparse = CNMutableContact()
+        sparse.givenName = "测试"
+        let converted = ContactItem(cn: sparse)
+        XCTAssertEqual(converted.note, "")
+        XCTAssertEqual(ContactMergePlanner.rawConflicts(imported: sparse, existing: sparse), [])
+    }
+
+    func testVCardFileWithNoteIsBlockedAndDetected() throws {
+        // A real .vcf can carry NOTE even when the running app has no notes
+        // entitlement: the file text must surface it as a blocked review.
+        let vcf = [
+            "BEGIN:VCARD",
+            "VERSION:3.0",
+            "N:有备注;;;;",
+            "FN:有备注",
+            "TEL;TYPE=CELL:13500005555",
+            "NOTE:内部备注",
+            "END:VCARD",
+            ""
+        ].joined(separator: "\r\n")
+        let data = Data(vcf.utf8)
+        XCTAssertTrue(ContactVCardImporter.vCardContainsNote(data))
+        let parsed = try ContactVCardImporter.parse(data: data)
+        XCTAssertFalse(parsed[0].item.note.isEmpty,
+                       "a NOTE in the file must be surfaced, never silently dropped")
+        let plan = ContactMergePlanner.importPlan(imported: parsed, existing: [])
+        XCTAssertEqual(plan.entries.first?.kind, .review)
+        XCTAssertNil(plan.entries.first?.operation)
+    }
+
+    func testWriterNeverRequestsRestrictedNoteKey() {
+        let keys = ContactsStoreWriter.richKeys.compactMap { $0 as? String }
+        XCTAssertFalse(keys.contains(CNContactNoteKey),
+                       "requesting the restricted note key breaks the whole fetch without the entitlement")
     }
 
     // MARK: vCard round trip

@@ -113,8 +113,9 @@ protocol CallMediaSession: AnyObject {
     func audioDeactivated(with session: AVAudioSession)
     /// Activates the app's own voice-chat session for calls answered directly
     /// in the app when no system call exists (so no `didActivate` will come).
-    /// A later CallKit activation takes over seamlessly.
-    func activateAudioWithoutCallKit()
+    /// A later CallKit activation takes over. Returns false when activation
+    /// failed: the caller must not claim a working audio path.
+    func activateAudioWithoutCallKit() -> Bool
     /// Tears the self-managed session down on close. No-op when CallKit owns
     /// the session (or it was never self-activated).
     func deactivateAudioWithoutCallKit()
@@ -124,7 +125,7 @@ protocol CallMediaSession: AnyObject {
 extension CallMediaSession {
     // Default no-ops keep fakes/tests source-compatible; the live implementation
     // overrides them.
-    func activateAudioWithoutCallKit() {}
+    func activateAudioWithoutCallKit() -> Bool { true }
     func deactivateAudioWithoutCallKit() {}
 }
 
@@ -266,9 +267,12 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
     /// Direct in-app answer path: CallKit never reported/activated this call,
     /// so configure and activate the shared voice-chat session ourselves or
     /// the negotiated audio path would stay muted.
-    func activateAudioWithoutCallKit() {
-        guard !selfManagedAudioActive else { return }
-        guard AudioSessionBridge.shared.activeSession == nil else { return }
+    @discardableResult
+    func activateAudioWithoutCallKit() -> Bool {
+        if selfManagedAudioActive { return true }
+        // CallKit owns the session already: report success and let its
+        // didActivate path drive the RTC audio.
+        if AudioSessionBridge.shared.activeSession != nil { return true }
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(
@@ -281,8 +285,10 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
             rtc.isAudioEnabled = true
             selfManagedAudioActive = true
             AppLog.media.debug("audio activated for direct in-app answer (no system call)")
+            return true
         } catch {
             AppLog.media.notice("direct answer audio activation failed")
+            return false
         }
     }
 
@@ -443,6 +449,7 @@ enum MediaError: Error, LocalizedError {
     case closed
     case gatheringTimedOut
     case neverConnected
+    case audioActivationFailed
 
     var errorDescription: String? {
         switch self {
@@ -452,6 +459,7 @@ enum MediaError: Error, LocalizedError {
         case .closed: return "音频已关闭。"
         case .gatheringTimedOut: return "ICE 候选收集超时，无法在限定时间内准备音频。"
         case .neverConnected: return "音频通道未能建立。"
+        case .audioActivationFailed: return "无法启用通话音频，请重试。"
         }
     }
 }

@@ -57,7 +57,7 @@ struct ContactImportView: View {
                 }
             }
         }
-        .navigationTitle("导入并合并")
+        .navigationTitle("导入联系人")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard !loaded else { return }
@@ -77,7 +77,7 @@ struct ContactImportView: View {
                 errorText = "选择文件失败：\(error.localizedDescription)"
             }
         }
-        .alert("写入系统通讯录？", isPresented: $showApplyConfirm) {
+        .alert("导入这些联系人？", isPresented: $showApplyConfirm) {
             Button("取消", role: .cancel) {}
             Button("写入", role: .destructive) { Task { await applyPlan() } }
         } message: {
@@ -181,12 +181,8 @@ struct ContactImportView: View {
             else { selected.insert(entry.id) }
         } label: {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: entry.operation == nil
-                      ? "exclamationmark.circle"
-                      : (selected.contains(entry.id) ? "checkmark.circle.fill" : "circle"))
-                    .foregroundStyle(entry.operation == nil
-                                     ? Color.orange
-                                     : (selected.contains(entry.id) ? Color.accentColor : .secondary))
+                Image(systemName: rowIcon(entry).name)
+                    .foregroundStyle(rowIcon(entry).color)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.title).foregroundStyle(.primary)
                     Text(entry.detail)
@@ -201,14 +197,27 @@ struct ContactImportView: View {
         .accessibilityIdentifier("merge-entry-\(entry.kind.rawValue)")
     }
 
+    private func rowIcon(_ entry: ContactMergePlan.Entry) -> (name: String, color: Color) {
+        switch entry.kind {
+        case .alreadyCurrent:
+            return ("checkmark.circle", .secondary)
+        case .review:
+            return ("exclamationmark.circle", .orange)
+        case .insert, .update:
+            return selected.contains(entry.id)
+                ? ("checkmark.circle.fill", .accentColor)
+                : ("circle", .secondary)
+        }
+    }
+
     @ViewBuilder private func writeSection(_ plan: ContactMergePlan) -> some View {
-        Section("备份并写入系统通讯录") {
+        Section("导入联系人") {
             Button {
                 Task { await makeBackup() }
             } label: {
                 HStack {
                     Image(systemName: "square.and.arrow.down")
-                    Text(backupURL == nil ? "1. 导出可恢复备份 (.vcf)" : "1. 备份已生成，重新导出")
+                    Text(backupURL == nil ? "导出备份 (.vcf)" : "备份已生成，重新导出")
                 }
             }
             if let backupURL {
@@ -222,13 +231,13 @@ struct ContactImportView: View {
                 HStack {
                     if applying { ProgressView() }
                     Image(systemName: "square.and.arrow.down.on.square")
-                    Text("2. 写入系统通讯录（\(selected.count) 项）")
+                    Text("导入勾选的联系人（\(selected.count) 项）")
                 }
             }
             .disabled(fixtureMode || applying || selected.isEmpty
                       || plan.selectedOperations(selected).isEmpty)
             .accessibilityIdentifier("apply-merge")
-            Text("只会新增或合并上面勾选的联系人；不会删除任何联系人，未勾选的内容不会被修改。建议先导出备份。")
+            Text("只会导入勾选的联系人；不会删除或覆盖现有内容。建议先导出备份。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -246,7 +255,7 @@ struct ContactImportView: View {
         var parts: [String] = []
         if inserted > 0 { parts.append("新增 \(inserted) 条") }
         if updated > 0 { parts.append("更新 \(updated) 条") }
-        return "将写入系统通讯录：" + parts.joined(separator: "，") + "。不会删除任何联系人。"
+        return "将导入：" + parts.joined(separator: "，") + "。不会删除任何联系人。"
     }
 
     // MARK: Loading

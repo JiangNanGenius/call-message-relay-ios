@@ -144,7 +144,6 @@ struct MainTabs: View {
             SettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape.fill") }
                 .tag(AppModel.AppTab.settings)
-                .readableWidth(760)
         }
         .tint(.accentColor)
     }

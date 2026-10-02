@@ -101,7 +101,9 @@ extension ContactItem {
         jobTitle = cn.jobTitle
         departmentName = cn.departmentName
         phoneticOrganizationName = cn.phoneticOrganizationName
-        note = cn.note
+        // Guard every optional restricted key: an unfetched/unentitled key
+        // must read as empty, never raise or silently fail the conversion.
+        note = cn.isKeyAvailable(CNContactNoteKey) ? cn.note : ""
     }
 
     nonisolated static func addressSummary(_ address: CNPostalAddress) -> String? {
@@ -152,10 +154,31 @@ enum ContactVCardImporter {
             // rich payload (photo/addresses/dates/URLs...), not just the
             // summary fields used for matching.
             let rich = try? CNContactVCardSerialization.data(with: [cn])
-            return ImportedContact(item: ContactItem(cn: cn), richVCard: rich)
+            var item = ContactItem(cn: cn)
+            // NOTE requires a restricted entitlement and may not be exposed on
+            // the parsed object. Detect it in the raw vCard text so it is
+            // surfaced for review instead of silently discarded on write.
+            if item.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let rich, Self.vCardContainsNote(rich) {
+                item.note = "（vCard 含备注）"
+            }
+            return ImportedContact(item: item, richVCard: rich)
         }
         guard !items.isEmpty else { throw ImportError.empty }
         return items
+    }
+
+    /// Textual NOTE detection that does not depend on the restricted
+    /// contacts.notes entitlement (used only to block, never to write).
+    nonisolated static func vCardContainsNote(_ data: Data) -> Bool {
+        guard let text = String(data: data, encoding: .utf8) else { return false }
+        for line in text.split(whereSeparator: { $0.isNewline }) {
+            let upper = line.uppercased()
+            if upper == "NOTE" || upper.hasPrefix("NOTE:") || upper.hasPrefix("NOTE;") {
+                return true
+            }
+        }
+        return false
     }
 }
 
@@ -206,8 +229,12 @@ final class ContactsService: ObservableObject {
             CNContactNicknameKey as CNKeyDescriptor,
             CNContactJobTitleKey as CNKeyDescriptor,
             CNContactDepartmentNameKey as CNKeyDescriptor,
-            CNContactPhoneticOrganizationNameKey as CNKeyDescriptor,
-            CNContactNoteKey as CNKeyDescriptor
+            CNContactPhoneticOrganizationNameKey as CNKeyDescriptor
+            // NOTE: CNContactNoteKey is deliberately NOT requested. Reading
+            // notes requires the restricted com.apple.developer.contacts.notes
+            // entitlement; requesting it without the entitlement returns
+            // unauthorizedKeys and makes the whole fetch fail. Imported vCard
+            // notes are surfaced for manual review instead.
         ]
         refreshStatus()
     }

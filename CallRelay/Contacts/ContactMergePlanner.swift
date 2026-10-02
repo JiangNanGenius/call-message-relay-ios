@@ -155,7 +155,15 @@ enum ContactMergePlanner {
         conflict("职位", imported.jobTitle, existing.jobTitle)
         conflict("部门", imported.departmentName, existing.departmentName)
         conflict("单位拼音", imported.phoneticOrganizationName, existing.phoneticOrganizationName)
-        conflict("备注", imported.note, existing.note)
+        // Notes require the restricted contacts.notes entitlement. Without the
+        // key fetched, isKeyAvailable is false and the note must be treated as
+        // empty (never raise, never be silently overwritten).
+        let importedNote = imported.isKeyAvailable(CNContactNoteKey) ? imported.note : ""
+        let existingNote = existing.isKeyAvailable(CNContactNoteKey) ? existing.note : ""
+        if !importedNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           importedNote != existingNote {
+            reasons.append("备注（当前签名无备注权限）")
+        }
         if let a = imported.birthday, let b = existing.birthday, a != b { reasons.append("生日") }
         if let a = imported.nonGregorianBirthday, let b = existing.nonGregorianBirthday, a != b {
             reasons.append("非公历生日")
@@ -180,6 +188,15 @@ enum ContactMergePlanner {
 
         for (index, importedContact) in imported.enumerated() {
             let item = importedContact.item
+            // A NOTE can be preserved in the .vcf but cannot be written
+            // without the restricted contacts.notes entitlement. Never claim
+            // a lossless merge: surface it for manual handling instead.
+            if !item.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                entries.append(reviewEntry(
+                    item, index: index,
+                    reason: "含备注：当前签名没有备注写入权限，不会导入备注，请手动处理。"))
+                continue
+            }
             let targetIDs = matchTargets(imported: item, existing: existing)
             if targetIDs.count > 1 {
                 entries.append(reviewEntry(
@@ -299,7 +316,7 @@ enum ContactMergePlanner {
             || additions.phoneticOrganizationName != nil || additions.note != nil {
             parts.append("补全空白字段（不覆盖已有内容）")
         }
-        parts.append("现有号码与标签保持不变，vCard 完整字段无损合并")
+        parts.append("保留现有内容，只补充缺失项")
         return ContactMergePlan.Entry(
             id: "merge-\(stableID(item, index: index))",
             kind: .update,

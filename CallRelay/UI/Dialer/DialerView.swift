@@ -6,6 +6,7 @@ import UIKit
 /// and a discreet gateway status line. No large title competes with the pad.
 struct DialerView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var number = ""
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
@@ -81,9 +82,13 @@ struct DialerView: View {
                 .padding(.bottom, 10)
             }
             .background(Color(.systemBackground))
-            // Phone-like centered column on iPad/landscape; unchanged on iPhone.
+            // Phone-like centered column on iPad/landscape; unchanged on
+            // iPhone. On regular width the whole group is bounded vertically
+            // so the number, keypad and call action stay together instead of
+            // being spread across a huge empty pane.
             .frame(maxWidth: 460)
-            .frame(maxWidth: .infinity)
+            .frame(maxHeight: horizontalSizeClass == .regular ? 700 : .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .alert("已按拦截规则阻止", isPresented: Binding(

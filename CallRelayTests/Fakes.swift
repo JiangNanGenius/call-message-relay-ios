@@ -28,11 +28,15 @@ final class FakeMediaSession: CallMediaSession {
     var muted = false
     var speaker = false
     var afterApplyAnswer: (() -> Void)?
+    var makeOfferCount = 0
     /// Direct in-app answer path activations (no CallKit didActivate).
     var activateWithoutCallKitCount = 0
     var deactivateWithoutCallKitCount = 0
+    /// When false, a direct-answer session activation fails.
+    var activateWithoutCallKitResult = true
 
     func makeOffer(ice: ICEConfiguration, relayOnly: Bool) async throws -> String {
+        makeOfferCount += 1
         if let makeOfferError { throw makeOfferError }
         return "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 0\r\na=rtpmap:0 PCMU/8000\r\n"
     }
@@ -45,7 +49,10 @@ final class FakeMediaSession: CallMediaSession {
     func setSpeakerphone(_ enabled: Bool) throws { speaker = enabled }
     func audioActivated(with session: AVAudioSession) { activationCount += 1 }
     func audioDeactivated(with session: AVAudioSession) {}
-    func activateAudioWithoutCallKit() { activateWithoutCallKitCount += 1 }
+    func activateAudioWithoutCallKit() -> Bool {
+        activateWithoutCallKitCount += 1
+        return activateWithoutCallKitResult
+    }
     func deactivateAudioWithoutCallKit() { deactivateWithoutCallKitCount += 1 }
     func close() { closeCount += 1 }
 }
