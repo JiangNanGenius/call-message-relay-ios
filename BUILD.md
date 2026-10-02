@@ -178,16 +178,16 @@ CallKit/PushKit/麦克风与 VoIP 后台模式需要描述文件与签名才能�
 
 CI 在测试通过后编译 `iphoneos Release`，打包 `Payload/CallRelay.app`，保留内嵌 WebRTC，
 将未签名 IPA 保存为 `unsigned-ipa` artifact。用自己的证书在 Feather 中重新签名。
-发布者先上传带版本号的未签名 IPA 到版本固定的 GitHub Release（v0.3.0 使用
-`CallRelay-0.3.0-unsigned.ipa`，另附 `SHA256SUMS`），再执行：
+发布者先上传带版本号的未签名 IPA 到版本固定的 GitHub Release（v0.3.1 当前使用
+`CallRelay-0.3.1-unsigned.ipa`，另附 `SHA256SUMS`），再执行：
 
 ```sh
-./Scripts/update-feather-source.py build/release-v0.3.0/CallRelay-0.3.0-unsigned.ipa --tag v0.3.0
+./Scripts/update-feather-source.py build/release-v0.3.0/CallRelay-0.3.1-unsigned.ipa --tag v0.3.0
 ```
 
 生成并提交 `feather.json`，其中版本、Bundle ID、最低 iOS、文件大小与 SHA-256 均从
 实际 IPA 提取，下载地址固定为
-`https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/CallRelay-0.3.0-unsigned.ipa`。
+`https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.0/CallRelay-0.3.1-unsigned.ipa`。
 该脚本会重建整份源（只保留当前版本）；若要在 `versions` 中保留旧版本条目与既有截图，
 需在生成结果上手工补回，或直接编辑已提交的 `feather.json`。公开源不包含证书、私钥或
 描述文件。

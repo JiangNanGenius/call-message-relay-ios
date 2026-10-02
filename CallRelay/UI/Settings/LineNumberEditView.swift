@@ -19,7 +19,7 @@ struct LineNumberEditView: View {
             Form {
                 if let line {
                     Section {
-                        Text(line.friendlyName)
+                        Text(line.name)
                             .font(.headline)
                         if let number = line.actualNumber {
                             Text(number)
@@ -44,7 +44,7 @@ struct LineNumberEditView: View {
                     } header: {
                         Text("手动号码")
                     } footer: {
-                        Text("保存在网关并对其他已授权手机生效；留空保存或选择“恢复 SIM 自动读取”将移除手动号码。")
+                        Text("修改会同步到其他已授权手机。")
                     }
                     if line.ownNumberSource == "manual" {
                         Section {
