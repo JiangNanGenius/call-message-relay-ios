@@ -17,6 +17,16 @@
       "beta": true,
       "versions": [
         {
+          "version": "0.3.2",
+          "buildVersion": "6",
+          "date": "2026-10-02T11:41:15Z",
+          "minOSVersion": "17.0",
+          "size": 10082155,
+          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/CallRelay-0.3.2-unsigned.ipa",
+          "localizedDescription": "0.3.2 修复（取代 0.3.1）：授权失效与普通离线/权限不足明确区分，只有密钥或设备被撤销时才提示重新配对；过期访问令牌自动刷新并恢复事件连接，连续失败才提示并清空失效线路与本次拨号选择；线路在加载中、旧版配对、无授权、暂时不可用等状态都显示明确原因，单线路也显示当前号码，默认缺失必须显式选择；旧版 /line1、/line2 绑定提供“重新配对统一网关”迁移入口，旧绑定与本地记录在新配对成功前保留；配合更新后的网关控制台，新建配对密钥可在之后再次查看/复制（旧密钥未保存原文时诚实提示并可创建新密钥，既有设备不受影响）。未签名，需自行签名，并需最新网关 v2。",
+          "sha256": "322c6d527cf1cb666df4187b3c46a7fd425c73fc7688d3a95a096b7959378647"
+        },
+        {
           "version": "0.3.1",
           "buildVersion": "5",
           "date": "2026-10-02T08:39:26Z",
@@ -67,10 +77,10 @@
           "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
         }
       ],
-      "version": "0.3.1",
-      "versionDate": "2026-10-02T08:39:26Z",
-      "size": 10050193,
-      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/CallRelay-0.3.1-unsigned.ipa",
+      "version": "0.3.2",
+      "versionDate": "2026-10-02T11:41:15Z",
+      "size": 10082155,
+      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/CallRelay-0.3.2-unsigned.ipa",
       "appPermissions": {
         "entitlements": [
           "aps-environment"
@@ -91,6 +101,11 @@
         ]
       },
       "screenshotURLs": [
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-dialer-line-picker.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-line-menu-expanded.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/paired-settings-lines.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/auth-lost-banner.png",
+        "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/auth-lost-settings.png",
         "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/multiline-dialer-light.png",
         "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/multiline-dialer-dark.png",
         "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.1/multiline-chooser-dark.png",
