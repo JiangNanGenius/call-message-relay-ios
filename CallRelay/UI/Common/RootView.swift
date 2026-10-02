@@ -113,11 +113,12 @@ private struct AuthRecoveryBanner: View {
 
 struct MainTabs: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        if #available(iOS 18.0, *) {
-            // Regular width (iPad, landscape) gets the native sidebar; compact
-            // width keeps the standard bottom tab bar unchanged.
+        if #available(iOS 18.0, *), horizontalSizeClass == .regular {
+            // Regular width (iPad) gets the native sidebar. Compact width
+            // (every iPhone) keeps the exact standard TabView behavior.
             tabs.tabViewStyle(.sidebarAdaptable)
         } else {
             tabs
