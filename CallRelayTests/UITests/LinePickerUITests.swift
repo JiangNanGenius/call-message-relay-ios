@@ -106,6 +106,7 @@ final class LinePickerUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "+15550161111")).firstMatch
         XCTAssertTrue(number.waitForExistence(timeout: 3),
                       "paired mode must show the authorized own number, even with one usable line")
+        Thread.sleep(forTimeInterval: 0.5)
         attach("15-paired-dialer-line-picker")
 
         // Expanded per-call selector lists every authorized line by number.
@@ -113,6 +114,7 @@ final class LinePickerUITests: XCTestCase {
         let menuLine = app.buttons.containing(
             NSPredicate(format: "label CONTAINS %@", "+15550162222")).firstMatch
         XCTAssertTrue(menuLine.waitForExistence(timeout: 3))
+        Thread.sleep(forTimeInterval: 0.5)
         attach("19-paired-line-menu-expanded")
         menuLine.tap()
         XCTAssertTrue(app.staticTexts.containing(
@@ -127,6 +129,7 @@ final class LinePickerUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "+15550162222")).firstMatch
         XCTAssertTrue(line2.waitForExistence(timeout: 3),
                       "authorized unavailable/other lines stay listed with their number")
+        Thread.sleep(forTimeInterval: 0.6)
         attach("16-paired-settings-lines")
     }
 
@@ -138,10 +141,16 @@ final class LinePickerUITests: XCTestCase {
         attach("17-auth-lost-banner")
 
         app.tabBars.buttons["设置"].tap()
+        // Let the tab transition and the banner inset settle before capturing
+        // stable evidence (a mid-animation frame can look like a blank gap).
+        XCTAssertTrue(app.staticTexts["连接状态"].waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 1.0)
+        attach("18a-auth-lost-settings-top")
         let header = app.staticTexts["默认拨出线路"]
         for _ in 0..<8 where !header.exists { app.swipeUp() }
         XCTAssertTrue(header.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["重新配对"].firstMatch.waitForExistence(timeout: 3),
+        Thread.sleep(forTimeInterval: 0.6)
+        XCTAssertTrue(app.buttons["重试连接"].waitForExistence(timeout: 3),
                       "settings must offer an explicit re-pair route")
         attach("18-auth-lost-settings")
     }

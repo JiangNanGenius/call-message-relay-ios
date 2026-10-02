@@ -4,19 +4,20 @@ struct RootView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        ZStack {
-            if model.isDemo || model.bindingPresent {
-                MainTabs()
-            } else {
-                OnboardingView()
-            }
-        }
-        // Layout-respecting banner: inserted into the safe area so navigation
-        // titles and toolbars are pushed below it instead of being covered.
-        .safeAreaInset(edge: .top, spacing: 0) {
+        // A plain VStack (not an overlay/inset) places the banner above the
+        // whole tab hierarchy, so each NavigationStack's title and toolbar are
+        // laid out below it instead of being covered or scrolled away.
+        VStack(spacing: 0) {
             if model.authRecoveryRequired, !model.isDemo, model.bindingPresent {
                 AuthRecoveryBanner()
                     .environmentObject(model)
+            }
+            ZStack {
+                if model.isDemo || model.bindingPresent {
+                    MainTabs()
+                } else {
+                    OnboardingView()
+                }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: model.isDemo)
