@@ -115,6 +115,16 @@ struct MainTabs: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
+        if #available(iOS 18.0, *) {
+            // Regular width (iPad, landscape) gets the native sidebar; compact
+            // width keeps the standard bottom tab bar unchanged.
+            tabs.tabViewStyle(.sidebarAdaptable)
+        } else {
+            tabs
+        }
+    }
+
+    private var tabs: some View {
         TabView(selection: $model.selectedTab) {
             DialerView()
                 .tabItem { Label("拨号键盘", systemImage: "circle.grid.3x3.fill") }
@@ -122,16 +132,30 @@ struct MainTabs: View {
             ContactsView()
                 .tabItem { Label("联系人", systemImage: "person.crop.circle.fill") }
                 .tag(AppModel.AppTab.contacts)
+                .readableWidth(760)
             MessagesView()
                 .tabItem { Label("短信", systemImage: "ellipsis.message.fill") }
                 .tag(AppModel.AppTab.messages)
+                .readableWidth(860)
             RecentsView()
                 .tabItem { Label("最近通话", systemImage: "clock.fill") }
                 .tag(AppModel.AppTab.recents)
+                .readableWidth(760)
             SettingsView()
                 .tabItem { Label("设置", systemImage: "gearshape.fill") }
                 .tag(AppModel.AppTab.settings)
+                .readableWidth(760)
         }
         .tint(.accentColor)
+    }
+}
+
+extension View {
+    /// Centers content at a comfortable maximum width on regular-width
+    /// surfaces (iPad / landscape) while remaining full width on iPhone.
+    /// Prevents "stretched phone UI" without changing compact behavior.
+    func readableWidth(_ maxWidth: CGFloat) -> some View {
+        frame(maxWidth: maxWidth)
+            .frame(maxWidth: .infinity)
     }
 }

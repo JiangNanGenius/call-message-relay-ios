@@ -34,6 +34,9 @@ final class AppModel: ObservableObject {
     /// Explicit state of the authorized-line fetch: never let an empty picker
     /// look like a healthy gateway.
     @Published var lineListState: LineListState = .unknown
+    /// Concise notice when the system incoming-call UI is unavailable (the
+    /// in-app ring and answer still work). nil when CallKit accepted.
+    @Published var callKitIssue: String?
     /// Set only on a definitive credential loss (revoked key/device or a
     /// rejected refresh), never on a transient network failure.
     @Published var authRecoveryRequired = false
@@ -526,7 +529,9 @@ final class AppModel: ObservableObject {
                 signal: bars.map { Signal(rssi: -70, bars: $0) }, activeCallId: nil,
                 permissions: .all, smsLive: false,
                 identity: LineIdentity(moduleKey: nil, usbPath: nil, firmware: nil, simMasked: nil,
-                                       phoneMasked: phone.map { _ in "555****1111" }, numberSource: source),
+                                       phoneMasked: phone.map { _ in "555****1111" }, numberSource: source,
+                                       operatorAlpha: "演示运营商", operatorNumeric: nil,
+                                       registration: "registered", accessTech: "lte"),
                 phoneNumber: phone, canManageNumber: manage, lastError: nil
             )
         }
@@ -752,6 +757,8 @@ final class AppModel: ObservableObject {
         )
         driver = live
         live.setDefaultLineId(binding.defaultLineId)
+        live.onCallKitIssue = { [weak self] issue in self?.callKitIssue = issue }
+        live.onAnswerFailed = { [weak self] message in self?.lastError = message }
         bindDriver(live)
 
         let outboxStore = OutboxStore(scopeIdentifier: binding.gatewayId)
@@ -823,6 +830,7 @@ final class AppModel: ObservableObject {
         lineListState = .unknown
         authRecoveryRequired = false
         authRecoveryMessage = nil
+        callKitIssue = nil
         eventAuthRecoveryKicks = 0
         activeGatewayCallIds.removeAll()
         reportingIncomingIds.removeAll()

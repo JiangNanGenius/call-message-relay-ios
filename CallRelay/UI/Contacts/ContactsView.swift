@@ -30,12 +30,22 @@ private struct ContactsContent: View {
                             prompt: "搜索联系人或号码")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink {
-                            ContactExportView()
+                        Menu {
+                            NavigationLink {
+                                ContactExportView()
+                            } label: {
+                                Label("整理与导出联系人", systemImage: "square.and.arrow.up")
+                            }
+                            NavigationLink {
+                                ContactImportView(service: service)
+                            } label: {
+                                Label("导入并合并到系统通讯录", systemImage: "square.and.arrow.down")
+                            }
                         } label: {
-                            Image(systemName: "square.and.arrow.up")
+                            Image(systemName: "ellipsis.circle")
                         }
-                        .accessibilityLabel("导出联系人")
+                        .accessibilityLabel("联系人整理与导入")
+                        .accessibilityIdentifier("contactsTools")
                     }
                 }
         }

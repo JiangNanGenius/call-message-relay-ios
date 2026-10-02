@@ -111,7 +111,21 @@ protocol CallMediaSession: AnyObject {
     /// CallKit audio activation hooks (manual RTCAudioSession).
     func audioActivated(with session: AVAudioSession)
     func audioDeactivated(with session: AVAudioSession)
+    /// Activates the app's own voice-chat session for calls answered directly
+    /// in the app when no system call exists (so no `didActivate` will come).
+    /// A later CallKit activation takes over seamlessly.
+    func activateAudioWithoutCallKit()
+    /// Tears the self-managed session down on close. No-op when CallKit owns
+    /// the session (or it was never self-activated).
+    func deactivateAudioWithoutCallKit()
     func close()
+}
+
+extension CallMediaSession {
+    // Default no-ops keep fakes/tests source-compatible; the live implementation
+    // overrides them.
+    func activateAudioWithoutCallKit() {}
+    func deactivateAudioWithoutCallKit() {}
 }
 
 // MARK: - WebRTC implementation
@@ -134,6 +148,9 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
         }
     }
     private var quality = MediaQuality()
+    /// True while this session activated the shared AVAudioSession itself
+    /// (direct in-app answer, no CallKit activation).
+    private var selfManagedAudioActive = false
 
     /// Bounded time to fully gather nontrickle candidates before failing.
     private let gatheringTimeout: TimeInterval
@@ -230,6 +247,9 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
     }
 
     func audioActivated(with session: AVAudioSession) {
+        // CallKit now owns the session: drop the self-managed flag so close()
+        // never deactivates a system-owned session.
+        selfManagedAudioActive = false
         let rtc = RTCAudioSession.sharedInstance()
         rtc.audioSessionDidActivate(session)
         rtc.isAudioEnabled = true
@@ -243,11 +263,48 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
         stopStats()
     }
 
+    /// Direct in-app answer path: CallKit never reported/activated this call,
+    /// so configure and activate the shared voice-chat session ourselves or
+    /// the negotiated audio path would stay muted.
+    func activateAudioWithoutCallKit() {
+        guard !selfManagedAudioActive else { return }
+        guard AudioSessionBridge.shared.activeSession == nil else { return }
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(
+                .playAndRecord, mode: .voiceChat,
+                options: [.allowBluetooth, .allowBluetoothA2DP]
+            )
+            try session.setActive(true)
+            let rtc = RTCAudioSession.sharedInstance()
+            rtc.audioSessionDidActivate(session)
+            rtc.isAudioEnabled = true
+            selfManagedAudioActive = true
+            AppLog.media.debug("audio activated for direct in-app answer (no system call)")
+        } catch {
+            AppLog.media.notice("direct answer audio activation failed")
+        }
+    }
+
+    func deactivateAudioWithoutCallKit() {
+        guard selfManagedAudioActive else { return }
+        selfManagedAudioActive = false
+        let rtc = RTCAudioSession.sharedInstance()
+        rtc.isAudioEnabled = false
+        rtc.audioSessionDidDeactivate(AVAudioSession.sharedInstance())
+        try? AVAudioSession.sharedInstance().setActive(
+            false, options: .notifyOthersOnDeactivation)
+        stopStats()
+    }
+
     func close() {
         let wasActive = peerConnection != nil
         finishGathering(throwing: MediaError.closed)
         gatherWaitTask?.cancel()
         gatherWaitTask = nil
+        // Direct-answer sessions own their activation; CallKit-owned sessions
+        // must not be deactivated here.
+        deactivateAudioWithoutCallKit()
         stopStats()
         // Drop the speaker override so no routing residue outlives the call.
         try? RTCAudioSession.sharedInstance().lockForConfiguration()

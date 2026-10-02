@@ -158,6 +158,15 @@ struct LineIdentity: Decodable, Equatable, Sendable {
     /// Authoritative own-number provenance: sim | manual | empty |
     /// unsupported | sim_changed | none. Never contains a number itself.
     let numberSource: String?
+    /// Network-reported operator name; absent when the modem returned a
+    /// non-textual token (the gateway then exposes the numeric identity).
+    var operatorAlpha: String? = nil
+    /// MCC+MNC identity (e.g. 46000), real data rather than a fabricated name.
+    var operatorNumeric: String? = nil
+    /// Stored registration token (registered/roaming/searching/...).
+    var registration: String? = nil
+    /// Radio access technology token (lte / nr / umts / gsm).
+    var accessTech: String? = nil
 }
 
 /// One line the signed-in device may use, including its per-line permission
@@ -285,6 +294,44 @@ struct AuthorizedLine: Decodable, Equatable, Identifiable, Sendable {
         LineStatus(sim: sim, operatorName: operatorName, registration: registration, signal: signal,
                    capabilityTier: voice == .ready ? "full_voice" : nil, voice: voice, sms: sms,
                    activeCallId: activeCallId)
+    }
+
+    /// Per-line operator for the detail view: the gateway-resolved name when
+    /// present, else the stored network name, else the numeric MCC+MNC. nil
+    /// when genuinely unknown — no fabricated operator.
+    var resolvedOperator: String? {
+        func clean(_ value: String?) -> String? {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard trimmed.unicodeScalars.contains(where: {
+                CharacterSet.alphanumerics.contains($0)
+            }) else { return nil }
+            return trimmed
+        }
+        return clean(operatorName) ?? clean(identity?.operatorAlpha) ?? clean(identity?.operatorNumeric)
+    }
+
+    /// Human label for the stored radio access technology, or nil when the
+    /// gateway did not report one.
+    var accessTechLabel: String? {
+        guard let raw = identity?.accessTech?.trimmingCharacters(in: .whitespaces).lowercased(),
+              !raw.isEmpty else { return nil }
+        switch raw {
+        case "lte": return "LTE"
+        case "nr", "nr5g", "5g": return "5G NR"
+        case "umts", "wcdma", "hspa": return "3G"
+        case "gsm", "edge", "gprs": return "2G"
+        default: return raw.uppercased()
+        }
+    }
+
+    /// "RSSI dBm · n/5 格" using only actually reported measurements; nil for
+    /// unknown. A reported 0 bars stays a known zero.
+    var signalDetailText: String? {
+        guard let signal else { return nil }
+        var parts: [String] = []
+        if let rssi = signal.rssi { parts.append("\(rssi) dBm") }
+        if let bars = signal.bars { parts.append("\(bars)/5 格") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
 

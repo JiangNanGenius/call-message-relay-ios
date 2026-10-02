@@ -10,8 +10,8 @@ options:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.4"
-    CURRENT_PROJECT_VERSION: "8"
+    MARKETING_VERSION: "0.3.5"
+    CURRENT_PROJECT_VERSION: "9"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     DEVELOPMENT_TEAM: ""
@@ -78,7 +78,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jiangnangenius.callrelay
-        TARGETED_DEVICE_FAMILY: "1"
+        # iPhone and iPad: the UI adapts (sidebar-adaptable tabs, centered
+        # readable columns, landscape/split-view safe) instead of stretching.
+        TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"

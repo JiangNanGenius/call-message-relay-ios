@@ -5,7 +5,7 @@ import UIKit
 /// A contact value used by the UI and by the pure de-duplication logic. It is a
 /// snapshot: real user data only ever lives in memory while Contacts is open;
 /// it is never logged, uploaded or used in demo/CI.
-struct ContactItem: Identifiable, Equatable {
+struct ContactItem: Identifiable, Equatable, Sendable {
     let id: String
     var givenName: String
     var familyName: String
@@ -13,8 +13,20 @@ struct ContactItem: Identifiable, Equatable {
     var phoneNumbers: [LabeledValue]
     var emailAddresses: [LabeledValue]
     var avatarData: Data?
+    /// Rich-field summaries used by the import preview so a vCard that only
+    /// adds an address/URL/birthday/note/photo is recognized as a real change
+    /// and so conflicting scalars can be shown for review before any write.
+    var postalAddresses: [String] = []
+    var urlAddresses: [String] = []
+    var birthday: String? = nil
+    var nonGregorianBirthday: String? = nil
+    var nickname: String = ""
+    var jobTitle: String = ""
+    var departmentName: String = ""
+    var phoneticOrganizationName: String = ""
+    var note: String = ""
 
-    struct LabeledValue: Equatable, Hashable {
+    struct LabeledValue: Equatable, Hashable, Sendable {
         let label: String?
         let value: String
     }
@@ -58,6 +70,93 @@ struct ContactItem: Identifiable, Equatable {
         return raw.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: .current)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+}
+
+extension ContactItem {
+    /// Single conversion used by the loader, the vCard importer and tests.
+    /// Lives in an extension so the value's memberwise initializer stays
+    /// available to the rest of the app.
+    nonisolated init(cn: CNContact) {
+        self.init(
+            id: cn.identifier,
+            givenName: cn.givenName,
+            familyName: cn.familyName,
+            organization: cn.organizationName,
+            phoneNumbers: cn.phoneNumbers.map {
+                .init(label: $0.label, value: $0.value.stringValue)
+            },
+            emailAddresses: cn.emailAddresses.map {
+                .init(label: $0.label as String?, value: $0.value as String)
+            },
+            avatarData: cn.thumbnailImageData
+        )
+        postalAddresses = cn.postalAddresses.compactMap {
+            Self.addressSummary($0.value)
+        }
+        urlAddresses = cn.urlAddresses.map { $0.value as String }.filter { !$0.isEmpty }
+        birthday = Self.birthdaySummary(cn.birthday)
+        nonGregorianBirthday = Self.birthdaySummary(cn.nonGregorianBirthday)
+        nickname = cn.nickname
+        jobTitle = cn.jobTitle
+        departmentName = cn.departmentName
+        phoneticOrganizationName = cn.phoneticOrganizationName
+        note = cn.note
+    }
+
+    nonisolated static func addressSummary(_ address: CNPostalAddress) -> String? {
+        let parts = [
+            address.street, address.subLocality, address.city,
+            address.state, address.postalCode, address.country
+        ].filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    nonisolated static func birthdaySummary(_ components: DateComponents?) -> String? {
+        guard let components else { return nil }
+        let month = components.month.map { String(format: "%02d", $0) }
+        let day = components.day.map { String(format: "%02d", $0) }
+        switch (components.year, month, day) {
+        case let (year?, month?, day?): return "\(year)-\(month)-\(day)"
+        case let (nil, month?, day?): return "--\(month)-\(day)"
+        default: return nil
+        }
+    }
+}
+
+/// Parses a `.vcf` into value snapshots. Standard vCard 3.0 (what
+/// `CNContactVCardSerialization` reads and what this app exports), including
+/// files produced by the in-app cleanup export, is supported.
+enum ContactVCardImporter {
+    enum ImportError: Error, LocalizedError {
+        case unreadable
+        case empty
+
+        var errorDescription: String? {
+            switch self {
+            case .unreadable: return "无法读取这个 vCard 文件（请使用标准 .vcf，vCard 3.0）。"
+            case .empty: return "这个 vCard 文件里没有可导入的联系人。"
+            }
+        }
+    }
+
+    nonisolated static func parse(data: Data) throws -> [ImportedContact] {
+        let contacts: [CNContact]
+        do {
+            contacts = try CNContactVCardSerialization.contacts(with: data)
+        } catch {
+            throw ImportError.unreadable
+        }
+        let items = contacts.map { cn -> ImportedContact in
+            // Re-serialize per contact so the writer can apply the original
+            // rich payload (photo/addresses/dates/URLs...), not just the
+            // summary fields used for matching.
+            let rich = try? CNContactVCardSerialization.data(with: [cn])
+            return ImportedContact(item: ContactItem(cn: cn), richVCard: rich)
+        }
+        guard !items.isEmpty else { throw ImportError.empty }
+        return items
+    }
 }
 
 /// Authorization the UI can switch on without importing Contacts in tests.
@@ -85,11 +184,13 @@ final class ContactsService: ObservableObject {
     @Published private(set) var nameIndex: [String: String] = [:]
 
     private let store: CNContactStore
+    private let writer: ContactStoreWriting
     private let keysToFetch: [CNKeyDescriptor]
     private var observer: NSObjectProtocol?
 
-    init(store: CNContactStore = CNContactStore()) {
+    init(store: CNContactStore = CNContactStore(), writer: ContactStoreWriting? = nil) {
         self.store = store
+        self.writer = writer ?? ContactsStoreWriter(store: store)
         self.keysToFetch = [
             CNContactIdentifierKey as CNKeyDescriptor,
             CNContactGivenNameKey as CNKeyDescriptor,
@@ -97,7 +198,16 @@ final class ContactsService: ObservableObject {
             CNContactOrganizationNameKey as CNKeyDescriptor,
             CNContactPhoneNumbersKey as CNKeyDescriptor,
             CNContactEmailAddressesKey as CNKeyDescriptor,
-            CNContactThumbnailImageDataKey as CNKeyDescriptor
+            CNContactThumbnailImageDataKey as CNKeyDescriptor,
+            CNContactPostalAddressesKey as CNKeyDescriptor,
+            CNContactUrlAddressesKey as CNKeyDescriptor,
+            CNContactBirthdayKey as CNKeyDescriptor,
+            CNContactNonGregorianBirthdayKey as CNKeyDescriptor,
+            CNContactNicknameKey as CNKeyDescriptor,
+            CNContactJobTitleKey as CNKeyDescriptor,
+            CNContactDepartmentNameKey as CNKeyDescriptor,
+            CNContactPhoneticOrganizationNameKey as CNKeyDescriptor,
+            CNContactNoteKey as CNKeyDescriptor
         ]
         refreshStatus()
     }
@@ -206,20 +316,8 @@ final class ContactsService: ObservableObject {
         return nil
     }
 
-    static func makeItem(from cn: CNContact) -> ContactItem {
-        ContactItem(
-            id: cn.identifier,
-            givenName: cn.givenName,
-            familyName: cn.familyName,
-            organization: cn.organizationName,
-            phoneNumbers: cn.phoneNumbers.map {
-                .init(label: $0.label, value: $0.value.stringValue)
-            },
-            emailAddresses: cn.emailAddresses.map {
-                .init(label: $0.label as String?, value: $0.value as String)
-            },
-            avatarData: cn.thumbnailImageData
-        )
+    nonisolated static func makeItem(from cn: CNContact) -> ContactItem {
+        ContactItem(cn: cn)
     }
 
     // MARK: Observation
@@ -339,6 +437,67 @@ final class ContactsService: ObservableObject {
             else { output.append(cn) }
         }
         return output
+    }
+
+    // MARK: System write-back (merge / re-import)
+
+    struct ApplyOutcome: Equatable, Sendable {
+        let inserted: Int
+        let updated: Int
+        let deleted: Int
+        let failures: [String]
+
+        var summary: String {
+            var parts: [String] = []
+            if inserted > 0 { parts.append("新增 \(inserted) 条") }
+            if updated > 0 { parts.append("更新 \(updated) 条") }
+            if deleted > 0 { parts.append("删除 \(deleted) 条重复记录") }
+            if parts.isEmpty { parts.append("没有需要写入的更改") }
+            if !failures.isEmpty { parts.append("失败 \(failures.count) 条") }
+            return parts.joined(separator: "，")
+        }
+    }
+
+    /// Applies only the owner-selected, previewed operations and then refreshes
+    /// the app list from the system store (the single source of truth).
+    func apply(plan: ContactMergePlan, selectedIDs: Set<String>) async -> ApplyOutcome {
+        let operations = plan.selectedOperations(selectedIDs)
+        let writer = self.writer
+        let outcome = await Task.detached(priority: .userInitiated) {
+            ContactsService.applyOperations(operations, writer: writer)
+        }.value
+        await load()
+        return outcome
+    }
+
+    /// Pure orchestration (unit-testable with a mock writer): one atomic save
+    /// per operation; a failure is reported and never blocks the rest.
+    nonisolated static func applyOperations(
+        _ operations: [ContactStoreOperation], writer: ContactStoreWriting
+    ) -> ApplyOutcome {
+        var inserted = 0, updated = 0
+        var failures: [String] = []
+        for operation in operations {
+            do {
+                try writer.apply(operation)
+                switch operation {
+                case .insert:
+                    inserted += 1
+                case .mergeIntoExisting:
+                    updated += 1
+                }
+            } catch {
+                let label: String
+                switch operation {
+                case .insert(let item, _):
+                    label = "新增 \(item.displayName)"
+                case .mergeIntoExisting(_, let additions, _):
+                    label = "合并 \(additions.displayName)"
+                }
+                failures.append("\(label)：\(error.localizedDescription)")
+            }
+        }
+        return ApplyOutcome(inserted: inserted, updated: updated, deleted: 0, failures: failures)
     }
 
     private func fetchCNContacts(identifiers: [String]) throws -> [CNContact] {

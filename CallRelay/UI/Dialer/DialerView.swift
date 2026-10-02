@@ -81,6 +81,9 @@ struct DialerView: View {
                 .padding(.bottom, 10)
             }
             .background(Color(.systemBackground))
+            // Phone-like centered column on iPad/landscape; unchanged on iPhone.
+            .frame(maxWidth: 460)
+            .frame(maxWidth: .infinity)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .alert("已按拦截规则阻止", isPresented: Binding(

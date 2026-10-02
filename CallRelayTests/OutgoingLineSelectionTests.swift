@@ -68,7 +68,10 @@ final class OutgoingLineSelectionTests: XCTestCase {
             permissions: .init(receiveSms: true, receiveCalls: true, sendSms: true, dial: dial),
             smsLive: false,
             identity: LineIdentity(moduleKey: nil, usbPath: nil, firmware: nil, simMasked: nil,
-                                  phoneMasked: phone.map { String($0.suffix(4)) }, numberSource: phone == nil ? "empty" : "sim"),
+                                  phoneMasked: phone.map { String($0.suffix(4)) },
+                                  numberSource: phone == nil ? "empty" : "sim",
+                                  operatorAlpha: nil, operatorNumeric: nil,
+                                  registration: nil, accessTech: nil),
             phoneNumber: phone, canManageNumber: canManageNumber, lastError: nil
         )
     }

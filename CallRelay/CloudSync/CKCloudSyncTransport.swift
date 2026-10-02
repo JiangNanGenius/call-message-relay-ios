@@ -55,7 +55,7 @@ final class CKCloudSyncTransport: CloudSyncTransport, @unchecked Sendable {
     func availability() async -> CloudSyncAvailability {
         guard entitlementProbe(containerID) else {
             return .unavailable(
-                "当前签名没有 iCloud（CloudKit）权限：自签名/Feather 版本无法启用云同步。需要使用含 iCloud 容器能力的描述文件重新签名后才能开启，本机功能不受影响。"
+                "当前签名没有 iCloud 权限，无法启用云同步；使用包含 iCloud 能力的描述文件重新签名后即可开启。本机功能不受影响。"
             )
         }
         // The profile is only a HINT of the effective code-signature rights.

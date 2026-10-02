@@ -28,6 +28,9 @@ final class FakeMediaSession: CallMediaSession {
     var muted = false
     var speaker = false
     var afterApplyAnswer: (() -> Void)?
+    /// Direct in-app answer path activations (no CallKit didActivate).
+    var activateWithoutCallKitCount = 0
+    var deactivateWithoutCallKitCount = 0
 
     func makeOffer(ice: ICEConfiguration, relayOnly: Bool) async throws -> String {
         if let makeOfferError { throw makeOfferError }
@@ -42,6 +45,8 @@ final class FakeMediaSession: CallMediaSession {
     func setSpeakerphone(_ enabled: Bool) throws { speaker = enabled }
     func audioActivated(with session: AVAudioSession) { activationCount += 1 }
     func audioDeactivated(with session: AVAudioSession) {}
+    func activateAudioWithoutCallKit() { activateWithoutCallKitCount += 1 }
+    func deactivateAudioWithoutCallKit() { deactivateWithoutCallKitCount += 1 }
     func close() { closeCount += 1 }
 }
 
@@ -75,23 +80,59 @@ final class FakeMediaProvider: MediaSessionProviding {
 final class FakeCallKit: CallKitControlling {
     weak var director: CallDirecting?
     var incoming: [(uuid: UUID, handle: String)] = []
+    var updates: [(uuid: UUID, handle: String)] = []
     var connecting: [UUID] = []
     var connected: [UUID] = []
     var ended: [(uuid: UUID, reason: CXCallEndedReason)] = []
     var startRequests: [UUID] = []
     var heldReports: [(uuid: UUID, held: Bool)] = []
+    /// When false, `reportIncoming` mimics a CallKit rejection.
+    var reportIncomingResult = true
+    /// Fail the first `reportIncoming` after arming; the continuation resumes
+    /// with `resumeReport`. Lets tests interleave an end/reset with the await.
+    var armReportWait = false
+    private var reportWaiter: CheckedContinuation<Bool, Never>?
+    func resumeReport(_ accepted: Bool) {
+        reportWaiter?.resume(returning: accepted)
+        reportWaiter = nil
+    }
+    /// Raw `CXErrorCodeIncomingCallError` reported with a rejection.
+    var reportIncomingErrorCode: Int?
+    private(set) var lastIncomingReportErrorCode: Int?
+    /// When set, `requestAnswer` fails like an unknown/ended system call.
+    var requestAnswerError: Error?
+    var requestAnswerCalls: [UUID] = []
+    /// Simulates the provider delegate reacting to a successful answer.
+    var onRequestAnswer: ((UUID) -> Void)?
+    var requestEndError: Error?
+    var requestEndCalls: [UUID] = []
 
     func reportIncoming(uuid: UUID, handle: String, isVideo: Bool) async -> Bool {
         incoming.append((uuid, handle))
-        return true
+        if armReportWait {
+            armReportWait = false
+            let accepted = await withCheckedContinuation { reportWaiter = $0 }
+            lastIncomingReportErrorCode = accepted ? nil : (reportIncomingErrorCode ?? 0)
+            return accepted
+        }
+        lastIncomingReportErrorCode = reportIncomingResult ? nil : (reportIncomingErrorCode ?? 0)
+        return reportIncomingResult
     }
+    func updateIncoming(uuid: UUID, handle: String) { updates.append((uuid, handle)) }
     func requestStartOutgoing(uuid: UUID, handle: String) async throws { startRequests.append(uuid) }
     func reportOutgoingConnecting(uuid: UUID) { connecting.append(uuid) }
     func reportConnected(uuid: UUID, startedAt: Date?) { connected.append(uuid) }
     func reportEnded(uuid: UUID, reason: CXCallEndedReason) async { ended.append((uuid, reason)) }
     func reportHeld(uuid: UUID, held: Bool) { heldReports.append((uuid, held)) }
-    func requestEnd(uuid: UUID) async throws {}
-    func requestAnswer(uuid: UUID) async throws {}
+    func requestEnd(uuid: UUID) async throws {
+        requestEndCalls.append(uuid)
+        if let requestEndError { throw requestEndError }
+    }
+    func requestAnswer(uuid: UUID) async throws {
+        requestAnswerCalls.append(uuid)
+        if let requestAnswerError { throw requestAnswerError }
+        onRequestAnswer?(uuid)
+    }
     func requestMute(uuid: UUID, muted: Bool) async throws {}
     func requestDTMF(uuid: UUID, digit: String) async throws {}
     func invalidate() {}

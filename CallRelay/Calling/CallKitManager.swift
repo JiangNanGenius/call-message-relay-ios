@@ -49,6 +49,13 @@ protocol CallKitControlling: AnyObject {
     var director: CallDirecting? { get set }
     @discardableResult
     func reportIncoming(uuid: UUID, handle: String, isVideo: Bool) async -> Bool
+    /// `CXErrorCodeIncomingCallError` raw value of the last rejected incoming
+    /// report, nil when accepted/unknown. Used to avoid retrying rejections
+    /// that a retry cannot fix (DND/block list/unentitled/capacity).
+    var lastIncomingReportErrorCode: Int? { get }
+    /// Refreshes an already-reported incoming call (e.g. the caller id arrived
+    /// after the first event). No-op when CallKit never accepted this call.
+    func updateIncoming(uuid: UUID, handle: String)
     func requestStartOutgoing(uuid: UUID, handle: String) async throws
     func reportOutgoingConnecting(uuid: UUID)
     func reportConnected(uuid: UUID, startedAt: Date?)
@@ -74,6 +81,12 @@ final class CallKitManager: NSObject, CallKitControlling {
     private let provider: CXProvider
     private let callController = CXCallController()
     private(set) var activeUUID: UUID?
+    /// Domain/code of the last rejected incoming report, for concise
+    /// on-device diagnostics. nil after a successful report.
+    private(set) var lastIncomingReportError: String?
+    /// Raw `CXErrorCodeIncomingCallError` of the last rejection; nil after a
+    /// successful report.
+    private(set) var lastIncomingReportErrorCode: Int?
     /// Every CallKit call this provider has reported and not yet ended.
     private var knownUUIDs: Set<UUID> = []
 
@@ -114,19 +127,41 @@ final class CallKitManager: NSObject, CallKitControlling {
     // MARK: Incoming (PushKit path)
 
     /// Reports an incoming call. Returns false if CallKit rejects the report
-    /// (caller must reconcile rather than retry blindly).
+    /// (caller must reconcile rather than retry blindly). The concrete
+    /// `NSError` domain/code is retained and logged so an on-device rejection
+    /// (entitlement, capacity, UUID collision) is diagnosable even though the
+    /// user only sees the in-app ring.
     @discardableResult
     func reportIncoming(uuid: UUID, handle: String, isVideo: Bool = false) async -> Bool {
         let handleValue = CXHandle(type: CallKitManager.handleType(for: handle), value: handle)
         let update = standardUpdate(handle: handleValue, isVideo: isVideo)
 
-        let ok = await withCheckedContinuation { continuation in
+        let error: Error? = await withCheckedContinuation { continuation in
             provider.reportNewIncomingCall(with: uuid, update: update) { error in
-                continuation.resume(returning: error == nil)
+                continuation.resume(returning: error)
             }
         }
-        if ok { knownUUIDs.insert(uuid) }
-        return ok
+        guard let error else {
+            lastIncomingReportError = nil
+            lastIncomingReportErrorCode = nil
+            knownUUIDs.insert(uuid)
+            return true
+        }
+        let nsError = error as NSError
+        lastIncomingReportError = "\(nsError.domain) \(nsError.code)"
+        lastIncomingReportErrorCode = nsError.domain == CXErrorDomainIncomingCall ? nsError.code : nil
+        AppLog.callKit.error(
+            "reportNewIncomingCall rejected domain=\(nsError.domain, privacy: .public) code=\(nsError.code, privacy: .public)"
+        )
+        return false
+    }
+
+    /// Refreshes the system call UI after a better caller id arrived. Only an
+    /// accepted call is updated; a rejected one is retried by the driver.
+    func updateIncoming(uuid: UUID, handle: String) {
+        guard knownUUIDs.contains(uuid) else { return }
+        let handleValue = CXHandle(type: CallKitManager.handleType(for: handle), value: handle)
+        provider.reportCall(with: uuid, updated: standardUpdate(handle: handleValue, isVideo: false))
     }
 
     private func standardUpdate(handle: CXHandle?, isVideo: Bool) -> CXCallUpdate {

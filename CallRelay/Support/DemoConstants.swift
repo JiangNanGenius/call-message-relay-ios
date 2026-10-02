@@ -34,6 +34,9 @@ enum LaunchArguments {
     /// Screenshot-only: clears the synthetic line's signal report so the
     /// dialer renders the honest unknown/no-bars state.
     static let unknownSignalPreview = "-callrelayUnknownSignalPreview"
+    /// Screenshot-only: renders the contact import/merge preview from a purely
+    /// synthetic fixture. Never reads or writes the real address book.
+    static let contactImportFixture = "-callrelayContactImportFixture"
 
     static var isUITestReset: Bool {
         ProcessInfo.processInfo.arguments.contains(uiTestReset)
@@ -46,5 +49,8 @@ enum LaunchArguments {
     }
     static var showsUnknownSignal: Bool {
         ProcessInfo.processInfo.arguments.contains(unknownSignalPreview)
+    }
+    static var isContactImportFixture: Bool {
+        ProcessInfo.processInfo.arguments.contains(contactImportFixture)
     }
 }

@@ -4,6 +4,7 @@ import UIKit
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var showUnpairConfirm = false
+    @State private var detailLine: AuthorizedLine?
 
     var body: some View {
         NavigationStack {
@@ -28,7 +29,7 @@ struct SettingsView: View {
                     NavigationLink {
                         ContactExportView()
                     } label: {
-                        Label("通讯录去重与导出", systemImage: "person.crop.circle.badge.checkmark")
+                        Label("联系人整理与导入", systemImage: "person.crop.circle.badge.checkmark")
                     }
                 }
 
@@ -41,19 +42,7 @@ struct SettingsView: View {
                 }
 
                 if !model.isDemo {
-                    Section("网关") {
-                        detailRow(title: "名称", value: model.gatewayName.isEmpty ? "—" : model.gatewayName)
-                        detailRow(title: "锁屏来电", value: model.voipTokenHex == nil ? "未注册（需真机）" : "已注册")
-                    }
-
-                    Section {
-                        Button("重新连接") { model.retryConnection() }
-                        Button(role: .destructive) {
-                            showUnpairConfirm = true
-                        } label: {
-                            Label("退出这台手机", systemImage: "iphone.slash")
-                        }
-                    }
+                    gatewaySection
                 } else {
                     Section {
                         Button("退出演示模式", role: .destructive) { model.exitDemo() }
@@ -63,6 +52,9 @@ struct SettingsView: View {
                 Section("铃声与来电") {
                     detailRow(title: "来电界面", value: "系统 CallKit")
                     detailRow(title: "音频路由", value: "听筒 / 扬声器 / 蓝牙")
+                }
+
+                Section("系统权限") {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
                         Link(destination: url) {
                             Label("在系统设置中管理本 App 权限", systemImage: "gear")
@@ -75,7 +67,7 @@ struct SettingsView: View {
                     Link(destination: URL(string: "https://github.com/JiangNanGenius/call-message-relay-ios")!) {
                         Label("源代码仓库", systemImage: "safari")
                     }
-                    Text("非商业许可 PolyForm Noncommercial 1.0.0；第三方组件见 ThirdPartyNotices。")
+                    Text("第三方组件见 ThirdPartyNotices。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -85,6 +77,9 @@ struct SettingsView: View {
                 Button("退出", role: .destructive) { model.unpair() }
             } message: {
                 Text("仅退出这台手机，其他设备不受影响。")
+            }
+            .sheet(item: $detailLine) { line in
+                LineDetailView(line: line)
             }
         }
     }
@@ -106,6 +101,28 @@ struct SettingsView: View {
             Button {
                 model.demoArmNextSMSFailure()
             } label: { Label("让下一条演示短信发送失败（可重试）", systemImage: "exclamationmark.bubble") }
+        }
+    }
+
+    @ViewBuilder
+    private var gatewaySection: some View {
+        Section {
+            detailRow(title: "名称", value: model.gatewayName.isEmpty ? "—" : model.gatewayName)
+            detailRow(title: "锁屏来电",
+                      value: model.voipTokenHex == nil ? "需推送描述文件" : "需网关推送服务")
+            if let issue = model.callKitIssue {
+                Text(issue).font(.caption).foregroundStyle(.orange)
+            }
+            Button("重新连接") { model.retryConnection() }
+            Button(role: .destructive) {
+                showUnpairConfirm = true
+            } label: {
+                Label("退出这台手机", systemImage: "iphone.slash")
+            }
+        } header: {
+            Text("网关")
+        } footer: {
+            Text("锁屏系统来电界面需要可用的 VoIP 推送服务与匹配的描述文件；未配置时来电仍会在 App 内显示并可直接接听。")
         }
     }
 
@@ -135,7 +152,9 @@ struct SettingsView: View {
             Text("默认拨出线路")
         } footer: {
             if model.authorizedLines.count > 1 {
-                Text("拨号键盘可临时切换本次外呼线路。")
+                Text("拨号键盘可临时切换本次外呼线路；点线路右侧 ⓘ 查看运营商与信号。")
+            } else {
+                Text("点线路右侧 ⓘ 查看运营商、网络与真实信号。")
             }
         }
     }
@@ -190,8 +209,8 @@ struct SettingsView: View {
     }
 
     private func lineRow(_ line: AuthorizedLine) -> some View {
-        // Two independent controls (default selection vs. number edit); they
-        // must not be nested so each tap resolves unambiguously.
+        // Three independent controls (default selection vs. detail vs. number
+        // edit); they must not be nested so each tap resolves unambiguously.
         HStack(spacing: 8) {
             Button {
                 Task { await model.selectDefaultLine(line.id) }
@@ -205,10 +224,11 @@ struct SettingsView: View {
                     }
                     if !line.canDialNow {
                         Text(line.unavailableReason).font(.caption2).foregroundStyle(.orange)
+                    } else if let operatorName = line.resolvedOperator {
+                        Text(operatorName).font(.caption2).foregroundStyle(.secondary)
                     }
                     HStack(spacing: 6) {
                         Text(line.online ? "在线" : "离线")
-                        if line.smsLive { Text("短信实发") } else { Text("短信试运行") }
                         if line.ownNumberSource == "manual" { Text("手动号码") }
                     }
                     .font(.caption)
@@ -218,6 +238,15 @@ struct SettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            Button {
+                detailLine = line
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.body)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("查看\(line.friendlyName)详情")
 
             if line.canManageNumber {
                 Button {
@@ -242,17 +271,6 @@ struct SettingsView: View {
                 Image(systemName: icon)
                 Text(model.linePhase.summaryLine)
                     .foregroundStyle(tint)
-            }
-            if case .online(let line) = model.linePhase {
-                detailRow(title: "SIM", value: simText(line.sim))
-                detailRow(title: "运营商", value: line.operatorName ?? "—")
-                detailRow(title: "注册", value: registrationText(line.registration))
-                detailRow(title: "信号", value: line.signal?.bars.map { "\($0)/5" } ?? "—")
-                detailRow(title: "语音能力", value: voiceText(line.voice))
-                detailRow(title: "短信能力", value: smsText(line.sms))
-            }
-            if let event = model.eventStateText, !event.isEmpty {
-                detailRow(title: "事件连接", value: event)
             }
             if let error = model.lastError {
                 Text(error).font(.caption).foregroundStyle(.orange)
@@ -287,41 +305,6 @@ struct SettingsView: View {
         case .online(let l): return l.registration == .registered ? .green : .orange
         case .demo: return .secondary
         default: return .secondary
-        }
-    }
-
-    private func simText(_ s: SIMState) -> String {
-        switch s {
-        case .ready: return "就绪"
-        case .absent: return "未插入"
-        case .locked: return "已锁定"
-        case .unknown: return "未知"
-        }
-    }
-
-    private func registrationText(_ r: RegistrationState) -> String {
-        switch r {
-        case .registered: return "已注册"
-        case .searching: return "搜索中"
-        case .denied: return "被拒绝"
-        case .unknown: return "未知"
-        }
-    }
-
-    private func voiceText(_ v: VoiceAvailability) -> String {
-        switch v {
-        case .ready: return "可用"
-        case .controlOnly: return "仅控制"
-        case .unavailable: return "不可用"
-        case .busy: return "占线"
-        }
-    }
-
-    private func smsText(_ s: SMSAvailability) -> String {
-        switch s {
-        case .ready: return "可用"
-        case .unavailable: return "不可用"
-        case .busy: return "占线"
         }
     }
 }

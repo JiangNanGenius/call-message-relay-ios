@@ -52,6 +52,9 @@ struct ActiveCallView: View {
                 footerButtons
             }
             .padding()
+            // Centered call column on iPad/landscape; unchanged on iPhone.
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .sheet(isPresented: $showKeypad) { keypadSheet }
         }
         .onChange(of: conference?.id) { _, _ in
@@ -346,6 +349,8 @@ struct InCallKeypad: View {
                     } label: {
                         Text(key)
                             .font(.title)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                             .frame(width: 68, height: 68)
                             .background(Color(.secondarySystemFill))
                             .clipShape(Circle())
@@ -355,6 +360,8 @@ struct InCallKeypad: View {
                     .accessibilityLabel(key)
                 }
             }
+            .frame(maxWidth: 420)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 48)
             .navigationTitle("键盘")
             .navigationBarTitleDisplayMode(.inline)

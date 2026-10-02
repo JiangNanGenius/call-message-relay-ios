@@ -44,7 +44,9 @@ enum ActiveCallPhase: Equatable, Sendable {
 struct ActiveCallViewState: Equatable, Identifiable {
     var id: String { gatewayCallId }
     var gatewayCallId: String
-    let peer: String
+    /// Mutable: a live caller-id update replaces the placeholder after the
+    /// first event (which often carries an empty peer).
+    var peer: String
     let isOutgoing: Bool
     var phase: ActiveCallPhase
     var isMuted: Bool

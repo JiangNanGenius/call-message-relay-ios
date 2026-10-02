@@ -606,8 +606,12 @@ final class CallCoordinator: NSObject {
         media = session
         // CallKit may activate audio before the ICE request returns. Replay the
         // current activation so a newly created media session cannot stay mute.
+        // When no system call exists (direct in-app answer), activate the
+        // session ourselves or the negotiated audio path would stay silent.
         if let activated = AudioSessionBridge.shared.activeSession {
             session.audioActivated(with: activated)
+        } else {
+            session.activateAudioWithoutCallKit()
         }
         session.onState = { [weak self] state in
             Task { @MainActor in
@@ -923,8 +927,12 @@ final class CallCoordinator: NSObject {
         media = session
         // CallKit may activate audio before the ICE request returns. Replay the
         // current activation so a newly created media session cannot stay mute.
+        // When no system call exists (direct in-app answer), activate the
+        // session ourselves or the negotiated audio path would stay silent.
         if let activated = AudioSessionBridge.shared.activeSession {
             session.audioActivated(with: activated)
+        } else {
+            session.activateAudioWithoutCallKit()
         }
         let relayOnly = transport == "tailnet"
         session.onState = { [weak self] state in

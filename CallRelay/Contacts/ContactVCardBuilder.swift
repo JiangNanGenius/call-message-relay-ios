@@ -78,7 +78,7 @@ enum ContactVCardBuilder {
 
         merged.phoneNumbers = unionLabeled(
             contacts.flatMap(\.phoneNumbers)
-        ) { ContactDeduper.isSamePhone($0.value.stringValue, $1.value.stringValue) }
+        ) { ContactMergePlanner.isSameNumber($0.value.stringValue, $1.value.stringValue) }
         merged.emailAddresses = unionLabeled(
             contacts.flatMap(\.emailAddresses)
         ) { a, b in

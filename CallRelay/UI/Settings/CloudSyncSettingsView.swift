@@ -54,7 +54,7 @@ struct CloudSyncSettingsView: View {
             }
 
             Section {
-                Text("自签名/Feather 版本没有 Apple 开发团队的 iCloud 容器描述文件，因此该开关默认不可用，属于签名交付限制而非本机功能问题。需用包含 iCloud（CloudKit）能力的描述文件重新签名，并在该团队账号中创建对应的私人容器后方可使用；系统 iCloud 联系人同步不受此影响。")
+                Text("当前签名没有 iCloud 容器权限，该开关不可用；使用包含 iCloud 能力的描述文件重新签名后即可开启。系统 iCloud 联系人同步不受影响。")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

@@ -1,9 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// Non-destructive contact export: previews duplicate groups found by the pure
-/// deduper, lets the owner choose which to merge in the exported copy, and
-/// shares a real vCard (.vcf). The system Contacts database is never modified.
+/// Contact cleanup + re-import hub. The SYSTEM address book is the single
+/// source of truth: this screen only previews duplicate groups and exports a
+/// vCard (the pre-existing, non-destructive behavior). Re-importing a backup
+/// or the exported cleaned result merges it back through ``ContactImportView``
+/// with an explicit preview and confirmation. External edits in the system
+/// Contacts app refresh automatically; there is no app-owned second address
+/// book and no second cleanup step.
 struct ContactExportView: View {
     @EnvironmentObject private var model: AppModel
 
@@ -46,11 +50,31 @@ private struct ContactExportContent: View {
                     overview
                 }
             }
+            if service.access.canRead {
+                Section {
+                    Label("在系统「通讯录」里清理、合并或导入后，此处会自动刷新；App 不维护第二份通讯录。",
+                          systemImage: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if service.access.isLimited, service.access.canRead {
+                Section {
+                    Label("当前为受限访问：只能看到你选中的联系人，不能代表整本通讯录。",
+                          systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+            }
             if !groups.isEmpty, service.access.canRead {
                 duplicateSections
             }
+            if service.access.canRead {
+                reimportSection
+                exportSection
+            }
         }
-        .navigationTitle("导出联系人")
+        .navigationTitle("联系人整理")
         .navigationBarTitleDisplayMode(.inline)
         .task { if !loaded { loaded = true; await reload() } }
         .sheet(item: sheetBinding) { wrapper in
@@ -70,18 +94,6 @@ private struct ContactExportContent: View {
         LabeledContent("导出后条数",
                        value: "\(service.exportCount(selectedGroups: mergeDuplicates ? chosenGroups : []))")
         Toggle("在导出的 vCard 中合并勾选的重复项", isOn: $mergeDuplicates)
-        Button {
-            Task { await export() }
-        } label: {
-            HStack {
-                if exporting { ProgressView() }
-                Label("导出 vCard (.vcf)", systemImage: "square.and.arrow.up")
-            }
-        }
-        .disabled(service.contacts.isEmpty || exporting)
-        if let exportNote {
-            Text(exportNote).font(.caption).foregroundStyle(.secondary)
-        }
     }
 
     @ViewBuilder private var duplicateSections: some View {
@@ -117,6 +129,49 @@ private struct ContactExportContent: View {
         }
     }
 
+    @ViewBuilder private var reimportSection: some View {
+        Section("导入并合并回系统通讯录") {
+            NavigationLink {
+                ContactImportView(service: service)
+            } label: {
+                Label("选择 vCard 并预览合并", systemImage: "square.and.arrow.down")
+            }
+            .accessibilityIdentifier("open-import")
+            if let shareURL {
+                NavigationLink {
+                    ContactImportView(service: service, sourceURL: shareURL)
+                } label: {
+                    Label("将刚导出的 vCard 合并回系统通讯录", systemImage: "arrow.triangle.merge")
+                }
+                .accessibilityIdentifier("merge-exported-vcard")
+            }
+            Text("支持 App 导出的 .vcf 与标准 vCard 3.0；先预览新增/合并/冲突，再确认写入。App 不会删除任何联系人。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var exportSection: some View {
+        Section("导出/分享（不写入系统）") {
+            Button {
+                Task { await export() }
+            } label: {
+                HStack {
+                    if exporting { ProgressView() }
+                    Label("导出 vCard (.vcf)", systemImage: "square.and.arrow.up")
+                }
+            }
+            .disabled(service.contacts.isEmpty || exporting)
+            .accessibilityIdentifier("export-vcard")
+            if let exportNote {
+                Text(exportNote).font(.caption).foregroundStyle(.secondary)
+            }
+            if let shareURL {
+                Button("分享导出的 vCard") { self.shareURL = shareURL }
+            }
+        }
+    }
+
     private func warningNote(_ reason: ContactDeduper.Group.Reason) -> String {
         switch reason {
         case .nameAndOrganization:
@@ -140,6 +195,7 @@ private struct ContactExportContent: View {
         // Only proven duplicates (same name + shared phone/email) are
         // preselected; coworkers/shared-number warnings start unchecked.
         selectedAuto = Set(found.filter { $0.reason == .nameAndContact }.map(\.id))
+        selectedShared = []
     }
 
     private func export() async {
@@ -152,7 +208,7 @@ private struct ContactExportContent: View {
             // access changes between loading and exporting).
             let outcome = try await service.exportVCard(selectedGroups: chosen)
             shareURL = outcome.url
-            exportNote = "已生成 \(outcome.count) 条联系人的 vCard，原始通讯录未改动。"
+            exportNote = "已生成 \(outcome.count) 条联系人的 vCard，系统通讯录未改动。可直接合并回系统通讯录。"
         } catch {
             exportNote = "导出失败：\(error.localizedDescription)"
         }
