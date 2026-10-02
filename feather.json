@@ -17,6 +17,16 @@
       "beta": true,
       "versions": [
         {
+          "version": "0.2.1",
+          "buildVersion": "3",
+          "date": "2026-10-02T03:04:04Z",
+          "minOSVersion": "17.0",
+          "size": 9976999,
+          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.2.1/CallRelay-0.2.1-unsigned.ipa",
+          "localizedDescription": "0.2.1 预览（取代 0.2.0）：统一多线路网关 v2 功能不变——一次配对获得该密钥授权的全部线路、多行/多设备权限，每台手机独立注册与独立撤销，跨设备仅同步加密恢复授权；通话支持保持/恢复、第二通保持后接听，并把本机 2-3 路外呼合并为最多 4 人会议；网关语音留言收件箱与应用内播放；界面精简。本版仅修复 0.2.0 在稳定 Xcode CI 上的 CallKit 单元测试不稳定，应用行为相同。未签名，需自行签名，并需最新网关 v2。真实运营商媒体、APNs 锁屏来电、TURN 中继与两台真机云端恢复尚未联调。",
+          "sha256": "5756a380c6a448ee4323c82f3e0648dead1e15db45d59aa8275befb169a1374d"
+        },
+        {
           "version": "0.2.0",
           "buildVersion": "2",
           "date": "2026-10-02T02:49:51Z",
@@ -37,10 +47,10 @@
           "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
         }
       ],
-      "version": "0.2.0",
-      "versionDate": "2026-10-02T02:49:51Z",
-      "size": 9976925,
-      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.2.0/CallRelay-0.2.0-unsigned.ipa",
+      "version": "0.2.1",
+      "versionDate": "2026-10-02T03:04:04Z",
+      "size": 9976999,
+      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.2.1/CallRelay-0.2.1-unsigned.ipa",
       "appPermissions": {
         "entitlements": [
           "aps-environment"
