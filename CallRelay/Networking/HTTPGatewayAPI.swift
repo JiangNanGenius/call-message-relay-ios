@@ -637,9 +637,9 @@ final class HTTPGatewayAPI: GatewayAPI {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.network(URLError(.badServerResponse)) }
         if let successStatus {
-            guard http.statusCode == successStatus else { throw try error(from: http, data: data) }
+            guard http.statusCode == successStatus else { throw try error(from: http, data: data, authEndpoint: true) }
         } else {
-            guard (200..<300).contains(http.statusCode) else { throw try error(from: http, data: data) }
+            guard (200..<300).contains(http.statusCode) else { throw try error(from: http, data: data, authEndpoint: true) }
         }
         return try decoder.decode(Output.self, from: data)
     }
@@ -703,11 +703,17 @@ final class HTTPGatewayAPI: GatewayAPI {
         return result
     }
 
-    private func error(from response: URLResponse, data: Data?) throws -> APIError {
+    /// Maps an HTTP failure to an APIError. Only 401 is credential loss for
+    /// ordinary authorized calls: a 403 there means a permission/capability
+    /// denial (e.g. no dial grant or no manage-number capability) and must
+    /// never prompt re-pairing. Authentication endpoints (enroll/pairing/
+    /// refresh) treat 403 as a definitive auth rejection.
+    private func error(from response: URLResponse, data: Data?, authEndpoint: Bool = false) throws -> APIError {
         guard let http = response as? HTTPURLResponse else { return APIError.network(URLError(.badServerResponse)) }
         var body: APIErrorBody?
         if let data { body = try? decoder.decode(APIErrorBody.self, from: data) }
-        if http.statusCode == 401 || http.statusCode == 403 { return .unauthorized }
+        if http.statusCode == 401 { return .unauthorized }
+        if authEndpoint, http.statusCode == 403 { return .unauthorized }
         if http.statusCode == 429 {
             let after = http.value(forHTTPHeaderField: "Retry-After")
                 .flatMap(TimeInterval.init)

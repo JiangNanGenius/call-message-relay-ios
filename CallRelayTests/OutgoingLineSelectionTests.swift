@@ -26,22 +26,27 @@ private final class RecordingDriver: CallDriver {
 final class OutgoingLineSelectionTests: XCTestCase {
     private func makeModel(
         lines: [AuthorizedLine],
-        defaultLineId: String?
+        defaultLineId: String?,
+        bindingVersion: String = "v2"
     ) throws -> (AppModel, FakeGatewayAPI, RecordingDriver, BindingStore) {
         let bindingURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("bindings-\(UUID().uuidString).json")
         let store = BindingStore(storeURL: bindingURL)
-        if let defaultLineId {
-            try store.save(GatewayBinding(
-                gatewayId: "gw-test", gatewayName: "Test", endpoint: "https://gw.example",
-                fingerprint: "sha256:abc", transport: "unified", pairedAt: Date(),
-                allowLoopbackHTTP: false, apiVersion: "v2", defaultLineId: defaultLineId
-            ))
-        }
+        try store.save(GatewayBinding(
+            gatewayId: "gw-test", gatewayName: "Test", endpoint: "https://gw.example",
+            fingerprint: "sha256:abc",
+            transport: bindingVersion == "v2" ? "unified" : "tailnet",
+            pairedAt: Date(), allowLoopbackHTTP: false,
+            apiVersion: bindingVersion, defaultLineId: defaultLineId
+        ))
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        // A paired session always has a token set; recovery paths must be
+        // exercised with credentials present, not as an unpaired device.
+        let tokenStore = TokenStore(keychain: DictionaryKeychain())
+        try tokenStore.save(TokenSet(accessToken: "test-access", refreshToken: "test-refresh", deviceId: "dev-test"))
         let model = AppModel(
             identities: IdentityStore(keychain: DictionaryKeychain()),
-            tokenStore: TokenStore(keychain: DictionaryKeychain()),
+            tokenStore: tokenStore,
             bindingStore: store, defaults: defaults
         )
         let api = FakeGatewayAPI()
@@ -222,11 +227,14 @@ final class OutgoingLineSelectionTests: XCTestCase {
         XCTAssertEqual(model.defaultLineId, "line1")
         XCTAssertEqual(model.authorizedLines.count, 2)
 
-        // Last grant removed: successful empty response must clear UI/driver.
+        // Last grant removed: successful empty response must clear UI/driver
+        // and explain the empty list instead of showing a healthy picker.
         api.authorizedLinesStub = []
         await model.testingRefreshAuthorizedLines()
         XCTAssertTrue(model.authorizedLines.isEmpty)
         XCTAssertNil(model.defaultLineId)
+        XCTAssertEqual(model.lineListState, .empty("此设备当前没有已授权的线路。请在网关的配对密钥中授权线路，或重新配对。"))
+        XCTAssertTrue(model.shouldShowLinePicker)
         // The driver default is pushed to nil too (observable via dials using
         // the model's nil resolved line).
         XCTAssertFalse(model.requestDial("5550100"))
@@ -271,5 +279,164 @@ final class OutgoingLineSelectionTests: XCTestCase {
         XCTAssertFalse(ok, "a response from the old session must be discarded")
         XCTAssertEqual(model.authorizedLines.first?.name, "L1")
         XCTAssertNil(model.lineNumberNotice)
+    }
+
+    // MARK: Auth loss, transient offline, and legacy migration
+
+    func testLinePickerStaysVisibleForEveryLiveLineListState() throws {
+        let (model, _, _, _) = try makeModel(lines: [], defaultLineId: nil)
+        let states: [LineListState] = [
+            .loading,
+            .legacyBinding,
+            .empty("此设备当前没有已授权的线路。"),
+            .unavailable("暂时无法获取线路列表，正在自动重试。")
+        ]
+        for state in states {
+            model.lineListState = state
+            XCTAssertTrue(model.shouldShowLinePicker, "state \(state) must keep the picker visible")
+            XCTAssertNotNil(model.lineListStatusMessage, "state \(state) must explain itself")
+        }
+        model.lineListState = .unknown
+        XCTAssertFalse(model.shouldShowLinePicker)
+        model.lineListState = .loaded
+        XCTAssertFalse(model.shouldShowLinePicker)
+
+        // A single authorized line still renders the picker with its number.
+        let single = line(id: "line1", name: "L1", phone: "15550001111")
+        let (model2, _, _, _) = try makeModel(lines: [single], defaultLineId: "line1")
+        XCTAssertTrue(model2.shouldShowLinePicker)
+        XCTAssertEqual(model2.line(id: "line1")?.friendlyName, "15550001111")
+    }
+
+    func testLegacyBindingShowsMigrationInsteadOfEmptyPicker() async throws {
+        let (model, api, _, _) = try makeModel(lines: [], defaultLineId: nil, bindingVersion: "v1")
+        api.authorizedLinesStub = [line(id: "line1", name: "L1")]
+        await model.testingRefreshAuthorizedLines()
+        XCTAssertEqual(model.lineListState, .legacyBinding)
+        XCTAssertTrue(model.authorizedLines.isEmpty)
+        XCTAssertTrue(model.shouldShowLinePicker)
+        XCTAssertTrue(model.lineListStatusMessage?.contains("旧版按线路配对") == true)
+        XCTAssertEqual(api.authorizedLinesCallCount, 0, "v1 must not call the v2 lines endpoint")
+
+        // Legacy event-auth recovery uses the shared line() surface instead of
+        // the v2-only lines call.
+        model.eventState = .unauthorized
+        await model.testingRecoverEventAuthorization()
+        XCTAssertEqual(api.lineCallCount, 1)
+        XCTAssertEqual(api.authorizedLinesCallCount, 0)
+        XCTAssertFalse(model.authRecoveryRequired)
+    }
+
+    func testDefinitiveAuthLossClearsStaleLinesAndPrompts() async throws {
+        let lines = [line(id: "line1", name: "L1", phone: "15550001111"),
+                     line(id: "line2", name: "L2", phone: "15550002222")]
+        let (model, api, driver, _) = try makeModel(lines: lines, defaultLineId: "line1")
+        model.setTemporaryDialLine("line2")
+        api.authorizedLinesError = APIError.unauthorized
+        await model.testingRefreshAuthorizedLines()
+        XCTAssertTrue(model.authRecoveryRequired)
+        XCTAssertTrue(model.authorizedLines.isEmpty)
+        XCTAssertNil(model.defaultLineId)
+        XCTAssertNil(model.temporaryDialLineId)
+        XCTAssertNil(model.outgoingPick)
+        XCTAssertFalse(model.requestDial("5550100"))
+        XCTAssertTrue(driver.dials.isEmpty, "stale dial action must not fire after auth loss")
+        XCTAssertTrue(model.shouldShowLinePicker)
+        XCTAssertNotNil(model.lineListStatusMessage)
+    }
+
+    func testTransientLineFailureKeepsLinesAndDoesNotPrompt() async throws {
+        let lines = [line(id: "line1", name: "L1", phone: "15550001111")]
+        let (model, api, driver, _) = try makeModel(lines: lines, defaultLineId: "line1")
+        api.authorizedLinesError = APIError.network(URLError(.notConnectedToInternet))
+        await model.testingRefreshAuthorizedLines()
+        XCTAssertFalse(model.authRecoveryRequired, "transient offline must not log the user out")
+        XCTAssertEqual(model.authorizedLines.count, 1)
+        XCTAssertEqual(model.defaultLineId, "line1")
+        XCTAssertEqual(model.lineListState, .loaded)
+        XCTAssertTrue(model.requestDial("5550100"), "cached lines stay usable while offline")
+        XCTAssertEqual(driver.dials.count, 1)
+    }
+
+    /// A 403 is a permission/capability denial, not revoked credentials: it
+    /// must never raise the re-pair banner or clear the authorization state.
+    func testPermissionForbiddenNeverPromptsRePair() async throws {
+        let lines = [line(id: "line1", name: "L1", phone: "15550001111")]
+        let (model, api, driver, _) = try makeModel(lines: lines, defaultLineId: "line1")
+        api.authorizedLinesError = APIError.http(
+            status: 403, code: "CB-PERM-403", message: "当前配对密钥无权修改该线路号码")
+        await model.testingRefreshAuthorizedLines()
+        XCTAssertFalse(model.authRecoveryRequired)
+        XCTAssertEqual(model.authorizedLines.count, 1)
+        XCTAssertTrue(model.requestDial("5550100"))
+        XCTAssertEqual(driver.dials.count, 1)
+
+        // The line poll must also treat a 403 as a terminal permission error,
+        // not as an auth loss.
+        api.lineError = APIError.http(status: 403, code: "CB-PERM-403", message: "无权限")
+        await model.testingLineTick()
+        XCTAssertFalse(model.authRecoveryRequired)
+        XCTAssertEqual(model.authorizedLines.count, 1)
+    }
+
+    func testEventAuthKickLoopStopsAfterSecondSuccessWithoutOpen() async throws {
+        let (model, api, _, _) = try makeModel(
+            lines: [line(id: "line1", name: "L1")], defaultLineId: "line1")
+        model.eventState = .unauthorized
+        await model.testingRecoverEventAuthorization()
+        XCTAssertFalse(model.authRecoveryRequired)
+        // The socket never opened; a second successful REST recovery must stop
+        // kick-looping and surface the definitive prompt.
+        await model.testingRecoverEventAuthorization()
+        XCTAssertTrue(model.authRecoveryRequired)
+        XCTAssertEqual(api.lineCallCount, 2)
+    }
+
+    func testEventAuthTransientFailureSchedulesRetry() async throws {
+        let (model, api, _, _) = try makeModel(
+            lines: [line(id: "line1", name: "L1")], defaultLineId: "line1")
+        model.eventAuthRetryDelay = 0.05
+        model.eventState = .unauthorized
+        api.lineError = APIError.network(URLError(.timedOut))
+        await model.testingRecoverEventAuthorization()
+        XCTAssertFalse(model.authRecoveryRequired)
+        await waitUntil(timeout: 2) { api.lineCallCount >= 2 }
+        // Network recovers; the bounded retry succeeds and clears the prompt.
+        api.lineError = nil
+        await waitUntil(timeout: 3) { api.lineCallCount >= 3 && !model.authRecoveryRequired }
+        XCTAssertFalse(model.authRecoveryRequired)
+    }
+
+    func testLineRecoveryClearsAuthPromptAndReloadsLines() async throws {
+        let lines = [line(id: "line1", name: "L1", phone: "15550001111")]
+        let (model, api, _, _) = try makeModel(lines: lines, defaultLineId: "line1")
+        api.authorizedLinesError = APIError.unauthorized
+        await model.testingRefreshAuthorizedLines()
+        XCTAssertTrue(model.authRecoveryRequired)
+        XCTAssertTrue(model.authorizedLines.isEmpty)
+
+        api.authorizedLinesError = nil
+        model.eventState = .unauthorized
+        await model.testingLineTick()
+        XCTAssertFalse(model.authRecoveryRequired, "a recovered REST path clears the prompt")
+        await waitUntil { model.authorizedLines.first?.actualNumber == "15550001111" }
+        XCTAssertEqual(model.lineListState, .loaded)
+        XCTAssertEqual(model.defaultLineId, "line1")
+    }
+
+    func testStaleLineTickAfterRepairNeverClearsNewSession() async throws {
+        let oldLines = [line(id: "line1", name: "OLD")]
+        let (model, api, _, _) = try makeModel(lines: oldLines, defaultLineId: "line1")
+        api.armLineWait()
+        let tick = Task { await model.testingLineTick() }
+        await pumpMainActor()
+        // A new pairing starts while the old tick is still in flight.
+        model.testingBumpSessionGeneration()
+        let newLines = [line(id: "line1", name: "NEW", phone: "15550009999")]
+        model.configureForTesting(api: api, driver: RecordingDriver(), lines: newLines, defaultLineId: "line1")
+        api.resumeLine(with: .failure(APIError.unauthorized))
+        await tick.value
+        XCTAssertFalse(model.authRecoveryRequired, "a stale tick must not clear the new pairing")
+        XCTAssertTrue(model.authorizedLines.map(\.name).contains("NEW"))
     }
 }

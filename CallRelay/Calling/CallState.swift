@@ -77,3 +77,32 @@ enum LinePhase: Equatable {
         }
     }
 }
+
+/// Authenticated line-list state. It distinguishes loading, loaded, legacy
+/// per-line pairing that needs an explicit migration, an authenticated device
+/// with no grants, and transient fetch failures. No surface may render an
+/// empty or single-line picker as if it were healthy without an explanation.
+enum LineListState: Equatable {
+    case unknown
+    case loading
+    case loaded
+    /// A v1 `/line1`/`/line2` binding: the unified line list does not exist.
+    case legacyBinding
+    /// Authenticated successfully but the device currently holds no grants.
+    case empty(String)
+    /// Transient fetch failure; existing lines stay usable and retries continue.
+    case unavailable(String)
+
+    var message: String? {
+        switch self {
+        case .unknown, .loaded:
+            return nil
+        case .loading:
+            return "正在获取线路…"
+        case .legacyBinding:
+            return "当前是旧版按线路配对，无法显示或选择统一网关的线路号码。请重新配对统一网关；旧配对与本地记录会保留到新配对成功。"
+        case .empty(let message), .unavailable(let message):
+            return message
+        }
+    }
+}

@@ -11,12 +11,26 @@ struct RootView: View {
                 OnboardingView()
             }
         }
+        // Layout-respecting banner: inserted into the safe area so navigation
+        // titles and toolbars are pushed below it instead of being covered.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if model.authRecoveryRequired, !model.isDemo, model.bindingPresent {
+                AuthRecoveryBanner()
+                    .environmentObject(model)
+            }
+        }
         .animation(.easeInOut(duration: 0.2), value: model.isDemo)
         .fullScreenCover(isPresented: Binding(
             get: { model.activeCall != nil },
             set: { if !$0 { /* hangup is explicit */ } }
         )) {
             ActiveCallView()
+                .environmentObject(model)
+        }
+        // Explicit re-pair/migration over the live UI: the old binding stays
+        // intact until the new enrollment succeeds.
+        .sheet(isPresented: $model.repairPresented) {
+            OnboardingView()
                 .environmentObject(model)
         }
         // Relaunch from a system Phone/Recents row (INStartCallIntent).
@@ -62,6 +76,37 @@ private extension AppModel {
         // Reflects an active live session; bootstrap sets connecting/online.
         if case .unpaired = linePhase { return false }
         return true
+    }
+}
+
+/// Floating, non-blocking prompt shown only on definitive credential loss.
+/// Transient offline states never render it.
+private struct AuthRecoveryBanner: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("授权已失效", systemImage: "exclamationmark.shield.fill")
+                .font(.subheadline).bold()
+            Text("请重新配对以恢复连接。")
+                .font(.caption)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button("重新配对") { model.beginRepair() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                Button("重试") { model.retryConnection() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .accessibilityIdentifier("authRecoveryBanner")
     }
 }
 

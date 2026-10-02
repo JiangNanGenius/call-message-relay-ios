@@ -31,6 +31,16 @@ final class AppModel: ObservableObject {
     /// Unified gateway lines authorized for this device (v2 only).
     @Published var authorizedLines: [AuthorizedLine] = []
     @Published var defaultLineId: String?
+    /// Explicit state of the authorized-line fetch: never let an empty picker
+    /// look like a healthy gateway.
+    @Published var lineListState: LineListState = .unknown
+    /// Set only on a definitive credential loss (revoked key/device or a
+    /// rejected refresh), never on a transient network failure.
+    @Published var authRecoveryRequired = false
+    @Published var authRecoveryMessage: String?
+    /// Owner-initiated re-pair/migration form, presented over the live UI so
+    /// the old binding is preserved until the new pairing succeeds.
+    @Published var repairPresented = false
     /// One-call-only outgoing line chosen on the dialer. It is consumed by the
     /// next dial and never written to the persistent default.
     @Published var temporaryDialLineId: String?
@@ -114,6 +124,12 @@ final class AppModel: ObservableObject {
     private var reservedCallIds: Set<String> = []
     /// Snapshot reconciliation guard so foreground/WS-open can't overlap.
     private var reconciling = false
+    /// Counts successful REST-based event-auth recoveries that did NOT lead to
+    /// an open socket. Two are enough to treat a persistently rejecting WS as
+    /// definitive and prompt, instead of kick-looping forever.
+    private var eventAuthRecoveryKicks = 0
+    /// Test seam: delay before retrying a transient event-auth refresh.
+    var eventAuthRetryDelay: TimeInterval = 5
     /// Current gateway scope id for history isolation in optional sync.
     private var currentGatewayScope: String?
 
@@ -124,6 +140,31 @@ final class AppModel: ObservableObject {
     }
 
     var isPaired: Bool { bindingStore.current() != nil && tokenStore.tokens() != nil }
+
+    /// True when the current binding is a legacy v1 per-line pairing. The
+    /// unified line list and number selector cannot exist for it; the UI must
+    /// offer an explicit migration instead of an empty selector.
+    var migrationRequired: Bool { lineListState == .legacyBinding }
+
+    /// The dialer/Settings line affordance stays visible in live mode for
+    /// every non-loaded line-list state (loading, legacy, empty, unavailable,
+    /// auth lost), so a missing or unavailable number is always explained
+    /// instead of vanishing.
+    var shouldShowLinePicker: Bool {
+        if isDemo { return !authorizedLines.isEmpty }
+        switch lineListState {
+        case .unknown, .loaded:
+            return !authorizedLines.isEmpty
+        case .loading, .legacyBinding, .empty, .unavailable:
+            return true
+        }
+    }
+
+    /// User-facing explanation for an empty/unavailable line list.
+    var lineListStatusMessage: String? {
+        guard !isDemo else { return nil }
+        return lineListState.message
+    }
 
     var eventStateText: String? {
         switch eventState {
@@ -233,6 +274,16 @@ final class AppModel: ObservableObject {
     // MARK: Lifecycle
 
     func bootstrap() {
+        // Signed-in screenshot fixture: renders the real paired-mode line
+        // surfaces from synthetic lines without touching network or
+        // credentials. Must win over a persisted demo flag from a previous run.
+        if ProcessInfo.processInfo.arguments.contains(LaunchArguments.pairedFixture) {
+            enablePairedFixture()
+            if ProcessInfo.processInfo.arguments.contains(LaunchArguments.authLostFixture) {
+                markAuthLost("授权已失效，请重新配对。")
+            }
+            return
+        }
         if defaults.bool(forKey: DefaultsKey.demo)
             || ProcessInfo.processInfo.arguments.contains(LaunchArguments.forceDemo) {
             enterDemo(persist: false)
@@ -250,6 +301,7 @@ final class AppModel: ObservableObject {
             return
         }
         if tokenStore.tokens() != nil {
+            if binding.apiVersion != "v2" { lineListState = .legacyBinding }
             startLive(binding: binding)
             return
         }
@@ -266,6 +318,7 @@ final class AppModel: ObservableObject {
                 switch outcome {
                 case .success:
                     if let restored = bindingStore.current() {
+                        if restored.apiVersion != "v2" { lineListState = .legacyBinding }
                         startLive(binding: restored)
                     } else {
                         linePhase = .unpaired
@@ -307,18 +360,58 @@ final class AppModel: ObservableObject {
             identities: identities, tokens: tokenStore, bindings: bindingStore
         )
         pairingService = service
+        // Re-pairing/migration never destroys a still-working old binding or
+        // login when the new pairing fails; only a successful exchange
+        // replaces it.
+        let preserveExisting = bindingStore.current() != nil
         let result = await service.pair(.init(
             payloadText: payloadText,
             endpointOverride: endpointOverride.isEmpty ? nil : endpointOverride,
-            allowLoopbackHTTP: allowLoopbackHTTP
+            allowLoopbackHTTP: allowLoopbackHTTP,
+            preserveExistingOnFailure: preserveExisting
         ))
         isPairing = false
         switch result {
         case .success(let out):
+            teardownLive()
+            authRecoveryRequired = false
+            authRecoveryMessage = nil
+            repairPresented = false
             startLive(binding: out.binding)
         case .failure(let failure):
             pairingError = failure.errorDescription
         }
+    }
+
+    /// Presents the pairing form for an explicit re-pair or v1 migration.
+    /// Nothing is torn down or revoked here: the old binding keeps working
+    /// until the new enrollment succeeds.
+    func beginRepair() {
+        pairingError = nil
+        repairPresented = true
+    }
+
+    func cancelRepair() {
+        repairPresented = false
+        pairingError = nil
+    }
+
+    /// Marks a definitive credential loss: stale line/number surfaces are
+    /// cleared so they can never look actionable, and the owner gets an
+    /// explicit reconnect/re-pair prompt. Transient failures never call this.
+    func markAuthLost(_ message: String) {
+        authRecoveryRequired = true
+        authRecoveryMessage = message
+        authorizedLines = []
+        defaultLineId = nil
+        temporaryDialLineId = nil
+        outgoingPick = nil
+        numberEditLine = nil
+        lineNumberNotice = nil
+        voicemails = []
+        lineListState = .unavailable(message)
+        (driver as? LiveCallDriver)?.setDefaultLineId(nil)
+        if case .online = linePhase { linePhase = .offline(message) }
     }
 
     func unpair() {
@@ -334,6 +427,8 @@ final class AppModel: ObservableObject {
         outgoingPick = nil
         selectedLineFilter = nil
         voicemails = []
+        repairPresented = false
+        pairingError = nil
     }
 
     /// Re-run the anonymous identity verification and, if it matches, connect.
@@ -401,11 +496,9 @@ final class AppModel: ObservableObject {
         demoGateway?.failNextOutgoingSMS = true
     }
 
-    /// Screenshot/UI-test only: overlays synthetic unified lines on the
-    /// offline demo so the default/per-call line pickers and number editor
-    /// can be rendered without a gateway. All numbers are reserved 555
-    /// synthetics; no network is touched.
-    func enableLinePreview() {
+    /// Synthetic lines shared by the demo overlay and the paired-mode
+    /// screenshot fixture. All numbers are reserved 555 synthetics.
+    private func syntheticPreviewLines() -> [AuthorizedLine] {
         func makeLine(id: String, name: String, phone: String?, source: String?,
                       manage: Bool = false) -> AuthorizedLine {
             AuthorizedLine(
@@ -418,12 +511,33 @@ final class AppModel: ObservableObject {
                 phoneNumber: phone, canManageNumber: manage, lastError: nil
             )
         }
-        authorizedLines = [
+        return [
             makeLine(id: "line1", name: "主卡", phone: "+15550161111", source: "sim", manage: true),
             makeLine(id: "line2", name: "流量卡", phone: "+15550162222", source: "manual"),
             makeLine(id: "line3", name: "空卡", phone: nil, source: "empty")
         ]
+    }
+
+    /// Screenshot/UI-test only: overlays synthetic unified lines on the
+    /// offline demo so the default/per-call line pickers and number editor
+    /// can be rendered without a gateway. All numbers are reserved 555
+    /// synthetics; no network is touched.
+    func enableLinePreview() {
+        authorizedLines = syntheticPreviewLines()
         defaultLineId = "line1"
+        linePhase = .online(authorizedLines[0].status)
+    }
+
+    /// Screenshot/UI-test only: renders the live paired-mode line surfaces
+    /// (settings line list, dialer picker) from the same synthetic lines and
+    /// the same view code used after a real enrollment, with no network.
+    func enablePairedFixture() {
+        isDemo = false
+        defaults.set(false, forKey: DefaultsKey.demo)
+        gatewayName = "线路预览（合成）"
+        authorizedLines = syntheticPreviewLines()
+        defaultLineId = "line1"
+        lineListState = .loaded
         linePhase = .online(authorizedLines[0].status)
     }
 
@@ -568,9 +682,19 @@ final class AppModel: ObservableObject {
                 guard let self, streamGeneration == self.sessionGeneration else { return }
                 self.eventState = state
                 if state == .open {
+                    self.eventAuthRecoveryKicks = 0
                     Task { @MainActor in
                         guard streamGeneration == self.sessionGeneration else { return }
                         await self.reconcileAfterGap()
+                    }
+                }
+                if state == .unauthorized {
+                    // May be an expired access token rather than a revoked
+                    // credential: refresh once through the REST path and
+                    // reconnect; only a definitive rejection prompts.
+                    Task { @MainActor in
+                        guard streamGeneration == self.sessionGeneration else { return }
+                        await self.recoverEventAuthorization()
                     }
                 }
             }
@@ -667,6 +791,10 @@ final class AppModel: ObservableObject {
         numberEditLine = nil
         lineNumberNotice = nil
         voicemails = []
+        lineListState = .unknown
+        authRecoveryRequired = false
+        authRecoveryMessage = nil
+        eventAuthRecoveryKicks = 0
         activeGatewayCallIds.removeAll()
         reservedCallIds.removeAll()
         activeCall = nil
@@ -726,15 +854,36 @@ final class AppModel: ObservableObject {
 
     private func lineTick() async -> BackoffRunner.LoopDecision {
         guard let api else { return .stop }
+        // A tick may complete after an unpair/re-pair replaced this session;
+        // its verdict must never touch the new pairing state.
+        let gen = sessionGeneration
         do {
             let line = try await api.line()
+            guard gen == sessionGeneration else { return .stop }
             linePhase = .online(line)
+            // A recovered REST path also revives the event stream: an expired
+            // access token is refreshed once here and the socket reconnects
+            // with the rotated bearer instead of staying unauthorized.
+            if eventState == .unauthorized || authRecoveryRequired {
+                eventAuthRecoveryKicks = 0
+                authRecoveryRequired = false
+                authRecoveryMessage = nil
+                eventStream?.kick()
+                Task { @MainActor [weak self] in
+                    guard let self, gen == self.sessionGeneration else { return }
+                    await self.refreshAuthorizedLines()
+                }
+            }
             // Line recovered: flush any queued SMS.
             if isSMSLineUsable { inbox?.flushReadyOutbox() }
             return .succeeded(interval: 15)
         } catch let error as APIError {
+            guard gen == sessionGeneration else { return .stop }
             switch error {
             case .unauthorized, .noCredentials:
+                // Only a definitive rejection lands here (a valid refresh is
+                // retried inside the API); clear stale surfaces and prompt.
+                markAuthLost("授权已失效，请重新配对。")
                 linePhase = .offline("授权已失效，请重新配对。")
                 return .failed(classification: .authTerminal, retryAfter: nil)
             case .rateLimited(let retryAfter):
@@ -745,10 +894,13 @@ final class AppModel: ObservableObject {
                 linePhase = .offline(error.friendlyMessage)
                 return .failed(classification: .terminal, retryAfter: nil)
             default:
+                // Transient network/5xx: stay in the silent retry loop, keep
+                // authorized lines and never prompt for re-pairing.
                 linePhase = .offline(error.friendlyMessage)
                 return .failed(classification: .retryable(retryAfter: nil), retryAfter: nil)
             }
         } catch {
+            guard gen == sessionGeneration else { return .stop }
             linePhase = .offline("无法连接网关，正在自动重连。")
             return .failed(classification: .retryable(retryAfter: nil), retryAfter: nil)
         }
@@ -756,6 +908,66 @@ final class AppModel: ObservableObject {
 
     private func refreshLine() async {
         _ = await lineTick()
+    }
+
+    /// A WebSocket 401 may mean only that the short-lived access token
+    /// expired. The REST path owns the single coordinated refresher: make one
+    /// authorized call (v1 binding uses the same `line()` surface, which works
+    /// for both wire generations), then re-kick the socket with the rotated
+    /// bearer. A definitive rejection clears stale state and prompts; a
+    /// transient failure schedules its own bounded retry instead of waiting
+    /// for the next foreground event.
+    private func recoverEventAuthorization() async {
+        guard !isDemo, api != nil else { return }
+        if tokenStore.tokens() == nil {
+            markAuthLost("授权已失效，请重新配对。")
+            return
+        }
+        let gen = sessionGeneration
+        do {
+            // `line()` exists for v1 and v2; `authorizedLines()` is v2-only
+            // and would throw notReady for a legacy binding.
+            _ = try await api?.line()
+            guard gen == sessionGeneration else { return }
+            if eventAuthRecoveryKicks >= 1 {
+                // REST says the token is valid but the socket rejected it
+                // twice: stop kick-looping and ask the owner to re-pair.
+                markAuthLost("事件连接授权失败，请重新配对。")
+                return
+            }
+            eventAuthRecoveryKicks += 1
+            authRecoveryRequired = false
+            authRecoveryMessage = nil
+            eventStream?.kick()
+            Task { @MainActor [weak self] in
+                guard let self, gen == self.sessionGeneration else { return }
+                await self.refreshAuthorizedLines()
+            }
+        } catch let error as APIError {
+            guard gen == sessionGeneration else { return }
+            switch error {
+            case .unauthorized, .noCredentials:
+                markAuthLost("授权已失效，请重新配对。")
+            default:
+                scheduleEventAuthRetry()
+            }
+        } catch {
+            guard gen == sessionGeneration else { return }
+            scheduleEventAuthRetry()
+        }
+    }
+
+    /// Bounded retry for a transient event-auth refresh failure, so recovery
+    /// never silently stalls.
+    private func scheduleEventAuthRetry() {
+        let gen = sessionGeneration
+        let delay = eventAuthRetryDelay
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+            guard let self, gen == self.sessionGeneration,
+                  self.eventState == .unauthorized, !self.authRecoveryRequired else { return }
+            await self.recoverEventAuthorization()
+        }
     }
 
     /// Recover events/messages/calls missed while suspended or disconnected.
@@ -957,23 +1169,36 @@ final class AppModel: ObservableObject {
     // MARK: Unified lines / voicemail
 
     private func refreshAuthorizedLines() async {
-        guard let api else { return }
+        guard let api else {
+            lineListState = .unavailable("尚未连接网关。")
+            return
+        }
+        // A legacy v1 per-line binding has no unified line list at all. Show
+        // the explicit migration state instead of an empty, healthy-looking
+        // picker; the v1 REST surface (calls/SMS) keeps working meanwhile.
+        guard bindingStore.current()?.apiVersion == "v2" else {
+            lineListState = .legacyBinding
+            return
+        }
         let gen = sessionGeneration
+        if authorizedLines.isEmpty { lineListState = .loading }
         do {
             let lines = try await api.authorizedLines()
             guard gen == sessionGeneration else { return }
             // A successful empty response means this device currently holds no
             // line grants (e.g. the last key_lines row was removed): clear
-            // authorization-dependent UI instead of keeping stale lines.
+            // authorization-dependent UI and explain, never hide.
             if lines.isEmpty {
                 authorizedLines = []
                 defaultLineId = nil
                 temporaryDialLineId = nil
                 outgoingPick = nil
+                lineListState = .empty("此设备当前没有已授权的线路。请在网关的配对密钥中授权线路，或重新配对。")
                 (driver as? LiveCallDriver)?.setDefaultLineId(nil)
                 return
             }
             authorizedLines = lines
+            lineListState = .loaded
             // Preserve a still-valid persisted default. Never silently pick a
             // different (or the "first") line: when the default is missing,
             // disabled or has lost permission, the user must choose.
@@ -993,8 +1218,26 @@ final class AppModel: ObservableObject {
             (driver as? LiveCallDriver)?.setDefaultLineId(defaultLineId)
             inbox?.lineIdProvider = { [weak self] in self?.defaultLineId }
             await refreshVoicemails()
+        } catch let error as APIError {
+            guard gen == sessionGeneration else { return }
+            switch error {
+            case .unauthorized, .noCredentials:
+                // Definitive credential loss: clear stale authorization and
+                // prompt re-pair instead of quietly retrying with dead tokens.
+                markAuthLost("授权已失效，请重新配对。")
+            case .notReady:
+                lineListState = .legacyBinding
+            default:
+                // Transient: keep existing lines usable and keep retrying.
+                if authorizedLines.isEmpty {
+                    lineListState = .unavailable("暂时无法获取线路列表，正在自动重试。")
+                }
+            }
         } catch {
-            // Keep the existing line phase; the legacy /line poll still runs.
+            guard gen == sessionGeneration else { return }
+            if authorizedLines.isEmpty {
+                lineListState = .unavailable("暂时无法获取线路列表，正在自动重试。")
+            }
         }
     }
 
@@ -1129,6 +1372,7 @@ final class AppModel: ObservableObject {
         isDemo = false
         authorizedLines = lines
         self.defaultLineId = defaultLineId
+        lineListState = lines.isEmpty ? .unknown : .loaded
         if let defaultLineId, let line = lines.first(where: { $0.id == defaultLineId }) {
             linePhase = .online(line.status)
         }
@@ -1137,6 +1381,16 @@ final class AppModel: ObservableObject {
     /// Drives the private line refresh in tests.
     func testingRefreshAuthorizedLines() async {
         await refreshAuthorizedLines()
+    }
+
+    /// Drives the private event-auth recovery path in tests.
+    func testingRecoverEventAuthorization() async {
+        await recoverEventAuthorization()
+    }
+
+    /// Drives the private line poll in tests.
+    func testingLineTick() async {
+        _ = await lineTick()
     }
 
     /// Simulates a session teardown/re-bind generation bump without clearing

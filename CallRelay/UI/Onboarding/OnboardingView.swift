@@ -100,6 +100,15 @@ struct OnboardingView: View {
             }
             .navigationTitle("配对网关")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // Only when re-pairing from a live session: a first-time
+                // onboarding has nothing to cancel back to.
+                if model.isPaired {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("取消") { model.cancelRepair() }
+                    }
+                }
+            }
             .sheet(isPresented: $showScanner) {
                 QRScannerView { code in
                     payloadText = code

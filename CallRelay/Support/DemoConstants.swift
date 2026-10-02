@@ -26,6 +26,11 @@ enum LaunchArguments {
     static let multilinePreview = "-callrelayMultilinePreview"
     static let showLineChooser = "-callrelayShowLineChooser"
     static let showNumberEditor = "-callrelayShowNumberEditor"
+    /// Screenshot-only: renders the *live paired-mode* line surfaces from the
+    /// same synthetic lines without any network or credentials. Optional
+    /// `authLostFixture` additionally renders the definitive-auth-lost prompt.
+    static let pairedFixture = "-callrelayPairedFixture"
+    static let authLostFixture = "-callrelayAuthLostFixture"
 
     static var isUITestReset: Bool {
         ProcessInfo.processInfo.arguments.contains(uiTestReset)

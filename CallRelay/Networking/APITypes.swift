@@ -261,6 +261,21 @@ struct AuthorizedLine: Decodable, Equatable, Identifiable, Sendable {
             && (voice == .ready || voice == .controlOnly)
     }
 
+    /// Short user-facing reason this authorized line cannot originate a call
+    /// right now. Empty when it can. An authorized-but-unavailable line is
+    /// always listed with this reason rather than disappearing.
+    var unavailableReason: String {
+        guard !canDialNow else { return "" }
+        var parts: [String] = []
+        if !enabled { parts.append("已停用") }
+        if !permissions.dial { parts.append("无外呼权限") }
+        if !online { parts.append("离线") }
+        if registration != .registered { parts.append("未注册") }
+        if voice != .ready && voice != .controlOnly { parts.append("语音不可用") }
+        if parts.isEmpty { parts.append("暂不可用") }
+        return parts.joined(separator: " · ")
+    }
+
     /// Existing UI expects a LineStatus; map the unified line onto it.
     var status: LineStatus {
         LineStatus(sim: sim, operatorName: operatorName, registration: registration, signal: signal,

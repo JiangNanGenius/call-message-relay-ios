@@ -130,12 +130,24 @@ struct DialerView: View {
         return model.contacts.name(forPeer: number)
     }
 
-    /// Phone-like current-SIM indicator; always shown when unified lines are
-    /// known so the owner sees which number will call, even with one line.
+    /// Phone-like current-SIM indicator. Shown in live mode whenever a line
+    /// exists, is being resolved, or the binding needs migration/re-pair, so
+    /// a missing or unavailable number is explained instead of vanishing.
     @ViewBuilder
     private var outgoingLinePicker: some View {
-        if !model.authorizedLines.isEmpty {
+        if model.shouldShowLinePicker {
             OutgoingLineMenu()
+        }
+        if !model.isDemo, model.authorizedLines.isEmpty,
+           let status = model.lineListStatusMessage {
+            Text(status)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .padding(.horizontal, 24)
+                .padding(.top, 4)
+                .accessibilityIdentifier("lineListStatus")
         }
     }
 

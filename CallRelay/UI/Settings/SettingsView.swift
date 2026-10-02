@@ -111,25 +111,81 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var unifiedLineSection: some View {
-        if !model.authorizedLines.isEmpty {
-            Section {
+        Section {
+            if !model.isDemo, model.authRecoveryRequired {
+                authRecoveryRows
+            } else if !model.isDemo, model.migrationRequired {
+                migrationRows
+            } else if model.authorizedLines.isEmpty {
+                if !model.isDemo { lineStatusRow }
+            } else {
                 ForEach(model.authorizedLines) { line in
                     lineRow(line)
                 }
-                if model.recoveryAvailable {
-                    Button(role: .destructive) {
-                        model.disableCrossDeviceRecovery()
-                    } label: {
-                        Label("停用跨设备自动恢复", systemImage: "icloud.slash")
-                    }
-                }
-            } header: {
-                Text("默认拨出线路")
-            } footer: {
-                if model.authorizedLines.count > 1 {
-                    Text("拨号键盘可临时切换本次外呼线路。")
+            }
+            if model.recoveryAvailable, !model.authorizedLines.isEmpty,
+               !model.migrationRequired, !model.authRecoveryRequired {
+                Button(role: .destructive) {
+                    model.disableCrossDeviceRecovery()
+                } label: {
+                    Label("停用跨设备自动恢复", systemImage: "icloud.slash")
                 }
             }
+        } header: {
+            Text("默认拨出线路")
+        } footer: {
+            if model.authorizedLines.count > 1 {
+                Text("拨号键盘可临时切换本次外呼线路。")
+            }
+        }
+    }
+
+    /// Definitive credential loss: the explicit recovery route, never a
+    /// silent retry that looks offline-but-fine.
+    @ViewBuilder
+    private var authRecoveryRows: some View {
+        Label("请重新配对以恢复连接。", systemImage: "exclamationmark.shield.fill")
+            .foregroundStyle(.orange)
+            .font(.footnote)
+        Button {
+            model.beginRepair()
+        } label: {
+            Label("重新配对", systemImage: "qrcode.viewfinder")
+        }
+        Button {
+            model.retryConnection()
+        } label: {
+            Label("重试连接", systemImage: "arrow.clockwise")
+        }
+    }
+
+    /// Legacy v1 per-line binding: explicit migration instead of an empty
+    /// picker that looks like a healthy gateway.
+    @ViewBuilder
+    private var migrationRows: some View {
+        Label("当前是旧版按线路配对，无法显示统一网关的线路号码。",
+              systemImage: "arrow.triangle.2.circlepath")
+            .font(.footnote)
+            .foregroundStyle(.orange)
+        Text("重新配对统一网关后即可查看和选择号码；旧配对与本地记录会保留，直到新配对成功。")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        Button {
+            model.beginRepair()
+        } label: {
+            Label("重新配对统一网关", systemImage: "qrcode.viewfinder")
+        }
+    }
+
+    @ViewBuilder
+    private var lineStatusRow: some View {
+        Text(model.lineListStatusMessage ?? "正在获取线路…")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        Button {
+            model.retryConnection()
+        } label: {
+            Label("重新获取线路", systemImage: "arrow.clockwise")
         }
     }
 
@@ -146,6 +202,9 @@ struct SettingsView: View {
                         Text(line.name).font(.caption2).foregroundStyle(.secondary)
                     } else if let unavailable = line.numberUnavailableText {
                         Text(unavailable).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    if !line.canDialNow {
+                        Text(line.unavailableReason).font(.caption2).foregroundStyle(.orange)
                     }
                     HStack(spacing: 6) {
                         Text(line.online ? "在线" : "离线")

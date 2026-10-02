@@ -32,6 +32,10 @@ final class PairingService {
         let payloadText: String
         let endpointOverride: String?
         let allowLoopbackHTTP: Bool
+        /// A migration/re-pair attempt must never destroy a still-working old
+        /// binding or login when the new pairing fails. When true, the
+        /// previous token set and binding are restored on any failure.
+        var preserveExistingOnFailure: Bool = false
     }
 
     struct Result {
@@ -65,6 +69,8 @@ final class PairingService {
     }
 
     func pair(_ input: Input) async -> Swift.Result<Result, Failure> {
+        let previousTokens = tokens.tokens()
+        let previousBinding = bindings.current()
         let parse = PairingPayloadParser.parse(input.payloadText)
         let payload: PairingPayload
         switch parse {
@@ -98,17 +104,34 @@ final class PairingService {
                 return .failure(.api(.network(URLError(.cannotFindHost))))
             }
 
+            let outcome: Swift.Result<Result, Failure>
             if payload.isEnrollment {
-                return try await pairEnrollment(payload, origin: origin)
+                outcome = try await pairEnrollment(payload, origin: origin)
+            } else {
+                outcome = try await pairLegacy(payload, origin: origin)
             }
-            return try await pairLegacy(payload, origin: origin)
+            if case .failure = outcome {
+                restorePreservedState(input, tokenSet: previousTokens, binding: previousBinding)
+            }
+            return outcome
         } catch let error as APIError {
-            tokens.clear()
+            restorePreservedState(input, tokenSet: previousTokens, binding: previousBinding)
+            if previousTokens == nil { tokens.clear() }
             return .failure(.api(error))
         } catch {
-            tokens.clear()
+            restorePreservedState(input, tokenSet: previousTokens, binding: previousBinding)
+            if previousTokens == nil { tokens.clear() }
             return .failure(.api(.network(URLError(.badServerResponse))))
         }
+    }
+
+    /// Puts a working pre-migration binding/token set back after a failed
+    /// re-pair. Only applies to explicit repair attempts that had an existing
+    /// session; first-time pairing still clears partial state on failure.
+    private func restorePreservedState(_ input: Input, tokenSet: TokenSet?, binding: GatewayBinding?) {
+        guard input.preserveExistingOnFailure, let tokenSet, let binding else { return }
+        try? tokens.save(tokenSet)
+        try? bindings.save(binding)
     }
 
     // MARK: Legacy per-line pairing (v1)

@@ -23,6 +23,17 @@ final class LinePickerUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["拨号键盘"].waitForExistence(timeout: 10))
     }
 
+    /// Signed-in fixture: live paired-mode surfaces, same view code as a real
+    /// enrollment, no network and no credentials.
+    private func launchPaired(_ extra: [String] = []) {
+        app.launchArguments = [
+            "-callrelayUITestReset",
+            "-callrelayPairedFixture"
+        ] + extra
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["拨号键盘"].waitForExistence(timeout: 10))
+    }
+
     func testDialerShowsCurrentLineAndTemporarySwitch() throws {
         launch()
         app.tabBars.buttons["拨号键盘"].tap()
@@ -83,5 +94,55 @@ final class LinePickerUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    // MARK: Signed-in fixture (live paired surfaces, no network)
+
+    func testPairedFixtureShowsLiveLinePickerAndNumbers() throws {
+        launchPaired()
+        let pill = app.descendants(matching: .any)["outgoingLineMenu"].firstMatch
+        XCTAssertTrue(pill.waitForExistence(timeout: 5))
+        let number = app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", "+15550161111")).firstMatch
+        XCTAssertTrue(number.waitForExistence(timeout: 3),
+                      "paired mode must show the authorized own number, even with one usable line")
+        attach("15-paired-dialer-line-picker")
+
+        // Expanded per-call selector lists every authorized line by number.
+        pill.tap()
+        let menuLine = app.buttons.containing(
+            NSPredicate(format: "label CONTAINS %@", "+15550162222")).firstMatch
+        XCTAssertTrue(menuLine.waitForExistence(timeout: 3))
+        attach("19-paired-line-menu-expanded")
+        menuLine.tap()
+        XCTAssertTrue(app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", "+15550162222（本次）")).firstMatch
+            .waitForExistence(timeout: 3))
+
+        app.tabBars.buttons["设置"].tap()
+        let header = app.staticTexts["默认拨出线路"]
+        for _ in 0..<8 where !header.exists { app.swipeUp() }
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        let line2 = app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", "+15550162222")).firstMatch
+        XCTAssertTrue(line2.waitForExistence(timeout: 3),
+                      "authorized unavailable/other lines stay listed with their number")
+        attach("16-paired-settings-lines")
+    }
+
+    func testAuthLostFixtureShowsRecoveryPrompt() throws {
+        launchPaired(["-callrelayAuthLostFixture"])
+        let banner = app.descendants(matching: .any)["authRecoveryBanner"].firstMatch
+        XCTAssertTrue(banner.waitForExistence(timeout: 5),
+                      "definitive auth loss must show the recovery banner")
+        attach("17-auth-lost-banner")
+
+        app.tabBars.buttons["设置"].tap()
+        let header = app.staticTexts["默认拨出线路"]
+        for _ in 0..<8 where !header.exists { app.swipeUp() }
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["重新配对"].firstMatch.waitForExistence(timeout: 3),
+                      "settings must offer an explicit re-pair route")
+        attach("18-auth-lost-settings")
     }
 }

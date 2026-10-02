@@ -424,4 +424,109 @@ final class UnifiedHTTPTransportTests: XCTestCase {
         XCTAssertEqual(server.lastPath, "/api/v2/voicemails/line-a:vm/audio")
         XCTAssertEqual(server.lastAuthorization, "Bearer access")
     }
+
+    // MARK: Token expiry, refresh and revocation
+
+    private func scriptedClient(
+        _ scripted: ScriptedHTTPServer,
+        access: String = "stale-access",
+        refresh: String = "refresh-1"
+    ) throws -> (HTTPGatewayAPI, TokenStore) {
+        guard case .success(let origin) = GatewayOrigin.validate(
+            "http://127.0.0.1:\(scripted.port)", allowLoopbackHTTP: true, apiVersion: "v2"
+        ) else { throw NSError(domain: "test", code: 1) }
+        let store = TokenStore(keychain: DictionaryKeychain())
+        try store.save(TokenSet(accessToken: access, refreshToken: refresh, deviceId: "device-1"))
+        return (HTTPGatewayAPI(origin: origin, tokens: store, configuration: scripted.configuration), store)
+    }
+
+    func testExpiredAccessTokenRefreshesOnceAndRetriesWithRotatedBearer() async throws {
+        let scripted = ScriptedHTTPServer()
+        scripted.start()
+        defer { scripted.stop() }
+        scripted.enqueue(status: 401, body: #"{"code":"CB-AUTH-401","message":"access token expired"}"#)
+        scripted.enqueue(
+            status: 200,
+            body: #"{"deviceId":"device-1","accessToken":"fresh-access","refreshToken":"fresh-refresh"}"#
+        )
+        scripted.enqueue(status: 200, body: linesJSON())
+        let (client, store) = try scriptedClient(scripted)
+
+        let lines = try await client.authorizedLines()
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertEqual(scripted.paths, ["/api/v2/lines", "/api/v2/auth/refresh", "/api/v2/lines"])
+        XCTAssertEqual(scripted.authorizations[0], "Bearer stale-access")
+        XCTAssertEqual(scripted.authorizations[2], "Bearer fresh-access",
+                       "the retried request must carry the rotated token, not the stale one")
+        // The single-use refresh token was rotated exactly once and persisted.
+        XCTAssertEqual(store.tokens()?.accessToken, "fresh-access")
+        XCTAssertEqual(store.tokens()?.refreshToken, "fresh-refresh")
+        let refreshBody = String(data: scripted.bodies[1] ?? Data(), encoding: .utf8) ?? ""
+        XCTAssertTrue(refreshBody.contains("refresh-1"), "refresh body must carry the presented refresh token")
+    }
+
+    func testRejectedRefreshClearsTokensAndSurfacesUnauthorized() async throws {
+        let scripted = ScriptedHTTPServer()
+        scripted.start()
+        defer { scripted.stop() }
+        scripted.enqueue(status: 401, body: #"{"code":"CB-AUTH-401","message":"access token expired"}"#)
+        // The refresh token itself is revoked/unknown: the server answers 401.
+        scripted.enqueue(status: 401, body: #"{"code":"CB-AUTH-401","message":"refresh token invalid"}"#)
+        let (client, store) = try scriptedClient(scripted)
+
+        do {
+            _ = try await client.authorizedLines()
+            XCTFail("expected definitive unauthorized")
+        } catch let error as APIError {
+            XCTAssertEqual(error, .unauthorized)
+        }
+        XCTAssertNil(store.tokens(), "a rejected refresh must clear the dead credential set")
+    }
+
+    func testTransientRefreshFailureKeepsTokensForRetry() async throws {
+        let scripted = ScriptedHTTPServer()
+        scripted.start()
+        defer { scripted.stop() }
+        scripted.enqueue(status: 401, body: #"{"code":"CB-AUTH-401","message":"access token expired"}"#)
+        // A 5xx during refresh is transient: the tokens must survive.
+        scripted.enqueue(status: 503, body: #"{"code":"CB-SERVER-503","message":"temporarily unavailable"}"#)
+        let (client, store) = try scriptedClient(scripted)
+
+        do {
+            _ = try await client.authorizedLines()
+            XCTFail("expected the transient refresh failure to surface")
+        } catch let error as APIError {
+            if case .http(let status, _, _) = error {
+                XCTAssertEqual(status, 503)
+            } else {
+                XCTFail("expected an http error, got \(error)")
+            }
+        }
+        XCTAssertEqual(store.tokens()?.accessToken, "stale-access",
+                       "transient failure must not log the device out")
+        XCTAssertEqual(store.tokens()?.refreshToken, "refresh-1")
+    }
+
+    func testPermissionForbiddenIsNotTreatedAsRevokedCredentials() async throws {
+        let scripted = ScriptedHTTPServer()
+        scripted.start()
+        defer { scripted.stop() }
+        // Normal capability denial: the key is valid but cannot edit numbers.
+        scripted.enqueue(status: 403, body: #"{"code":"CB-PERM-403","message":"当前配对密钥无权修改该线路号码"}"#)
+        let (client, store) = try scriptedClient(scripted)
+
+        do {
+            _ = try await client.setLineNumber("line-a", phoneNumber: "13800138000")
+            XCTFail("expected the capability denial to surface")
+        } catch let error as APIError {
+            guard case .http(let status, let code, let message) = error else {
+                return XCTFail("403 must stay a permission error, got \(error)")
+            }
+            XCTAssertEqual(status, 403)
+            XCTAssertEqual(code, "CB-PERM-403")
+            XCTAssertEqual(message, "当前配对密钥无权修改该线路号码")
+        }
+        XCTAssertEqual(store.tokens()?.accessToken, "stale-access",
+                       "a permission denial must never clear credentials")
+    }
 }

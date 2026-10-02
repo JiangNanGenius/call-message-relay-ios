@@ -12,16 +12,21 @@ struct OutgoingLineMenu: View {
 
     var body: some View {
         Menu {
-            if model.dialableLines.isEmpty {
-                Button("暂无可外呼线路") {}.disabled(true)
+            if model.authorizedLines.isEmpty {
+                Button("暂无可选线路") {}.disabled(true)
             }
-            ForEach(model.dialableLines) { line in
+            // Every authorized line is listed, dialable or not, so an
+            // unavailable/busy line shows its reason instead of vanishing.
+            ForEach(model.authorizedLines) { line in
                 Button {
                     model.setTemporaryDialLine(line.id)
                 } label: {
-                    Label(line.friendlyName,
+                    Label(line.canDialNow
+                              ? line.friendlyName
+                              : "\(line.friendlyName)（\(line.unavailableReason)）",
                           systemImage: model.temporaryDialLineId == line.id ? "checkmark" : "")
                 }
+                .disabled(!line.canDialNow)
             }
             if model.temporaryDialLineId != nil {
                 Button("使用默认线路") { model.setTemporaryDialLine(nil) }
@@ -33,7 +38,7 @@ struct OutgoingLineMenu: View {
                 Text(currentLabel)
                     .font(.caption2)
                     .lineLimit(1)
-                if model.dialableLines.count > 1 {
+                if model.authorizedLines.count > 1 {
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 8, weight: .semibold))
                 }
@@ -45,9 +50,10 @@ struct OutgoingLineMenu: View {
             .accessibilityIdentifier("outgoingLineMenu")
             .accessibilityHint("默认外呼线路，可临时切换")
         }
-        // With a single usable line the current SIM is still displayed but
-        // there is nothing to switch to.
-        .disabled(model.dialableLines.count < 2)
+        // Visible even with one line so the current SIM/number (and any
+        // unavailable reason) is never hidden; disabled only when there is
+        // nothing to choose.
+        .disabled(model.authorizedLines.isEmpty)
     }
 
     private var menuColor: Color {
@@ -60,12 +66,16 @@ struct OutgoingLineMenu: View {
 
     private var currentLabel: String {
         if let temp = model.line(id: model.temporaryDialLineId) {
-            return temp.friendlyName + "（本次）"
+            return temp.canDialNow
+                ? temp.friendlyName + "（本次）"
+                : "\(temp.friendlyName)（\(temp.unavailableReason)）"
         }
         if let def = model.line(id: model.defaultLineId) {
-            return def.canDialNow ? def.friendlyName : def.friendlyName + "（不可用）"
+            return def.canDialNow ? def.friendlyName : "\(def.friendlyName)（\(def.unavailableReason)）"
         }
-        return "选择外呼线路"
+        // A default is required but missing: say so instead of showing a
+        // healthy-looking line or an empty control.
+        return model.authorizedLines.isEmpty ? "选择外呼线路" : "未设默认线路"
     }
 }
 
@@ -86,7 +96,7 @@ struct OutgoingLineChooser: View {
                 }
                 Section("选择外呼线路") {
                     if model.authorizedLines.isEmpty {
-                        Text("没有已授权的线路。")
+                        Text(model.lineListStatusMessage ?? "没有已授权的线路。")
                             .foregroundStyle(.secondary)
                     }
                     ForEach(model.authorizedLines) { line in
@@ -168,12 +178,6 @@ private struct OutgoingLineRow: View {
         if line.canDialNow {
             return line.actualNumber != nil ? line.name : "可外呼"
         }
-        var parts: [String] = []
-        if !line.enabled { parts.append("已停用") }
-        if !line.permissions.dial { parts.append("无外呼权限") }
-        if line.registration != .registered { parts.append("未注册") }
-        if line.voice != .ready && line.voice != .controlOnly { parts.append("语音不可用") }
-        if parts.isEmpty { parts.append(line.online ? "暂不可用" : "离线") }
-        return parts.joined(separator: " · ")
+        return line.unavailableReason
     }
 }

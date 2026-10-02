@@ -125,6 +125,8 @@ final class FakeGatewayAPI: GatewayAPI {
     var setNumberCalls: [(lineId: String, number: String)] = []
     var setNumberResult: Result<AuthorizedLine, Error> = .failure(APIError.notReady("set number not configured"))
     var authorizedLinesStub: [AuthorizedLine] = []
+    var authorizedLinesError: Error?
+    private(set) var authorizedLinesCallCount = 0
     /// When armed, the next authorizedLines() call blocks until
     /// resumeAuthorizedLines; used to deliver a stale response after rebind.
     private var linesWaiter: CheckedContinuation<[AuthorizedLine], Error>?
@@ -184,7 +186,28 @@ final class FakeGatewayAPI: GatewayAPI {
     func gatewayInfo() async throws -> GatewayResponse {
         GatewayResponse(id: "gw", name: "GW", lineID: nil, transport: "tailnet", capabilities: nil)
     }
-    func line() async throws -> LineStatus { LineStatus.demoReady() }
+    var lineError: Error?
+    private(set) var lineCallCount = 0
+    private var lineWaiter: CheckedContinuation<LineStatus, Error>?
+    private var lineArmed = false
+    func armLineWait() { lineArmed = true }
+    func resumeLine(with result: Result<LineStatus, Error>) {
+        if let waiter = lineWaiter {
+            lineWaiter = nil
+            waiter.resume(with: result)
+        }
+    }
+    func line() async throws -> LineStatus {
+        lineCallCount += 1
+        if lineArmed {
+            lineArmed = false
+            return try await withCheckedThrowingContinuation { cont in
+                lineWaiter = cont
+            }
+        }
+        if let lineError { throw lineError }
+        return LineStatus.demoReady()
+    }
     func listCalls(limit: Int) async throws -> [CallRecord] { [] }
     func fetchCall(id: String) async throws -> CallRecord {
         if let activeRecordForPoll { return activeRecordForPoll }
@@ -217,6 +240,8 @@ final class FakeGatewayAPI: GatewayAPI {
     // MARK: Unified lines
 
     func authorizedLines() async throws -> [AuthorizedLine] {
+        authorizedLinesCallCount += 1
+        if let authorizedLinesError { throw authorizedLinesError }
         if linesArmed {
             linesArmed = false
             return try await withCheckedThrowingContinuation { cont in
