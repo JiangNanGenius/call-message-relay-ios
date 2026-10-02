@@ -121,12 +121,19 @@ final class LiveCallDriver: NSObject, CallDriver {
         return meaningful ? trimmed : "未知号码"
     }
 
-    /// True while this exact gateway call is still shown as ringing and the
-    /// coordinator still owns it. Checked before and after every async CallKit
-    /// report so a completed report can never resurrect an ended call.
+    /// Per-call ownership, independent of which call the UI currently
+    /// focuses. Used after an awaited CallKit report: with two overlapping
+    /// incoming pushes the focused `current` may point at the other call, so
+    /// focus must never decide whether this call is an orphan.
+    private func isOwnedCall(gatewayId: String) -> Bool {
+        coordinator.isTracking(callId: gatewayId)
+    }
+
+    /// True while the coordinator still tracks this exact call as ringing.
+    /// Also per-call: a second incoming push must not make the first look
+    /// ended.
     private func isStillRinging(gatewayId: String) -> Bool {
-        current?.gatewayCallId == gatewayId && current?.phase == .incomingRinging
-            && coordinator.isTracking(callId: gatewayId)
+        coordinator.isRinging(callId: gatewayId)
     }
 
     /// CXErrorCodeIncomingCallError cases a retry cannot fix: unentitled,
@@ -183,7 +190,7 @@ final class LiveCallDriver: NSObject, CallDriver {
         if !ok {
             AppLog.callKit.notice("CallKit rejected incoming report; in-app answer stays available")
             onCallKitIssue?(Self.callKitIssueMessage(callKit.lastIncomingReportErrorCode))
-        } else if !isStillRinging(gatewayId: gatewayId) {
+        } else if !isOwnedCall(gatewayId: gatewayId) {
             // The call ended while CallKit was reporting: never leave a ghost
             // system ring, and drop the provisional state if it still points
             // at this call.
@@ -231,7 +238,7 @@ final class LiveCallDriver: NSObject, CallDriver {
         if !ok {
             AppLog.callKit.notice("event-driven incoming report rejected; in-app answer stays available")
             onCallKitIssue?(Self.callKitIssueMessage(callKit.lastIncomingReportErrorCode))
-        } else if !coordinator.isTracking(callId: call.id) {
+        } else if !isOwnedCall(gatewayId: call.id) {
             // The call ended while the report was in flight.
             await endOrphanSystemCall(uuid: uuid)
             callKitReported.removeValue(forKey: call.id)
@@ -287,7 +294,7 @@ final class LiveCallDriver: NSObject, CallDriver {
                 }
                 if ok {
                     self.systemCallUUIDs.insert(uuid)
-                    if !self.isStillRinging(gatewayId: gatewayId) {
+                    if !self.isOwnedCall(gatewayId: gatewayId) {
                         await self.endOrphanSystemCall(uuid: uuid)
                         self.callKitReported.removeValue(forKey: gatewayId)
                         return

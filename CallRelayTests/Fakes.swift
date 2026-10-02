@@ -95,13 +95,14 @@ final class FakeCallKit: CallKitControlling {
     var heldReports: [(uuid: UUID, held: Bool)] = []
     /// When false, `reportIncoming` mimics a CallKit rejection.
     var reportIncomingResult = true
-    /// Fail the first `reportIncoming` after arming; the continuation resumes
-    /// with `resumeReport`. Lets tests interleave an end/reset with the await.
+    /// Fail the first `reportIncoming` after arming; continuations resume
+    /// FIFO with `resumeReport`. Lets tests interleave ends/resets/overlapping
+    /// pushes with the awaits.
     var armReportWait = false
-    private var reportWaiter: CheckedContinuation<Bool, Never>?
+    private var reportWaiters: [CheckedContinuation<Bool, Never>] = []
     func resumeReport(_ accepted: Bool) {
-        reportWaiter?.resume(returning: accepted)
-        reportWaiter = nil
+        guard !reportWaiters.isEmpty else { return }
+        reportWaiters.removeFirst().resume(returning: accepted)
     }
     /// Raw `CXErrorCodeIncomingCallError` reported with a rejection.
     var reportIncomingErrorCode: Int?
@@ -118,7 +119,7 @@ final class FakeCallKit: CallKitControlling {
         incoming.append((uuid, handle))
         if armReportWait {
             armReportWait = false
-            let accepted = await withCheckedContinuation { reportWaiter = $0 }
+            let accepted = await withCheckedContinuation { reportWaiters.append($0) }
             lastIncomingReportErrorCode = accepted ? nil : (reportIncomingErrorCode ?? 0)
             return accepted
         }

@@ -164,6 +164,16 @@ final class CallCoordinator: NSObject {
 
     func isTracking(callId: String) -> Bool { tracked[callId] != nil }
 
+    /// True while this exact gateway call is still tracked as ringing,
+    /// independent of UI focus. Push-registered calls carry no record until
+    /// reconciliation, so a tracked, unheld entry with no outcome counts as
+    /// still ringing.
+    func isRinging(callId: String) -> Bool {
+        guard let entry = tracked[callId] else { return false }
+        guard let record = entry.record else { return !entry.held }
+        return record.state == .incomingRinging && !record.isFinished
+    }
+
     /// Gateway ids of incoming calls still ringing locally, with the moment
     /// their ring started. Reconnect reconciliation releases the ones the
     /// gateway no longer lists, without touching calls that just arrived.

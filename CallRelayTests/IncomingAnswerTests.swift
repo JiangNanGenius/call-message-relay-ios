@@ -374,6 +374,38 @@ final class IncomingAnswerTests: XCTestCase {
                        "a failed direct-answer audio activation must not pretend the call is usable")
     }
 
+    func testTwoOverlappingPushReportsBothRemainSystemCalls() async {
+        let (driver, _, callKit) = makeDriver()
+        let first = makeCallRecord(
+            id: "line1:push-A", state: .incomingRinging, direction: .inbound, peer: "13800001111")
+        let second = makeCallRecord(
+            id: "line2:push-B", state: .incomingRinging, direction: .inbound, peer: "13900002222")
+
+        callKit.armReportWait = true
+        let taskA = Task {
+            await driver.reportIncomingPush(
+                gatewayId: first.id, uuid: UUID(), handle: "13800001111", record: first)
+        }
+        await waitUntil { callKit.incoming.count == 1 }
+        callKit.armReportWait = true
+        let taskB = Task {
+            await driver.reportIncomingPush(
+                gatewayId: second.id, uuid: UUID(), handle: "13900002222", record: second)
+        }
+        await waitUntil { callKit.incoming.count == 2 }
+
+        // Complete the first report while the UI focus already points at the
+        // second call: it must not be treated as an orphan.
+        callKit.resumeReport(true)
+        await taskA.value
+        XCTAssertTrue(callKit.ended.isEmpty,
+                      "an overlapping second push must not orphan the first system call")
+        callKit.resumeReport(true)
+        await taskB.value
+        XCTAssertTrue(callKit.ended.isEmpty, "both system calls must remain")
+        XCTAssertEqual(callKit.incoming.count, 2)
+    }
+
     // MARK: Generation / async safety
 
     func testReportCompletedAfterResetNeverResurrectsCall() async {
