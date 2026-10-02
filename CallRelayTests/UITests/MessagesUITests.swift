@@ -83,10 +83,30 @@ final class MessagesUITests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
         // MARK: 5. Spam folder: promotional loan SMS is quarantined, OTP is not
-        app.buttons["messageFilterMenu"].tap()
-        app.buttons["垃圾信息"].tap()
+        let filterMenu = app.buttons["messageFilterMenu"]
+        XCTAssertTrue(filterMenu.waitForExistence(timeout: 5))
+        filterMenu.tap()
+        // The menu item can exist for a moment before it is interactive; a tap
+        // that lands during that window leaves the inbox selected (observed as
+        // the menu still open with thread-555-0188 visible). Wait for
+        // existence AND hittability, then require the menu to actually close
+        // before looking for the junk row.
+        let junkFilter = app.buttons["垃圾信息"]
+        XCTAssertTrue(junkFilter.waitForExistence(timeout: 8),
+                      "filter menu must materialize")
+        // Wait (bounded) for the option to become interactive; isHittable is
+        // not immediate during the menu animation.
+        let interactive = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isHittable == true"), object: junkFilter)
+        XCTAssertEqual(XCTWaiter().wait(for: [interactive], timeout: 8), .completed,
+                       "filter option must become tappable")
+        junkFilter.tap()
+        let menuClosed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: junkFilter)
+        XCTAssertEqual(XCTWaiter().wait(for: [menuClosed], timeout: 6), .completed,
+                       "selecting 垃圾信息 must close the filter menu (tap race)")
         let junkThread = app.buttons["junk-555-0166"]
-        XCTAssertTrue(junkThread.waitForExistence(timeout: 5), "loan solicitation should be junk")
+        XCTAssertTrue(junkThread.waitForExistence(timeout: 10), "loan solicitation should be junk")
         // The genuine OTP from an unknown short sender must NOT be quarantined.
         XCTAssertFalse(app.buttons["junk-555-0188"].exists)
         attach(named: "05-junk-folder")
