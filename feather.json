@@ -17,6 +17,16 @@
       "beta": true,
       "versions": [
         {
+          "version": "0.3.3",
+          "buildVersion": "7",
+          "date": "2026-10-02T13:44:33Z",
+          "minOSVersion": "17.0",
+          "size": 10090740,
+          "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.3/CallRelay-0.3.3-unsigned.ipa",
+          "localizedDescription": "0.3.3 修复（取代 0.3.2）：幽灵来电——网关每次连接都从序号 0 重放历史事件、App 又不携带续传游标，历史 call.incoming 被当作新来电；且 App 无法解码网关 state=\"ended\" 终态，call.ended 被丢弃导致来电界面无法清除。现在网关重放跳过已结束通话的非终态事件，App 持久化事件游标、验证重放事件仍在响铃、对账 /calls?active=true 并记住本会话终态通话，历史/已拒接来电不再响铃；线路选择在真实生产 /api/v2/lines 契约下恢复。网关控制台对已撤销密钥新增“删除密钥”（二次确认、会话+CSRF，只允许删除已撤销密钥，保留设备与历史）。未签名，需自行签名，并需最新网关 v2。",
+          "sha256": "8e4f2aa0dc47dc1da3fb2820e21541a53adb45303749e3ace6bb9cecaeb67423"
+        },
+        {
           "version": "0.3.2",
           "buildVersion": "6",
           "date": "2026-10-02T11:41:15Z",
@@ -77,10 +87,10 @@
           "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
         }
       ],
-      "version": "0.3.2",
-      "versionDate": "2026-10-02T11:41:15Z",
-      "size": 10082155,
-      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.2/CallRelay-0.3.2-unsigned.ipa",
+      "version": "0.3.3",
+      "versionDate": "2026-10-02T13:44:33Z",
+      "size": 10090740,
+      "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.3/CallRelay-0.3.3-unsigned.ipa",
       "appPermissions": {
         "entitlements": [
           "aps-environment"
