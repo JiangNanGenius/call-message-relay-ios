@@ -68,7 +68,6 @@
 		5B08C2354AEF7FB3CF9FCA3F /* SpamFilterStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64D2A156D01FD72B6F4113FD /* SpamFilterStore.swift */; };
 		5D58E702A27616F0D2291A18 /* EventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DA399FE480E12698ADD587 /* EventStream.swift */; };
 		5D73008AC4BDDC03606AF778 /* SystemContactRefreshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68131717E602752C98CFC610 /* SystemContactRefreshTests.swift */; };
-		5E001D2DB344CD577EE52451 /* DiagnosticsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABF5466A9C0FE5EBF320387 /* DiagnosticsUITests.swift */; };
 		5E6E8111F9E047AD8F603FBA /* BarkBridgeSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E5A706A286C198DBD3AF3C /* BarkBridgeSettingsView.swift */; };
 		5F1C80778AB12D0018D3EE29 /* BarkLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 699956D5A94012622192E059 /* BarkLocalization.swift */; };
 		5F25DBFB70ABD293F8042ED9 /* CloudSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E8B1C2C4B334AD05FA70F48 /* CloudSyncTests.swift */; };
@@ -252,7 +251,6 @@
 		571FDBDEE26D76EB7641E3D9 /* MediaReconnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaReconnectionTests.swift; sourceTree = "<group>"; };
 		5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireCompatibilityTests.swift; sourceTree = "<group>"; };
 		5A588139CFF48C724501CBCD /* MessageInboxSpamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageInboxSpamTests.swift; sourceTree = "<group>"; };
-		5ABF5466A9C0FE5EBF320387 /* DiagnosticsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsUITests.swift; sourceTree = "<group>"; };
 		5C0578D59989C935F5182D0E /* NumberList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumberList.swift; sourceTree = "<group>"; };
 		5C0B4094E0617F44383F724F /* DiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsTests.swift; sourceTree = "<group>"; };
 		5D25999B1DF31DDC1F356766 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -706,7 +704,6 @@
 			children = (
 				984EE27BD7E28474C46BF3C6 /* AdaptiveLayoutUITests.swift */,
 				63F18CADA2C6F05024CA03F9 /* ContactMergeUITests.swift */,
-				5ABF5466A9C0FE5EBF320387 /* DiagnosticsUITests.swift */,
 				E2C3C40493EFE71246E0A52C /* DialerNativeUITests.swift */,
 				8CAF007C73F29396871E0A30 /* LinePickerUITests.swift */,
 				0D4165909DB665BF2ED9F078 /* MessagesUITests.swift */,
@@ -949,7 +946,6 @@
 			files = (
 				51D998A27BAAED7A4A777A00 /* AdaptiveLayoutUITests.swift in Sources */,
 				60347596823C5321574B976E /* ContactMergeUITests.swift in Sources */,
-				5E001D2DB344CD577EE52451 /* DiagnosticsUITests.swift in Sources */,
 				4137608837B00C01D07EF51A /* DialerNativeUITests.swift in Sources */,
 				9A0FE45E5F0347CC4C839AC8 /* LinePickerUITests.swift in Sources */,
 				3F8DE7E96043E4FFD639ED61 /* MessagesUITests.swift in Sources */,
