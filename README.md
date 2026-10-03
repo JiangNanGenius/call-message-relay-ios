@@ -105,9 +105,9 @@ xcodegen generate         # 生成 CallRelay.xcodeproj
 构建、测试、无签名真机编译、签名与 APNs 说明见 [BUILD.md](BUILD.md)。
 协议事实、安全设计与“已验证/未验证”边界见 [PROTOCOL.md](PROTOCOL.md)。
 
-## Feather 安装源
+## Feather 安装源与发布
 
-当前预览版：[CallRelay 0.1.0](https://github.com/JiangNanGenius/call-message-relay-ios/releases/tag/v0.1.0)，支持 iOS 17+。
+当前预览版：[CallRelay 0.3.6 (13)](https://github.com/JiangNanGenius/call-message-relay-ios/releases/tag/v0.3.6)，支持 iOS 17+。
 
 在 Feather「源」中添加：
 
@@ -115,17 +115,16 @@ xcodegen generate         # 生成 CallRelay.xcodeproj
 https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/feather.json
 ```
 
-源提供首版预览的**未签名 IPA**，由 Feather 使用你自己的证书与描述文件签名后安装。
-无需上架 App Store。下载地址、版本、大小与 SHA-256 取自 GitHub Release 的实际产物。
-后台 VoIP 来电仍需匹配 Bundle ID、Push Notifications 描述文件和自有 APNs 服务；
-重新签名安装成功不代表后台推送或真实网关通话已经验收。
+源只指向**纯原生版未签名 IPA**（不含 Bark/快捷指令桥接），由 Feather 使用你自己的
+证书与描述文件签名后安装。下载地址、版本、大小与 SHA-256 均取自 GitHub Release 的
+实际产物，发布后逐一核对。后台 VoIP 来电仍需匹配 Bundle ID、Push Notifications
+描述文件和自建 APNs 服务；重新签名安装成功不代表后台推送或真实网关通话已经验收。
 
-本版来自固定源码 `0972a995fe9704f74bbb0df0786ff9b77aa452f2`；
-[发布 CI](https://github.com/JiangNanGenius/call-message-relay-ios/actions/runs/36869469687)
-通过 174 项单元测试、白天和夜间各一遍完整短信界面流程及 iPhone Release 构建，
-0 失败、0 测试进程重启。模拟器截图使用虚构内容，日夜界面已目视检查。
+每次更新同时发布两个未签名构建，版本号与核心修复一致：Feather 纯原生版与
+App Store Bark/快捷指令版；Feather 源始终只指向原生版。构建、校验与发布清单见
+[docs/release.md](docs/release.md)。
 
-| 界面 | 白天 | 夜间 |
+| 界面（历史 0.1.0 预览） | 白天 | 夜间 |
 | --- | --- | --- |
 | 拨号 | <img src="https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-light.png" width="220" alt="白天拨号界面"> | <img src="https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-dialer-dark.png" width="220" alt="夜间拨号界面"> |
 | 短信 | <img src="https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-light.png" width="220" alt="白天短信列表"> | <img src="https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.1.0/callrelay-messages-dark.png" width="220" alt="夜间短信列表"> |
@@ -166,4 +165,5 @@ Wi‑Fi/蜂窝切换和弱网（含 TURN 中继）。
 为本项目原创编写，灵感仅来自公开的本地过滤项目（boommanpro/ios-sms-guard、
 adibendahan/SimplyFilterSMS、SysAdminDoc/CallShield）的分类思路，未复制其规则或号码库。
 
-项目用于自行构建与安装，不计划上架 App Store。
+项目用于自行构建与安装；私有签名包只交给所有者，GitHub 只公开未签名构建。
+App Store Bark/快捷指令版仅在明确授权后提交，Feather 源始终为纯原生版。

@@ -1,7 +1,7 @@
 {
  "name": "CallRelay",
  "identifier": "com.jiangnangenius.callrelay.source",
- "subtitle": "自行签名",
+ "subtitle": "Linux 网关的 iPhone 电话与短信客户端",
  "website": "https://github.com/JiangNanGenius/call-message-relay-ios",
  "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
  "tintColor": "135CDC",
@@ -11,11 +11,21 @@
    "bundleIdentifier": "com.jiangnangenius.callrelay",
    "developerName": "JiangNanGenius",
    "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
-   "localizedDescription": "0.3.5（接替 0.3.4）：修复真机反馈的来电接听与系统来电界面路径——空主叫号不再以空 handle 上报，真实号码到达后刷新系统来电界面；仅对可重试的拒绝重试一次，勿扰/黑名单等永久拒绝会给出 App 内直接接听的说明；推送路径先建立响铃状态再等待系统上报，报告完成时若通话已结束会结束系统通话而不是留下幽灵响铃。App 内直接接听不再依赖 CallKit 往返，并且只有该模式自行激活通话音频，CallKit 路径等待系统激活，音频激活失败会明确结束通话。系统通讯录仍是唯一数据源：外部清理自动刷新；vCard 重新导入无损合并，冲突逐条确认，不自动覆盖或删除。iPad 通用布局（侧边栏导航、横竖屏/分屏）与新图标。未签名，需自行签名；锁屏系统来电界面仍需 VoIP 推送服务与匹配的推送描述文件。",
+   "localizedDescription": "0.3.6（build 13）纯原生版：修复启动崩溃、iCloud 同步开关、推送环境识别与通话音频延迟；不含 Bark/快捷指令桥接。未签名 IPA，需自行签名。",
    "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
    "tintColor": "135CDC",
    "beta": true,
    "versions": [
+    {
+     "version": "0.3.6",
+     "buildVersion": "13",
+     "date": "2026-10-03T12:55:00Z",
+     "minOSVersion": "17.0",
+     "size": 12984471,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.6/CallRelay-Feather-Native-0.3.6-13-unsigned.ipa",
+     "localizedDescription": "0.3.6（build 13）纯原生版：修复启动崩溃、iCloud 同步开关、推送环境识别与通话音频延迟；不含 Bark/快捷指令桥接。未签名 IPA，需自行签名。",
+     "sha256": "13da6075cd934a9f80d8fd3de64f04af3dc4e05d1d83fdd81acfa50493892c6d"
+    },
     {
      "version": "0.3.5",
      "buildVersion": "9",
@@ -107,10 +117,10 @@
      "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
     }
    ],
-   "version": "0.3.5",
-   "versionDate": "2026-10-02T19:51:43Z",
-   "size": 9452040,
-   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.5/CallRelay-0.3.5-unsigned.ipa",
+   "version": "0.3.6",
+   "versionDate": "2026-10-03T12:55:00Z",
+   "size": 12984471,
+   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.6/CallRelay-Feather-Native-0.3.6-13-unsigned.ipa",
    "appPermissions": {
     "entitlements": [
      "aps-environment"

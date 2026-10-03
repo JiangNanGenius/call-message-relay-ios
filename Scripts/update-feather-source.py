@@ -1,63 +1,182 @@
 #!/usr/bin/env python3
-"""Generate a Feather source from the actual published IPA, never a guessed size."""
+"""Generate the Feather source (feather.json) from an actual published IPA.
+
+The Feather source must always point at the pure-native edition: the IPA is
+checked for the absence of the Bark/Shortcuts bridge (no AppIntents metadata,
+no callrelay:// URL scheme, no BarkBridge.strings, no bridge symbols) before
+any version entry is written. File size and SHA-256 are read from the IPA
+itself; the download URL is the GitHub release asset URL.
+
+With --feed an existing source is updated in place (history and screenshots
+are preserved, the generated version replaces any entry with the same
+version+build). Without --feed a single-version source is produced.
+"""
 import argparse
 import datetime
 import hashlib
 import json
-from pathlib import Path
 import plistlib
 import re
 import zipfile
+from pathlib import Path
+
+REPO = "JiangNanGenius/call-message-relay-ios"
+BASE = f"https://github.com/{REPO}"
+ICON = (
+    f"https://raw.githubusercontent.com/{REPO}/main/"
+    "CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+)
+DEFAULT_SOURCE_SUBTITLE = "Linux 网关的 iPhone 电话与短信客户端"
+DEFAULT_APP_SUBTITLE = "Linux 蜂窝电话网关的 iPhone 客户端"
+DEFAULT_DESCRIPTION = (
+    "CallRelay {version}（build {build}）纯原生版：不含 Bark/快捷指令桥接。"
+    "未签名 IPA，需自行使用证书与描述文件签名后安装。"
+)
+NATIVE_FORBIDDEN_BINARY = re.compile(
+    rb"(?i)bark|IncomingCallChecker|CheckIncomingCallIntent|callrelay://incoming"
+)
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("ipa", type=Path)
-parser.add_argument("--tag", required=True)
+parser.add_argument("--tag", required=True, help="Published release tag, e.g. v0.3.6")
 parser.add_argument("--output", type=Path, default=Path("feather.json"))
-parser.add_argument("--screenshot", action="append", default=[], help="Published screenshot filename beside the IPA")
+parser.add_argument("--feed", type=Path, help="Existing source JSON to update")
+parser.add_argument("--description", help="Consumer description for this version")
+parser.add_argument("--date", help="ISO-8601 UTC release date (default: now)")
+parser.add_argument("--version", help="Assert the expected CFBundleShortVersionString")
+parser.add_argument("--build", help="Assert the expected CFBundleVersion")
+parser.add_argument("--source-subtitle", default=DEFAULT_SOURCE_SUBTITLE)
+parser.add_argument("--app-subtitle", default=DEFAULT_APP_SUBTITLE)
+parser.add_argument("--screenshot", action="append", default=[],
+                    help="Published screenshot filename beside the IPA")
 args = parser.parse_args()
+
 if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?", args.tag):
-    parser.error("Expected a version tag, for example v0.1.0")
+    parser.error("Expected a version tag, for example v0.3.6")
+if not args.ipa.is_file():
+    parser.error(f"IPA not found: {args.ipa}")
+
 with zipfile.ZipFile(args.ipa) as archive:
-    info = plistlib.loads(archive.read("Payload/CallRelay.app/Info.plist"))
-    archive.getinfo("Payload/CallRelay.app/CallRelay")
-    archive.getinfo("Payload/CallRelay.app/Frameworks/WebRTC.framework/WebRTC")
-repo = "JiangNanGenius/call-message-relay-ios"
-base = f"https://github.com/{repo}"
-icon = f"https://raw.githubusercontent.com/{repo}/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
-version = {
-    "version": info["CFBundleShortVersionString"],
-    "buildVersion": info["CFBundleVersion"],
-    "date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    names = archive.namelist()
+    app_prefix = next(
+        (n for n in names if n.startswith("Payload/") and n.endswith(".app/")), None
+    )
+    if app_prefix is None:
+        parser.error("IPA has no Payload/<app>.app")
+    forbidden_paths = [
+        n for n in names
+        if "Metadata.appintents" in n or n.endswith("BarkBridge.strings")
+    ]
+    if forbidden_paths:
+        parser.error(
+            "IPA is not the pure native edition (Bark bridge files present): "
+            + ", ".join(forbidden_paths[:3])
+        )
+    info = plistlib.loads(archive.read(app_prefix + "Info.plist"))
+    if info.get("CFBundleURLTypes"):
+        parser.error("IPA is not the pure native edition (CFBundleURLTypes present)")
+    executable = info.get("CFBundleExecutable", "CallRelay")
+    archive.getinfo(app_prefix + executable)
+    archive.getinfo(app_prefix + "Frameworks/WebRTC.framework/WebRTC")
+    binary = archive.read(app_prefix + executable)
+    if NATIVE_FORBIDDEN_BINARY.search(binary):
+        parser.error("IPA is not the pure native edition (bridge symbols in the binary)")
+
+version = info["CFBundleShortVersionString"]
+build = info["CFBundleVersion"]
+if args.version and version != args.version:
+    parser.error(f"IPA version {version} != --version {args.version}")
+if args.build and build != args.build:
+    parser.error(f"IPA build {build} != --build {args.build}")
+
+for name in args.screenshot:
+    if Path(name).name != name or not name.endswith(".png") or not (args.ipa.parent / name).is_file():
+        parser.error("Screenshots must be existing PNG files beside the IPA")
+
+date = args.date or (
+    datetime.datetime.now(datetime.timezone.utc)
+    .isoformat(timespec="seconds")
+    .replace("+00:00", "Z")
+)
+description = args.description or DEFAULT_DESCRIPTION.format(version=version, build=build)
+size = args.ipa.stat().st_size
+sha256 = hashlib.sha256(args.ipa.read_bytes()).hexdigest()
+download_url = f"{BASE}/releases/download/{args.tag}/{args.ipa.name}"
+
+entry = {
+    "version": version,
+    "buildVersion": build,
+    "date": date,
     "minOSVersion": info["MinimumOSVersion"],
-    "size": args.ipa.stat().st_size,
-    "downloadURL": f"{base}/releases/download/{args.tag}/{args.ipa.name}",
-    "localizedDescription": "0.2.1 预览（取代 0.2.0）：统一多线路网关 v2，一次配对获得该密钥授权的全部线路，支持多行/多设备权限；每台手机独立注册、独立撤销，跨设备仅同步加密恢复授权；通话支持保持/恢复、第二通保持后接听，并把本机 2-3 路外呼合并为最多 4 人会议；新增网关语音留言收件箱与应用内播放；界面精简。未签名，需自行签名，并需最新网关 v2。真实运营商媒体、APNs 锁屏来电、TURN 中继与两台真机云端恢复尚未联调。",
-    "sha256": hashlib.sha256(args.ipa.read_bytes()).hexdigest(),
+    "size": size,
+    "downloadURL": download_url,
+    "localizedDescription": description,
+    "sha256": sha256,
 }
-app = {
-    "name": "CallRelay", "bundleIdentifier": info["CFBundleIdentifier"],
-    "developerName": "JiangNanGenius", "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
-    "localizedDescription": "连接自有 Linux 蜂窝电话网关，通过 CallKit 与 WebRTC 接打电话，并收发短信。PolyForm Noncommercial：仅限非商业用途。提供未签名 IPA，由 Feather 使用你自己的证书和描述文件重新签名。后台来电需要匹配的 Push Notifications 描述文件与自有 APNs 服务；iCloud 同步还需要匹配的 iCloud 权限和容器。",
-    "iconURL": icon, "tintColor": "135CDC", "beta": True,
-    "versions": [version], "version": version["version"], "versionDate": version["date"],
-    "size": version["size"], "downloadURL": version["downloadURL"],
-    "appPermissions": {"entitlements": ["aps-environment"], "privacy": [
-        {"name": "NSMicrophoneUsageDescription", "usageDescription": info["NSMicrophoneUsageDescription"]},
-        {"name": "NSCameraUsageDescription", "usageDescription": info["NSCameraUsageDescription"]},
-    ]},
-}
+privacy = [
+    {"name": "NSMicrophoneUsageDescription", "usageDescription": info["NSMicrophoneUsageDescription"]},
+    {"name": "NSCameraUsageDescription", "usageDescription": info["NSCameraUsageDescription"]},
+]
 if info.get("NSContactsUsageDescription"):
-    app["appPermissions"]["privacy"].append({
+    privacy.append({
         "name": "NSContactsUsageDescription",
         "usageDescription": info["NSContactsUsageDescription"],
     })
+app = {
+    "name": "CallRelay",
+    "bundleIdentifier": info["CFBundleIdentifier"],
+    "developerName": "JiangNanGenius",
+    "subtitle": args.app_subtitle,
+    "localizedDescription": description,
+    "iconURL": ICON,
+    "tintColor": "135CDC",
+    "beta": True,
+    "versions": [entry],
+    "version": version,
+    "versionDate": date,
+    "size": size,
+    "downloadURL": download_url,
+    "appPermissions": {"entitlements": ["aps-environment"], "privacy": privacy},
+}
 if args.screenshot:
-    for name in args.screenshot:
-        if Path(name).name != name or not name.endswith(".png") or not (args.ipa.parent / name).is_file():
-            parser.error("Screenshots must be existing PNG files beside the IPA")
-    app["screenshotURLs"] = [f"{base}/releases/download/{args.tag}/{name}" for name in args.screenshot]
-source = {"name": "CallRelay 非商业安装源", "identifier": "com.jiangnangenius.callrelay.source",
-          "subtitle": "自行签名 · 首版预览", "website": base, "iconURL": icon,
-          "tintColor": "135CDC", "apps": [app], "news": []}
-args.output.write_text(json.dumps(source, ensure_ascii=False, indent=2) + "\n")
-print(f"Wrote {args.output}: {version['version']}, {version['size']} bytes, SHA256 {version['sha256']}")
+    app["screenshotURLs"] = [
+        f"{BASE}/releases/download/{args.tag}/{name}" for name in args.screenshot
+    ]
+
+if args.feed:
+    existing = json.loads(args.feed.read_text())
+    old_app = (existing.get("apps") or [{}])[0]
+    old_versions = [
+        v for v in old_app.get("versions", [])
+        if not (v.get("version") == version and v.get("buildVersion") == build)
+    ]
+    app["versions"] = [entry, *old_versions]
+    if not args.screenshot and old_app.get("screenshotURLs"):
+        app["screenshotURLs"] = old_app["screenshotURLs"]
+    source = {
+        "name": "CallRelay",
+        "identifier": existing.get("identifier", "com.jiangnangenius.callrelay.source"),
+        "subtitle": args.source_subtitle,
+        "website": BASE,
+        "iconURL": ICON,
+        "tintColor": "135CDC",
+        "apps": [app],
+        "news": existing.get("news", []),
+    }
+else:
+    source = {
+        "name": "CallRelay",
+        "identifier": "com.jiangnangenius.callrelay.source",
+        "subtitle": args.source_subtitle,
+        "website": BASE,
+        "iconURL": ICON,
+        "tintColor": "135CDC",
+        "apps": [app],
+        "news": [],
+    }
+
+args.output.write_text(json.dumps(source, ensure_ascii=False, indent=1) + "\n")
+print(
+    f"Wrote {args.output}: native {version} ({build}), {size} bytes, "
+    f"SHA256 {sha256}, {download_url}"
+)
