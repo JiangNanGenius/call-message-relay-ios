@@ -51,6 +51,16 @@ jobs:
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           xcrun simctl boot "$SIMULATOR_ID"
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          # The UI tests assert the Simplified-Chinese labels of the app's
+          # zh-Hans development language. The app also ships an English
+          # localization, so a default (English) runner simulator renders
+          # "Call"/"Settings" and every label-based UI test fails. Pin the
+          # test device to Chinese and reboot so SpringBoard picks it up.
+          xcrun simctl spawn "$SIMULATOR_ID" defaults write NSGlobalDomain AppleLanguages -array zh-Hans en
+          xcrun simctl spawn "$SIMULATOR_ID" defaults write NSGlobalDomain AppleLocale -string zh_CN
+          xcrun simctl shutdown "$SIMULATOR_ID"
+          xcrun simctl boot "$SIMULATOR_ID"
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
 
       - name: Run tests in light appearance
         run: |
