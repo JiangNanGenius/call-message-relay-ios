@@ -122,8 +122,12 @@ final class CloudProvisioningTests: XCTestCase {
         XCTAssertFalse(zone)
     }
 
+    /// The profile hint is advisory, never a veto: with no usable profile
+    /// the transport still performs the guarded live probe (a nil factory
+    /// stands in for an impossible build here), and the outcome is decided
+    /// by that probe, not by the missing profile.
     @MainActor
-    func testNoProfileMeansZeroCloudKitUse() async {
+    func testMissingProfileStillProbesLiveAndFailsClosedGracefully() async {
         var factoryTouches = 0
         let transport = CKCloudSyncTransport(
             containerID: container,
@@ -133,7 +137,85 @@ final class CloudProvisioningTests: XCTestCase {
         guard case .unavailable = availability else {
             return XCTFail("expected unavailable, got \(availability)")
         }
-        XCTAssertEqual(factoryTouches, 0, "CKContainer must never be initialized")
+        XCTAssertEqual(factoryTouches, 1, "the live probe must run even without a profile hint")
+    }
+
+    /// The old gate's message pinned a false negative on correctly-entitled
+    /// TestFlight builds; the live probe must be the only source of the
+    /// "signature lacks iCloud" verdict.
+    @MainActor
+    func testProfileHintFalseNegativeDoesNotEmitGateMessage() async {
+        let transport = CKCloudSyncTransport(
+            containerID: container,
+            entitlementProbe: { _ in false },
+            containerFactory: { _ in nil })
+        let availability = await transport.availability()
+        if case .unavailable(let message) = availability {
+            XCTAssertFalse(
+                message.contains("当前签名没有 iCloud 权限"),
+                "profile hint must not produce the gate message: \(message)")
+        }
+    }
+
+    // MARK: Profile hint shapes (pure)
+
+    func hintProfile(container: String?, services: Any?) -> Data {
+        var entitlements: [String: Any] = [:]
+        if let container { entitlements["com.apple.developer.icloud-container-identifiers"] = [container] }
+        if let services { entitlements["com.apple.developer.icloud-services"] = services }
+        let plist = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            + "<plist version=\"1.0\"><dict><key>Entitlements</key>"
+            + (try! plistSnippet(entitlements))
+            + "</dict></plist>"
+        // Wrap in fake CMS bytes like a real profile (parser only needs the
+        // plist window).
+        return Data(("CMRHEADER" + plist + "CMRTRAILER").utf8)
+    }
+
+    private func plistSnippet(_ dict: [String: Any]) throws -> String {
+        // Minimal plist writer for the two entitlement shapes we need.
+        var body = "<dict>"
+        for (key, value) in dict.sorted(by: { $0.key < $1.key }) {
+            body += "<key>\(key)</key>"
+            if let array = value as? [String] {
+                body += "<array>" + array.map { "<string>\($0)</string>" }.joined() + "</array>"
+            } else if let string = value as? String {
+                body += "<string>\(string)</string>"
+            }
+        }
+        return body + "</dict>"
+    }
+
+    func testProfileHintAcceptsExplicitCloudKitArray() {
+        let data = hintProfile(container: container, services: ["CloudKit"])
+        XCTAssertEqual(CKCloudSyncTransport.rawProfileHint(data, includesICloudContainer: container), .entitled)
+    }
+
+    func testProfileHintAcceptsWildcardString() {
+        let data = hintProfile(container: container, services: "*")
+        XCTAssertEqual(CKCloudSyncTransport.rawProfileHint(data, includesICloudContainer: container), .entitled)
+    }
+
+    func testProfileHintAcceptsWildcardArray() {
+        // Shape some generated App Store profiles use.
+        let data = hintProfile(container: container, services: ["*"])
+        XCTAssertEqual(CKCloudSyncTransport.rawProfileHint(data, includesICloudContainer: container), .entitled)
+    }
+
+    func testProfileHintNotEntitledWhenServiceMissingButContainerPresent() {
+        let data = hintProfile(container: container, services: nil)
+        XCTAssertEqual(CKCloudSyncTransport.rawProfileHint(data, includesICloudContainer: container), .notEntitled)
+    }
+
+    func testProfileHintNotEntitledForDifferentContainer() {
+        let data = hintProfile(container: "iCloud.someone.else", services: ["CloudKit"])
+        XCTAssertEqual(CKCloudSyncTransport.rawProfileHint(data, includesICloudContainer: container), .notEntitled)
+    }
+
+    func testProfileHintUnknownForMalformedProfile() {
+        XCTAssertEqual(
+            CKCloudSyncTransport.rawProfileHint(Data("garbage".utf8), includesICloudContainer: container),
+            .unknown)
     }
 }
 

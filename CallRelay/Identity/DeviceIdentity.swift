@@ -209,8 +209,14 @@ struct SystemKeychain: KeychainWrapping {
                 kSecAttrAccessible as String: protection
             ]
             let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
-            guard status == errSecSuccess else { throw KeychainError.unhandled(status) }
-            return
+            if status == errSecSuccess { return }
+            // The any-read may have matched the OTHER sync class (a local
+            // fallback when upgrading to synced, or vice versa): the strict
+            // update then finds nothing. Add the new-class item instead of
+            // failing, so grants can upgrade to iCloud Keychain.
+            if status != errSecItemNotFound {
+                throw KeychainError.unhandled(status)
+            }
         }
         var attributes = baseQuery(service: service, account: account, synchronizable: synchronizable, anyOnRead: false)
         attributes[kSecValueData as String] = data

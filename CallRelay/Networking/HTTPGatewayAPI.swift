@@ -308,9 +308,73 @@ final class HTTPGatewayAPI: GatewayAPI {
             // v2 does not stamp an expiry on the ICE payload; the credentials
             // are minted per offer, so treat them as short-lived locally.
             let expires = RFC3339Date.formatter.string(from: Date().addingTimeInterval(3600))
-            return ICEConfiguration(policy: config.policy, iceServers: servers, expiresAt: expires)
+            return ICEConfiguration(
+                policy: config.policy, iceServers: servers, expiresAt: expires,
+                mediaTransports: config.mediaTransports
+            )
         }
         return try await authorizedGet("calls/\(callId)/ice")
+    }
+
+    /// Builds the authorized WSS upgrade request for a call's PCMU audio
+    /// channel. The bearer token travels in the Upgrade headers exactly like
+    /// the event stream; the URL rides the same origin as the REST API so
+    /// FRP/caddy carry it without extra ports.
+    func mediaWebSocketRequest(callId: String) async throws -> URLRequest {
+        guard isV2 else { throw APIError.notReady("当前配对不支持 WebSocket 音频。") }
+        return try await authorizedWebSocketRequest(path: "calls/\(callId)/media")
+    }
+
+    func conferenceMediaWebSocketRequest(conferenceId: String) async throws -> URLRequest {
+        guard isV2 else { throw APIError.notReady("当前配对不支持 WebSocket 音频。") }
+        return try await authorizedWebSocketRequest(path: "conferences/\(conferenceId)/media")
+    }
+
+    func attachMediaProbe(callId: String, sdp: String) async throws -> WebRTCAnswer {
+        guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
+        let body = V2WebRTCOfferRequest(sdp: sdp, type: "offer")
+        return try await authorizedPost(
+            "calls/\(callId)/media/probe", body: body, idempotencyKey: UUID().uuidString
+        )
+    }
+
+    func commitMediaProbe(callId: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
+        try await authorizedVoidAction(
+            "calls/\(callId)/media/probe/commit", idempotencyKey: UUID().uuidString
+        )
+    }
+
+    func discardMediaProbe(callId: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
+        try await authorizedVoidAction(
+            "calls/\(callId)/media/probe", method: "DELETE",
+            body: Optional<Data>.none, idempotencyKey: UUID().uuidString
+        )
+    }
+
+    private func authorizedWebSocketRequest(path: String) async throws -> URLRequest {
+        let access = try await validAccessToken()
+        var components = URLComponents(
+            url: origin.apiURL(path), resolvingAgainstBaseURL: false
+        )!
+        components.scheme = origin.scheme == "https" ? "wss" : "ws"
+        guard let url = components.url else { throw APIError.network(URLError(.badURL)) }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(access)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 30
+        return request
+    }
+
+    /// Current access token, refreshing once through the shared serializer on
+    /// 401 (same contract as authorizedGet, minus the request itself).
+    private func validAccessToken() async throws -> String {
+        let snapshot = tokens.snapshot()
+        guard snapshot.epoch == credentialEpoch, snapshot.tokens != nil else {
+            throw APIError.noCredentials
+        }
+        return snapshot.tokens!.accessToken
     }
 
     func sync(after: Int64, limit: Int) async throws -> SyncResponse {

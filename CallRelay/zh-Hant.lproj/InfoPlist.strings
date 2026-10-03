@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>掃描網關上顯示的配對 QR 圖碼時需要使用相機；也可以選擇貼上配對內容。</string>
+	<key>NSContactsUsageDescription</key>
+	<string>用於在聯絡人中選擇號碼撥號或發簡訊、在最近通話/簡訊中顯示聯絡人姓名，並可按你的選擇將通訊錄號碼視為可信發件人。App 不會上傳或備份你的通訊錄。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>通話時需要使用麥克風，將你的語音經網關傳送到對方。</string>
+</dict>
+</plist>

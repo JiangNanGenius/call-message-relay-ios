@@ -138,7 +138,7 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
     private let factory: RTCPeerConnectionFactory
     private var peerConnection: RTCPeerConnection?
     private var audioTrack: RTCAudioTrack?
-    private var gatherContinuation: CheckedContinuation<Void, Error>?
+    private var gatherContinuation: CheckedContinuation<Void, Never>?
     private var gatherWaitTask: Task<Void, Never>?
     private var statsTimer: Timer?
     private var currentState: MediaState = .idle {
@@ -305,7 +305,7 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
 
     func close() {
         let wasActive = peerConnection != nil
-        finishGathering(throwing: MediaError.closed)
+        finishGathering()
         gatherWaitTask?.cancel()
         gatherWaitTask = nil
         // Direct-answer sessions own their activation; CallKit-owned sessions
@@ -328,21 +328,29 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
         if pc.iceGatheringState == .complete { return }
         // Bounded wait with a single continuation resumed exactly once, either
         // by the gathering-complete delegate or by the deadline/cancel/close.
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+        // A deadline no longer fails the call: whatever candidates were
+        // already gathered still yield a valid nontrickle offer, and the
+        // downstream monitor truthfully ends the call only when no media
+        // path actually exists. An early hard throw here killed otherwise
+        // workable calls whose TURN/relay candidates stalled.
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             gatherContinuation = cont
             gatherWaitTask = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64((self?.gatheringTimeout ?? 8) * 1_000_000_000))
                 guard !Task.isCancelled else { return }
-                await MainActor.run { self?.finishGathering(throwing: MediaError.gatheringTimedOut) }
+                await MainActor.run { self?.finishGathering() }
             }
         }
+        // close() nils the peer connection; a caller must not post an offer
+        // from a torn-down session.
+        if peerConnection == nil { throw MediaError.closed }
     }
 
     /// Resumes the gathering continuation at most once.
-    private func finishGathering(throwing error: Error? = nil) {
+    private func finishGathering() {
         guard let cont = gatherContinuation else { return }
         gatherContinuation = nil
-        if let error { cont.resume(throwing: error) } else { cont.resume() }
+        cont.resume()
     }
 
     private func startStats() {
@@ -453,13 +461,13 @@ enum MediaError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notPrepared: return "音频尚未准备好。"
-        case .missingLocalDescription: return "无法生成本地音频协商信息。"
-        case .peerConnectionUnavailable: return "无法创建音频连接。"
-        case .closed: return "音频已关闭。"
-        case .gatheringTimedOut: return "ICE 候选收集超时，无法在限定时间内准备音频。"
-        case .neverConnected: return "音频通道未能建立。"
-        case .audioActivationFailed: return "无法启用通话音频，请重试。"
+        case .notPrepared: return String(localized: "音频尚未准备好。")
+        case .missingLocalDescription: return String(localized: "无法生成本地音频协商信息。")
+        case .peerConnectionUnavailable: return String(localized: "无法创建音频连接。")
+        case .closed: return String(localized: "音频已关闭。")
+        case .gatheringTimedOut: return String(localized: "ICE 候选收集超时，无法在限定时间内准备音频。")
+        case .neverConnected: return String(localized: "音频通道未能建立。")
+        case .audioActivationFailed: return String(localized: "无法启用通话音频，请重试。")
         }
     }
 }

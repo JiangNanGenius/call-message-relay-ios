@@ -140,13 +140,15 @@ final class MessagesUITests: XCTestCase {
         attach(named: "08b-spam-preview")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        // MARK: 8. Settings shows concise call/audio state
-        for _ in 0..<6 where !element(containing: "系统 CallKit").isHittable {
+        // MARK: 8. Settings shows concise statuses without engineering prose
+        for _ in 0..<6 where !element(containing: "默认拨出线路").isHittable {
             app.swipeUp()
         }
-        XCTAssertTrue(app.staticTexts["铃声与来电"].waitForExistence(timeout: 5))
-        XCTAssertTrue(element(containing: "系统 CallKit").exists)
-        XCTAssertTrue(element(containing: "听筒 / 扬声器 / 蓝牙").exists)
+        XCTAssertTrue(app.staticTexts["设置"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["默认拨出线路"].exists)
+        XCTAssertTrue(app.staticTexts["短信与来电"].exists)
+        // The technical call/audio copy was removed: no jargon rows remain.
+        XCTAssertFalse(element(containing: "CallKit").exists)
         attach(named: "09-settings-call-audio")
     }
 

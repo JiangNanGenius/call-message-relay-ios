@@ -5,18 +5,26 @@ options:
   deploymentTarget:
     iOS: "17.0"
   developmentLanguage: zh-Hans
+  # Product languages: Simplified Chinese (source), Traditional Chinese,
+  # English. The app follows the system locale; no in-app selector.
+  knownRegions:
+    - zh-Hans
+    - zh-Hant
+    - en
   createIntermediateGroups: true
   generateEmptyDirectories: false
 
 settings:
   base:
     MARKETING_VERSION: "0.3.5"
-    # Internal TestFlight build 11 (v0.3.5 build 9 stays the immutable public
-    # Feather release/tag; build 10 archive was canceled in Organizer after a
-    # signature-entitlement gap was found, so 11 is the next clean number).
-    CURRENT_PROJECT_VERSION: "11"
+    # Internal TestFlight build 12 (v0.3.5 build 9 stays the immutable public
+    # Feather release/tag; 11 was the first CloudKit-signed build; 12 adds
+    # WSS media, direct-path probing, LCK, state fixes and localization).
+    CURRENT_PROJECT_VERSION: "12"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.
+    SWIFT_EMIT_LOC_STRINGS: "YES"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     CODE_SIGNING_REQUIRED: "NO"

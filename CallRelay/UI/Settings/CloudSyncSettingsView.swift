@@ -42,20 +42,11 @@ struct CloudSyncSettingsView: View {
                 LabeledContent("短信记录", value: "按网关隔离")
                 LabeledContent("通话记录", value: "按网关隔离")
                 LabeledContent("垃圾规则与信任号码", value: "已包含")
-                Text("同步使用 iCloud 私人数据库，号码、正文、姓名写入加密字段（CKRecord.encryptedValues）。不同网关的历史互不混合；下载的历史只读，绝不会因此再发短信或拨号。")
-                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("不会同步") {
                 Label("配对私钥与网关令牌", systemImage: "key.slash")
                 Label("待发送的设备短信", systemImage: "tray.slash")
-                Text("每台 iPhone 仍需分别配对网关；本 App 不使用公共数据库，也不上传统计数据。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            Section {
-                Text("当前签名没有 iCloud 容器权限，该开关不可用；使用包含 iCloud 能力的描述文件重新签名后即可开启。系统 iCloud 联系人同步不受影响。")
-                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .navigationTitle("iCloud 同步")

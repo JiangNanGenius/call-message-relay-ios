@@ -95,8 +95,6 @@ struct OutgoingLineChooser: View {
                         .padding(.vertical, 4)
                 } header: {
                     Text("拨打号码")
-                } footer: {
-                    Text("选择本次外呼使用的线路；不会改变默认线路。")
                 }
                 Section("选择外呼线路") {
                     if model.authorizedLines.isEmpty {

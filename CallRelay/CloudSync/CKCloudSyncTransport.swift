@@ -50,23 +50,56 @@ final class CKCloudSyncTransport: CloudSyncTransport, @unchecked Sendable {
         return ok ? created : nil
     }
 
-    // MARK: Provisioning gate
+    // MARK: Availability (live probe is authoritative)
+
+    /// Tri-state hint from the embedded provisioning profile. Apple re-signs
+    /// TestFlight/App Store builds with their own profiles (TN3125) whose
+    /// entitlements shapes vary (explicit `CloudKit` array, `"*"` string,
+    /// `["*"]` array, or no iCloud-service entry at all), so the profile can
+    /// never prove or disprove the EFFECTIVE entitlement either way. It is a
+    /// diagnostics hint only; the guarded live CKContainer probe below is
+    /// the authority.
+    enum ProfileHint: Equatable {
+        /// Profile parsed and names the container with a CloudKit grant.
+        case entitled
+        /// Profile parsed but the container/services grant is absent.
+        case notEntitled
+        /// No profile, unreadable, or malformed CMS: no information.
+        case unknown
+    }
 
     func availability() async -> CloudSyncAvailability {
-        guard entitlementProbe(containerID) else {
-            return .unavailable(
-                "当前签名没有 iCloud 权限，无法启用云同步；使用包含 iCloud 能力的描述文件重新签名后即可开启。本机功能不受影响。"
-            )
-        }
-        // The profile is only a HINT of the effective code-signature rights.
-        // Actually touching CKContainer (init + accountStatus) is the real
-        // probe; a missing EFFECTIVE entitlement raises an ObjC exception that
-        // the guard converts into .unavailable instead of crashing. Login is
+        // Diagnostics only — never a veto (a false negative here previously
+        // disabled sync on correctly-entitled TestFlight builds).
+        _ = profileHint()
+        // The authoritative probe: touching CKContainer (init +
+        // accountStatus) inside the ObjC exception guard. A sideloaded build
+        // missing the EFFECTIVE entitlement raises an NSException the guard
+        // converts into .unavailable instead of crashing. Login is
         // determined by CKContainer.accountStatus, NOT
-        // FileManager.ubiquityIdentityToken (that is the iCloud DRIVE identity
-        // and a CloudKit-only account can have it while Drive is off, or vice
-        // versa).
+        // FileManager.ubiquityIdentityToken (that is the iCloud DRIVE
+        // identity and a CloudKit-only account can have it while Drive is
+        // off, or vice versa).
         return await accountStatus()
+    }
+
+    func profileHint() -> ProfileHint {
+        guard let profileURL = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision")
+            ?? Optional(Bundle.main.bundleURL.appendingPathComponent("embedded.mobileprovision")),
+              FileManager.default.fileExists(atPath: profileURL.path),
+              let data = try? Data(contentsOf: profileURL) else {
+            return .unknown
+        }
+        return Self.rawProfileHint(data, includesICloudContainer: containerID)
+    }
+
+    /// Pure hint over raw profile bytes: entitled / notEntitled / unknown
+    /// (unparseable CMS). Unknown NEVER disables sync by itself.
+    static func rawProfileHint(_ data: Data, includesICloudContainer identifier: String) -> ProfileHint {
+        guard let entitlements = profileEntitlements(data) else { return .unknown }
+        guard let containers = entitlements["com.apple.developer.icloud-container-identifiers"] as? [String],
+              containers.contains(identifier) else { return .notEntitled }
+        return icloudServicesGrantCloudKit(entitlements["com.apple.developer.icloud-services"]) ? .entitled : .notEntitled
     }
 
     private func accountStatus() async -> CloudSyncAvailability {
@@ -88,6 +121,13 @@ final class CKCloudSyncTransport: CloudSyncTransport, @unchecked Sendable {
                         switch ck.code {
                         case .notAuthenticated:
                             resume(.noAccount)
+                        case .missingEntitlement:
+                            // The code signature genuinely lacks the CloudKit
+                            // entitlement: terminal and actionable, NOT a
+                            // transient retry loop.
+                            resume(.unavailable(
+                                "当前安装包签名缺少生效的 iCloud（CloudKit）容器权限，云同步无法启用；本机功能不受影响。"
+                            ))
                         case .networkFailure, .networkUnavailable, .serviceUnavailable,
                              .requestRateLimited, .zoneBusy:
                             resume(.transient)
@@ -210,17 +250,20 @@ final class CKCloudSyncTransport: CloudSyncTransport, @unchecked Sendable {
     }
 
     /// Interprets the `com.apple.developer.icloud-services` profile value.
-    /// Real provisioning profiles use either:
-    /// - `[String]` containing `CloudKit` (manual/explicit Xcode profiles), or
-    /// - the string `"*"` (the wildcard Apple emits in generated App
-    ///   Store/TestFlight profiles, including the dedicated CallRelay profile).
-    /// Any other shape (missing, empty, unrelated entries) is rejected.
+    /// Real provisioning profiles use any of:
+    /// - `[String]` containing `CloudKit` (manual/explicit Xcode profiles),
+    /// - the string `"*"`, or
+    /// - `["*"]` (wildcard shapes Apple emits in generated App
+    ///   Store/TestFlight profiles, including the dedicated CallRelay
+    ///   profile).
+    /// A missing/empty/unrelated value yields false — which downgrades the
+    /// HINT only; the live probe below stays authoritative.
     static func icloudServicesGrantCloudKit(_ value: Any?) -> Bool {
         if let wildcard = value as? String {
             return wildcard == "*"
         }
         if let services = value as? [String] {
-            return services.contains("CloudKit")
+            return services.contains("CloudKit") || services.contains("*")
         }
         return false
     }

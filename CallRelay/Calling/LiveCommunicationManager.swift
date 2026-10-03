@@ -1,0 +1,363 @@
+import Foundation
+import CallKit
+import AVFoundation
+import LiveCommunicationKit
+
+/// LiveCommunicationKit (iOS 17.4+) implementation of the system-call
+/// surface. CallKitManager remains for iOS 17.0-17.3 and for unit tests.
+///
+/// The lifecycle mapping mirrors CallKitManager exactly: gateway truth drives
+/// fulfill/fail so the system UI never shows a state the carrier does not
+/// have; PushKit reporting and the AudioSessionBridge activation contract are
+/// preserved (`didActivate`/`didDeactivate` feed the same shared bridge).
+@available(iOS 17.4, *)
+@MainActor
+final class LiveCommunicationManager: NSObject, CallKitControlling {
+    private let manager: ConversationManager
+    /// Conversation UUIDs reported and not yet ended (mirror of knownUUIDs).
+    private var knownUUIDs: Set<UUID> = []
+    private(set) var lastIncomingReportError: String?
+
+    weak var director: CallDirecting?
+    /// Bumped on manager reset: late async completions from a previous
+    /// system-call generation can never fulfill an action.
+    private var managerGeneration: UInt64 = 0
+    /// Actions this adapter has claimed (fulfilled or failed), held STRONG:
+    /// a live reference pins the object so its ObjectIdentifier can never be
+    /// reused by an unrelated later action, and entries whose system state
+    /// has finalized (.complete/.failed) are purged on every claim so the
+    /// bookkeeping stays bounded.
+    private var completed: [ObjectIdentifier: ConversationAction] = [:]
+    /// Actions the system already timed out, also held strong (same reuse
+    /// and bounding guarantees).
+    private var timedOut: [ObjectIdentifier: ConversationAction] = [:]
+
+    override init() {
+        var configuration = ConversationManager.Configuration(
+            ringtoneName: nil,
+            iconTemplateImageData: nil,
+            maximumConversationGroups: 4,
+            maximumConversationsPerConversationGroup: 4,
+            includesConversationInRecents: true,
+            supportsVideo: false,
+            supportedHandleTypes: [.generic, .phoneNumber]
+        )
+        if #available(iOS 26.0, *) {
+            configuration.supportsAudioTranslation = false
+        }
+        manager = ConversationManager(configuration: configuration)
+        super.init()
+        manager.delegate = self
+    }
+
+    var configurationForTests: ConversationManager.Configuration { manager.configuration }
+
+    // MARK: Incoming
+
+    @discardableResult
+    func reportIncoming(uuid: UUID, handle: String, isVideo: Bool) async -> Bool {
+        let member = Handle(
+            type: CallKitManager.handleType(for: handle) == .phoneNumber ? .phoneNumber : .generic,
+            value: handle
+        )
+        var update = Conversation.Update()
+        update.members = [member]
+        update.activeRemoteMembers = [member]
+        update.capabilities = [.pausing, .merging, .unmerging, .playingTones]
+        do {
+            try await manager.reportNewIncomingConversation(uuid: uuid, update: update)
+            knownUUIDs.insert(uuid)
+            lastIncomingReportError = nil
+            return true
+        } catch {
+            lastIncomingReportError = "\((error as NSError).domain) \((error as NSError).code)"
+            AppLog.callKit.error("reportNewIncomingConversation rejected")
+            return false
+        }
+    }
+
+    var lastIncomingReportErrorCode: Int? { nil }
+
+    func updateIncoming(uuid: UUID, handle: String) {
+        guard knownUUIDs.contains(uuid) else { return }
+        let member = Handle(
+            type: CallKitManager.handleType(for: handle) == .phoneNumber ? .phoneNumber : .generic,
+            value: handle
+        )
+        var update = Conversation.Update()
+        update.members = [member]
+        update.activeRemoteMembers = [member]
+        update.capabilities = [.pausing, .merging, .unmerging, .playingTones]
+        conversation(for: uuid).map { manager.reportConversationEvent(.conversationUpdated(update), for: $0) }
+    }
+
+    // MARK: Outgoing
+
+    func requestStartOutgoing(uuid: UUID, handle: String) async throws {
+        let member = Handle(
+            type: CallKitManager.handleType(for: handle) == .phoneNumber ? .phoneNumber : .generic,
+            value: handle
+        )
+        try await manager.perform([StartConversationAction(
+            conversationUUID: uuid, handles: [member], isVideo: false)])
+        knownUUIDs.insert(uuid)
+    }
+
+    func reportOutgoingConnecting(uuid: UUID) {
+        conversation(for: uuid).map {
+            manager.reportConversationEvent(.conversationStartedConnecting(Date()), for: $0)
+        }
+    }
+
+    func reportConnected(uuid: UUID, startedAt: Date?) {
+        conversation(for: uuid).map {
+            manager.reportConversationEvent(.conversationConnected(startedAt ?? Date()), for: $0)
+        }
+    }
+
+    // MARK: End / fail
+
+    func reportEnded(uuid: UUID, reason: CXCallEndedReason) async {
+        knownUUIDs.remove(uuid)
+        let ended: Conversation.Event?
+        switch reason {
+        case .failed:
+            ended = .conversationEnded(Date(), .failed)
+        case .unanswered:
+            ended = .conversationEnded(Date(), .unanswered)
+        case .answeredElsewhere:
+            if #available(iOS 14.1, *) {
+                ended = .conversationEnded(Date(), .joinedElsewhere)
+            } else {
+                ended = .conversationEnded(Date(), .remoteEnded)
+            }
+        case .declinedElsewhere:
+            if #available(iOS 14.1, *) {
+                ended = .conversationEnded(Date(), .declinedElsewhere)
+            } else {
+                ended = .conversationEnded(Date(), .remoteEnded)
+            }
+        default:
+            ended = .conversationEnded(Date(), .remoteEnded)
+        }
+        if let ended, let conversation = conversation(for: uuid) {
+            manager.reportConversationEvent(ended, for: conversation)
+        }
+    }
+
+    /// LCK exposes pause through actions, not a programmatic state report;
+    /// the capabilities refresh keeps the system UI consistent after a
+    /// coordinator-side hold, mirroring CallKitManager.reportHeld.
+    func reportHeld(uuid: UUID, held: Bool) {
+        guard knownUUIDs.contains(uuid), let conversation = conversation(for: uuid) else { return }
+        var update = Conversation.Update()
+        update.capabilities = [.pausing, .merging, .unmerging, .playingTones]
+        manager.reportConversationEvent(.conversationUpdated(update), for: conversation)
+    }
+
+    func requestEnd(uuid: UUID) async throws {
+        try await manager.perform([EndConversationAction(conversationUUID: uuid)])
+    }
+
+    func requestAnswer(uuid: UUID) async throws {
+        try await manager.perform([JoinConversationAction(conversationUUID: uuid)])
+    }
+
+    func requestMute(uuid: UUID, muted: Bool) async throws {
+        try await manager.perform([MuteConversationAction(conversationUUID: uuid, isMuted: muted)])
+    }
+
+    func requestDTMF(uuid: UUID, digit: String) async throws {
+        try await manager.perform([PlayToneAction(
+            conversationUUID: uuid, digits: digit, tone: .single)])
+    }
+
+    func invalidate() {
+        manager.invalidate()
+    }
+
+    private func conversation(for uuid: UUID) -> Conversation? {
+        manager.conversations.first { $0.uuid == uuid }
+    }
+}
+
+// MARK: - ConversationManagerDelegate
+
+@available(iOS 17.4, *)
+extension LiveCommunicationManager: ConversationManagerDelegate {
+    func conversationManager(_ manager: ConversationManager, conversationChanged conversation: Conversation) { }
+
+    func conversationManagerDidBegin(_ manager: ConversationManager) { }
+
+    func conversationManagerDidReset(_ manager: ConversationManager) {
+        managerGeneration += 1
+        knownUUIDs.removeAll()
+        completed.removeAll()
+        timedOut.removeAll()
+        Task { @MainActor in self.director?.handleProviderReset() }
+    }
+
+    /// Claims the one-shot right to complete an action; nil when this action
+    /// was already claimed, so fulfill/fail run at most once each. Purges
+    /// finalized entries first to keep the strong-ref map bounded.
+    private func begin(_ action: ConversationAction) -> UInt64? {
+        let gen = managerGeneration
+        let key = ObjectIdentifier(action)
+        purgeFinalized()
+        guard completed[key] == nil else { return nil }
+        completed[key] = action
+        return gen
+    }
+
+    private func purgeFinalized() {
+        let finalized: (ConversationAction) -> Bool = {
+            if case .complete = $0.state { return true }
+            if case .failed = $0.state { return true }
+            return false
+        }
+        completed = completed.filter { !finalized($0.value) }
+        timedOut = timedOut.filter { !finalized($0.value) }
+    }
+
+    /// True while a claimed action may still complete: the manager was not
+    /// reset underneath us and the system has not timed the action out.
+    private func completable(_ action: ConversationAction, gen: UInt64) -> Bool {
+        gen == managerGeneration && timedOut[ObjectIdentifier(action)] == nil
+    }
+
+    func conversationManager(_ manager: ConversationManager, perform action: ConversationAction) {
+        switch action {
+        case let action as StartConversationAction:
+            guard let gen = begin(action) else { return }
+            guard let handle = action.handles.first else {
+                AppLog.callKit.notice("start conversation without handle")
+                action.fail()
+                return
+            }
+            guard let director else {
+                action.fail()
+                return
+            }
+            knownUUIDs.insert(action.conversationUUID)
+            CallIntentDonor.donateOutgoing(peer: handle.value)
+            Task { @MainActor in
+                director.startOutgoing(peer: handle.value, uuid: action.conversationUUID)
+                guard self.completable(action, gen: gen) else { return }
+                action.fulfill(dateStarted: Date())
+            }
+        case let action as JoinConversationAction:
+            // Answer: fulfill reflects the gateway answer, not media
+            // readiness (identical contract to CXAnswerCallAction).
+            guard let gen = begin(action) else { return }
+            guard let director else {
+                // Never report "answered" when there is no director to answer.
+                action.fail()
+                return
+            }
+            Task { @MainActor in
+                do {
+                    try await director.answerIncoming(uuid: action.conversationUUID)
+                    guard self.completable(action, gen: gen) else { return }
+                    action.fulfill(dateConnected: Date())
+                } catch {
+                    AppLog.callKit.notice("gateway answer failed; conversation will end")
+                    guard self.completable(action, gen: gen) else { return }
+                    action.fail()
+                    if let conversation = self.conversation(for: action.conversationUUID) {
+                        self.manager.reportConversationEvent(.conversationEnded(Date(), .failed), for: conversation)
+                    }
+                    self.knownUUIDs.remove(action.conversationUUID)
+                }
+            }
+        case let action as EndConversationAction:
+            guard let gen = begin(action) else { return }
+            guard let director else { action.fail(); return }
+            knownUUIDs.remove(action.conversationUUID)
+            Task { @MainActor in
+                director.endCall(uuid: action.conversationUUID, reason: .userHungUp)
+                guard self.completable(action, gen: gen) else { return }
+                action.fulfill(dateEnded: Date())
+            }
+        case let action as PauseConversationAction:
+            guard let gen = begin(action) else { return }
+            guard let director else { action.fail(); return }
+            Task { @MainActor in
+                do {
+                    try await director.setHeld(uuid: action.conversationUUID, held: action.isPaused)
+                    guard self.completable(action, gen: gen) else { return }
+                    action.fulfill()
+                } catch {
+                    AppLog.callKit.notice("gateway hold/resume rejected")
+                    guard self.completable(action, gen: gen) else { return }
+                    action.fail()
+                }
+            }
+        case let action as MuteConversationAction:
+            guard let gen = begin(action) else { return }
+            guard let director else { action.fail(); return }
+            Task { @MainActor in
+                director.setMuted(uuid: action.conversationUUID, muted: action.isMuted)
+                guard self.completable(action, gen: gen) else { return }
+                action.fulfill()
+            }
+        case let action as PlayToneAction:
+            guard let gen = begin(action) else { return }
+            guard let director else { action.fail(); return }
+            Task { @MainActor in
+                director.playDTMF(uuid: action.conversationUUID, digit: action.digits)
+                guard self.completable(action, gen: gen) else { return }
+                action.fulfill()
+            }
+        case let action as MergeConversationAction:
+            guard let gen = begin(action) else { return }
+            guard let director else { action.fail(); return }
+            Task { @MainActor in
+                do {
+                    try await director.setGroup(
+                        uuid: action.conversationUUID,
+                        groupUUID: action.conversationUUIDToMergeWith)
+                    guard self.completable(action, gen: gen) else { return }
+                    action.fulfill()
+                } catch {
+                    AppLog.callKit.notice("gateway merge rejected")
+                    guard self.completable(action, gen: gen) else { return }
+                    action.fail()
+                }
+            }
+        case let action as UnmergeConversationAction:
+            guard let gen = begin(action) else { return }
+            guard let director else { action.fail(); return }
+            Task { @MainActor in
+                do {
+                    try await director.setGroup(uuid: action.conversationUUID, groupUUID: nil)
+                    guard self.completable(action, gen: gen) else { return }
+                    action.fulfill()
+                } catch {
+                    AppLog.callKit.notice("gateway split rejected")
+                    guard self.completable(action, gen: gen) else { return }
+                    action.fail()
+                }
+            }
+        default:
+            // Unsupported action: fail so the system is never left waiting.
+            AppLog.callKit.notice("unsupported conversation action")
+            if begin(action) != nil { action.fail() }
+        }
+    }
+
+    func conversationManager(_ manager: ConversationManager, timedOutPerforming action: ConversationAction) {
+        // The system already moved on: a late async result must never
+        // complete the action after the timeout. Held strong for the same
+        // address-reuse and bounding guarantees as `completed`.
+        timedOut[ObjectIdentifier(action)] = action
+        AppLog.callKit.notice("conversation action timed out")
+    }
+
+    func conversationManager(_ manager: ConversationManager, didActivate audioSession: AVAudioSession) {
+        AudioSessionBridge.shared.didActivate(audioSession)
+    }
+
+    func conversationManager(_ manager: ConversationManager, didDeactivate audioSession: AVAudioSession) {
+        AudioSessionBridge.shared.didDeactivate(audioSession)
+    }
+}

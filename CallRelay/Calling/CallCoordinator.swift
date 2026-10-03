@@ -86,6 +86,8 @@ final class CallCoordinator: NSObject {
     var onQuality: ((MediaQuality) -> Void)?
 
     private var media: CallMediaSession?
+    private var wsMedia: WebSocketCallMedia?
+    private var wsConferenceMedia: WebSocketCallMedia?
     private var activeGatewayId: String?
     private var latestGateway: CallRecord?
     private var latestMedia: MediaState = .idle
@@ -417,6 +419,8 @@ final class CallCoordinator: NSObject {
         mediaRecoveryTask = nil
         media?.close()
         media = nil
+        wsMedia?.close()
+        wsMedia = nil
         if var entry = tracked[callId] {
             entry.held = false
             tracked[callId] = entry
@@ -537,6 +541,8 @@ final class CallCoordinator: NSObject {
         monitorStarted = false
         media?.close()
         media = nil
+        wsMedia?.close()
+        wsMedia = nil
         latestMedia = .idle
         if var entry = tracked[callId] {
             entry.held = true
@@ -623,6 +629,10 @@ final class CallCoordinator: NSObject {
         monitorTask?.cancel()
         monitorTask = nil
         monitorStarted = false
+        media?.close()
+        media = nil
+        wsMedia?.close()
+        wsMedia = nil
         delegate?.callGroupChanged()
     }
 
@@ -632,6 +642,13 @@ final class CallCoordinator: NSObject {
         }
         let ice = try await api.iceConfiguration(callId: firstLeg)
         guard gen == generation else { throw CancellationError() }
+
+        // Conferences prefer the same WSS transport so a merge on a cellular
+        // client never forces media back onto the unreachable ICE path.
+        if ice.mediaTransports?.contains("ws") == true {
+            try await establishWSConferenceMedia(conference: record, generation: gen)
+            return
+        }
 
         let session = mediaProvider.makeSession()
         let previous = media
@@ -660,7 +677,7 @@ final class CallCoordinator: NSObject {
                 case .failed:
                     self.mediaRecoveryTask?.cancel()
                     self.mediaRecoveryTask = nil
-                    await self.failConference(message: "会议音频连接中断。")
+                    await self.failConference(message: String(localized: "会议音频连接中断。"))
                 default:
                     self.publishPhase()
                 }
@@ -695,6 +712,55 @@ final class CallCoordinator: NSObject {
         startConferenceMonitor(conferenceId: record.id, gen: gen)
     }
 
+    /// WSS host audio for a hosted conference: one socket carries the mixed
+    /// host leg; per-leg hold/merge semantics stay server-side.
+    private func establishWSConferenceMedia(conference record: ConferenceRecord, generation gen: UInt64) async throws {
+        let request = try await api.conferenceMediaWebSocketRequest(conferenceId: record.id)
+        guard gen == generation else { throw CancellationError() }
+
+        let session = WebSocketCallMedia()
+        wsConferenceMedia = session
+        if let activated = AudioSessionBridge.shared.activeSession {
+            session.audioActivated(with: activated)
+        }
+        session.onState = { [weak self] state in
+            Task { @MainActor in
+                guard let self, gen == self.generation, self.conference?.id == record.id else { return }
+                self.latestMedia = state
+                switch state {
+                case .connected:
+                    self.mediaRecoveryTask?.cancel()
+                    self.mediaRecoveryTask = nil
+                    self.publishPhase()
+                    self.delegate?.callGroupChanged()
+                case .disconnected:
+                    self.publishPhase()
+                    self.scheduleConferenceMediaFailure(conferenceId: record.id, gen: gen)
+                case .failed:
+                    self.mediaRecoveryTask?.cancel()
+                    self.mediaRecoveryTask = nil
+                    await self.failConference(message: String(localized: "会议音频连接中断。"))
+                default:
+                    self.publishPhase()
+                }
+            }
+        }
+        session.onQuality = { [weak self] quality in
+            Task { @MainActor in
+                guard let self, gen == self.generation else { return }
+                self.onQuality?(quality)
+            }
+        }
+        try await session.connect(request: request)
+        guard gen == generation else {
+            session.close()
+            throw CancellationError()
+        }
+        session.setMicMuted(muted)
+        if speaker { try? session.setSpeakerphone(true) }
+        startConferenceMonitor(conferenceId: record.id, gen: gen)
+    }
+
     private func scheduleConferenceMediaFailure(conferenceId: String, gen: UInt64) {
         guard mediaRecoveryTask == nil else { return }
         let window = mediaRecoveryWindow
@@ -703,7 +769,7 @@ final class CallCoordinator: NSObject {
             guard !Task.isCancelled else { return }
             guard let self, gen == self.generation, self.conference?.id == conferenceId else { return }
             if self.latestMedia == .disconnected {
-                await self.failConference(message: "会议音频长时间未恢复，已结束。")
+                await self.failConference(message: String(localized: "会议音频长时间未恢复，已结束。"))
             }
             self.mediaRecoveryTask = nil
         }
@@ -773,6 +839,8 @@ final class CallCoordinator: NSObject {
         monitorStarted = false
         media?.close()
         media = nil
+        wsMedia?.close()
+        wsMedia = nil
         latestMedia = .idle
 
         let live = remaining.filter { !$0.isFinished }
@@ -888,6 +956,8 @@ final class CallCoordinator: NSObject {
         monitorStarted = false
         media?.close()
         media = nil
+        wsMedia?.close()
+        wsMedia = nil
         latestMedia = .idle
         for leg in remaining {
             var entry = tracked[leg.id] ?? TrackedCall(record: leg, held: false, muted: false)
@@ -953,6 +1023,18 @@ final class CallCoordinator: NSObject {
         let ice = try await api.iceConfiguration(callId: callId)
         guard gen == self.generation else { throw CancellationError() }
 
+        // Capability negotiation: when the gateway advertises the
+        // authenticated WSS audio transport, use it — it rides the same
+        // reachable HTTPS route and is the only media path on cellular
+        // networks where the gateway's ICE candidates are LAN-only. There is
+        // deliberately no silent ICE fallback: if the socket fails, the call
+        // fails truthfully.
+        if ice.mediaTransports?.contains("ws") == true {
+            try await establishWSMedia(
+                callId: callId, uuid: uuid, generation: gen, selfManagedAudio: selfManagedAudio)
+            return
+        }
+
         let session = mediaProvider.makeSession()
         media = session
         // CallKit may activate audio before the ICE request returns. Replay the
@@ -984,11 +1066,11 @@ final class CallCoordinator: NSObject {
                     // window to reconnect; never place a NEW call.
                     self.publishPhase()
                     self.scheduleMediaFailure(callId: callId, gen: gen,
-                                              message: "音频长时间未恢复，已结束通话。")
+                                              message: String(localized: "音频长时间未恢复，已结束通话。"))
                 case .failed:
                     self.mediaRecoveryTask?.cancel()
                     self.mediaRecoveryTask = nil
-                    await self.failActiveCall(message: "音频连接中断。")
+                    await self.failActiveCall(message: String(localized: "音频连接中断。"))
                 default:
                     self.publishPhase()
                 }
@@ -1024,6 +1106,150 @@ final class CallCoordinator: NSObject {
     }
 
     private var monitorStarted = false
+
+    /// WSS PCMU media path, selected when the gateway advertises it in `/ice`.
+    /// Same lifecycle contract as the WebRTC path: CallKit may have activated
+    /// audio before the socket opens (replay it); a direct in-app answer
+    /// self-activates; failures end the call truthfully.
+    private func establishWSMedia(
+        callId: String, uuid: UUID, generation gen: UInt64, selfManagedAudio: Bool
+    ) async throws {
+        let request = try await api.mediaWebSocketRequest(callId: callId)
+        guard gen == self.generation else { throw CancellationError() }
+        let ice = try await api.iceConfiguration(callId: callId)
+        guard gen == self.generation else { throw CancellationError() }
+
+        let session = WebSocketCallMedia()
+        wsMedia = session
+        if let activated = AudioSessionBridge.shared.activeSession {
+            session.audioActivated(with: activated)
+        } else if selfManagedAudio {
+            guard session.activateAudioWithoutCallKit() else {
+                session.close()
+                throw MediaError.audioActivationFailed
+            }
+        }
+        session.onState = { [weak self] state in
+            Task { @MainActor in
+                guard let self, gen == self.generation else { return }
+                self.latestMedia = state
+                switch state {
+                case .connected:
+                    self.mediaRecoveryTask?.cancel()
+                    self.mediaRecoveryTask = nil
+                    self.publishPhase()
+                    self.startMonitorIfNeeded(callId: callId, uuid: uuid, gen: gen)
+                    session.startPingSampling()
+                    self.maybeStartDirectProbe(callId: callId, uuid: uuid, ice: ice, gen: gen)
+                case .disconnected:
+                    // Socket drop: bounded grace, then fail truthfully — the
+                    // same recovery semantics as an ICE disconnect.
+                    self.publishPhase()
+                    self.scheduleMediaFailure(callId: callId, gen: gen,
+                                              message: String(localized: "音频长时间未恢复，已结束通话。"))
+                case .failed:
+                    self.mediaRecoveryTask?.cancel()
+                    self.mediaRecoveryTask = nil
+                    await self.failActiveCall(message: String(localized: "音频连接中断。"))
+                default:
+                    self.publishPhase()
+                }
+            }
+        }
+        session.onQuality = { [weak self] quality in
+            Task { @MainActor in
+                guard let self, gen == self.generation else { return }
+                self.onQuality?(quality)
+            }
+        }
+        try await session.connect(request: request)
+        guard gen == self.generation else {
+            session.close()
+            throw CancellationError()
+        }
+        session.setMicMuted(muted)
+        if speaker { try? session.setSpeakerphone(true) }
+    }
+
+    // MARK: Direct-path probe & quality-based routing
+
+    private var routeAdvisor = MediaRouteAdvisor()
+    private var routeProbe: MediaProbeController?
+    private var routeTask: Task<Void, Never>?
+    private var lastICE: ICEConfiguration?
+
+    /// Starts the detached direct-path probe when a candidate could plausibly
+    /// exist (configured ICE servers or a shared LAN) and drives the
+    /// conservative, quality-based advisor. Promotion/fallback are one-shot,
+    /// generation-fenced, and never touch the healthy path while measuring.
+    private func maybeStartDirectProbe(callId: String, uuid: UUID, ice: ICEConfiguration, gen: UInt64) {
+        lastICE = ice
+        guard ice.mediaTransports?.contains("ice") == true else { return }
+        let reachable = !ice.iceServers.isEmpty || isLikelyLAN()
+        guard reachable else { return }
+        let probe = MediaProbeController()
+        routeProbe = probe
+        routeTask?.cancel()
+        routeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let offer = try await probe.makeOffer(ice: ice)
+                guard gen == self.generation, !Task.isCancelled else { probe.cancel(); return }
+                let answer = try await self.api.attachMediaProbe(callId: callId, sdp: offer)
+                guard gen == self.generation, !Task.isCancelled else { probe.cancel(); return }
+                try await probe.applyAnswer(answer.sdp)
+                guard gen == self.generation, !Task.isCancelled else { probe.cancel(); return }
+                await self.routeEvaluationLoop(callId: callId, uuid: uuid, ice: ice, gen: gen, probe: probe)
+            } catch {
+                probe.cancel()
+                if self.routeProbe === probe { self.routeProbe = nil }
+            }
+        }
+    }
+
+    /// Evaluates comparable quality every few seconds. This release measures
+    /// only: the advisor decides, but promotion is never enforced (see the
+    /// .promote branch) so the guaranteed WSS path can never regress.
+    private func routeEvaluationLoop(callId: String, uuid: UUID, ice: ICEConfiguration,
+                                     gen: UInt64, probe: MediaProbeController) async {
+        while !Task.isCancelled, gen == generation {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard gen == generation, !Task.isCancelled else { return }
+            let baselineHealthy = latestMedia == .connected
+            let callDuration = tracked[callId]?.record.map {
+                Date().timeIntervalSince($0.startedDate)
+            } ?? 0
+            let metrics = MediaRouteAdvisor.Metrics(
+                candidateRTT: probe.samples,
+                baselineRTT: wsMedia?.pingSamples ?? [],
+                candidateStable: probe.connected,
+                candidateLost: !probe.connected && probe.samples.isEmpty == false
+            )
+            let decision = routeAdvisor.decide(metrics, callDuration: callDuration, baselineHealthy: baselineHealthy)
+            switch decision {
+            case .keepBaseline:
+                break
+            case .promote:
+                // DELIBERATELY NOT ENFORCED IN THIS RELEASE: the measured
+                // candidate stays probe-only. Staged client audio ownership
+                // (rendering the adopted remote track and enabling its mic
+                // under the CallKit session) is validated on real hardware
+                // first; until then the guaranteed WSS path always carries
+                // the call and promotion can never regress it.
+                AppLog.call.notice("direct candidate measurably better; promotion deferred to a validated release")
+                return
+            case .fallbackToBaseline:
+                return
+            }
+        }
+    }
+
+    private func isLikelyLAN() -> Bool {
+        // Direct candidates are only plausible when the device is on a local
+        // network path to the gateway (Wi-Fi); on cellular there are no
+        // configured servers to discover a route through.
+        NetworkMonitor.shared.currentPathUsesWiFi
+    }
 
     /// After an ICE `disconnected` on an established call, wait a bounded
     /// window for the same peer connection to recover. A later `connected`
@@ -1067,7 +1293,7 @@ final class CallCoordinator: NSObject {
             guard let self else { return }
             if !reportedConnected, gen == self.generation {
                 // Never claim success without a real media+gateway connection.
-                await self.failActiveCall(message: "未能在限定时间内接通音频。")
+                await self.failActiveCall(message: String(localized: "未能在限定时间内接通音频。"))
             }
         }
     }
@@ -1264,8 +1490,14 @@ final class CallCoordinator: NSObject {
         mediaTask?.cancel()
         mediaRecoveryTask?.cancel()
         mediaRecoveryTask = nil
+        routeTask?.cancel()
+        routeTask = nil
+        routeProbe?.cancel()
+        routeProbe = nil
         media?.close()
         media = nil
+        wsMedia?.close()
+        wsMedia = nil
         monitorStarted = false
         return generation
     }
@@ -1304,9 +1536,14 @@ final class CallCoordinator: NSObject {
 
     func setSpeakerphone(_ enabled: Bool) {
         speaker = enabled
-        guard let media else { return }
-        do { try media.setSpeakerphone(enabled) }
-        catch { AppLog.call.notice("speaker route change failed") }
+        if let media {
+            do { try media.setSpeakerphone(enabled) }
+            catch { AppLog.call.notice("speaker route change failed") }
+        }
+        if let wsMedia {
+            do { try wsMedia.setSpeakerphone(enabled) }
+            catch { AppLog.call.notice("speaker route change failed") }
+        }
     }
 }
 
@@ -1343,6 +1580,7 @@ extension CallCoordinator: CallDirecting {
             if gatewayId == self.activeGatewayId {
                 self.muted = muted
                 self.media?.setMicMuted(muted)
+                self.wsMedia?.setMicMuted(muted)
             }
         }
     }

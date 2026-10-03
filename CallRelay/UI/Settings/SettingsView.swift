@@ -49,11 +49,6 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("铃声与来电") {
-                    detailRow(title: "来电界面", value: "系统 CallKit")
-                    detailRow(title: "音频路由", value: "听筒 / 扬声器 / 蓝牙")
-                }
-
                 Section("系统权限") {
                     if let url = URL(string: UIApplication.openSettingsURLString) {
                         Link(destination: url) {
@@ -67,8 +62,6 @@ struct SettingsView: View {
                     Link(destination: URL(string: "https://github.com/JiangNanGenius/call-message-relay-ios")!) {
                         Label("源代码仓库", systemImage: "safari")
                     }
-                    Text("第三方组件见 ThirdPartyNotices。")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
             // Readable centered column on iPad while the grouped background
@@ -126,8 +119,6 @@ struct SettingsView: View {
             }
         } header: {
             Text("网关")
-        } footer: {
-            Text("锁屏系统来电界面需要可用的 VoIP 推送服务与匹配的描述文件；未配置时来电仍会在 App 内显示并可直接接听。")
         }
     }
 
@@ -155,12 +146,6 @@ struct SettingsView: View {
             }
         } header: {
             Text("默认拨出线路")
-        } footer: {
-            if model.authorizedLines.count > 1 {
-                Text("拨号键盘可临时切换本次外呼线路；点线路右侧 ⓘ 查看运营商与信号。")
-            } else {
-                Text("点线路右侧 ⓘ 查看运营商、网络与真实信号。")
-            }
         }
     }
 
@@ -191,9 +176,6 @@ struct SettingsView: View {
               systemImage: "arrow.triangle.2.circlepath")
             .font(.footnote)
             .foregroundStyle(.orange)
-        Text("重新配对统一网关后即可查看和选择号码；旧配对与本地记录会保留，直到新配对成功。")
-            .font(.caption)
-            .foregroundStyle(.secondary)
         Button {
             model.beginRepair()
         } label: {

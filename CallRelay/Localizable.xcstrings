@@ -1,0 +1,6377 @@
+{
+ "sourceLanguage": "zh-Hans",
+ "strings": {
+  "": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": ""
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": ""
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": ""
+     }
+    }
+   }
+  },
+  " ": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": " "
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": " "
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": " "
+     }
+    }
+   }
+  },
+  "%@ · %@": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%@ · %@"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%@ · %@"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%@ · %@"
+     }
+    }
+   }
+  },
+  "%@ · 已保持": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%@ · 已保持"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%@ · 保留中"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%@ · On Hold"
+     }
+    }
+   }
+  },
+  "%lld": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%lld"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%lld"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%lld"
+     }
+    }
+   }
+  },
+  "%lld 个号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%lld 个号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%lld 個號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%lld numbers"
+     }
+    }
+   }
+  },
+  "%lld/10000": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%lld/10000"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%lld/10000"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%lld/10000"
+     }
+    }
+   }
+  },
+  "CallRelay": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "CallRelay"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "CallRelay"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "CallRelay"
+     }
+    }
+   }
+  },
+  "HTTPS 链接（纯 TXT 或 JSON，≤2MB，≤50000 个号码）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "HTTPS 链接（纯 TXT 或 JSON，≤2MB，≤50000 个号码）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "HTTPS 連結（純 TXT 或 JSON，≤2MB，≤50000 個號碼）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "HTTPS link (plain TXT or JSON, ≤2MB, ≤50,000 numbers)"
+     }
+    }
+   }
+  },
+  "SIM": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "SIM"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "SIM"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "SIM"
+     }
+    }
+   }
+  },
+  "https://example.com/numbers.txt": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "https://example.com/numbers.txt"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "https://example.com/numbers.txt"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "https://example.com/numbers.txt"
+     }
+    }
+   }
+  },
+  "https://gateway.example.com": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "https://gateway.example.com"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "https://gateway.example.com"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "https://gateway.example.com"
+     }
+    }
+   }
+  },
+  "iCloud 同步": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "iCloud 同步"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "iCloud 同步"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "iCloud Sync"
+     }
+    }
+   }
+  },
+  "iCloud 同步（可选）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "iCloud 同步（可选）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "iCloud 同步（可選）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "iCloud Sync (optional)"
+     }
+    }
+   }
+  },
+  "· %@": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "· %@"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "· %@"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "· %@"
+     }
+    }
+   }
+  },
+  "· 更新于 %@": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "· 更新于 %@"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "· 更新於 %@"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "· Updated %@"
+     }
+    }
+   }
+  },
+  "不会同步": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "不会同步"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "不會同步"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Won't sync"
+     }
+    }
+   }
+  },
+  "仅在你点击授权后读取；联系人保存在本机/iCloud，不会上传，也不会用于演示或日志。你随时可在系统设置中关闭。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "仅在你点击授权后读取；联系人保存在本机/iCloud，不会上传，也不会用于演示或日志。你随时可在系统设置中关闭。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "僅在你點按授權後讀取；聯絡人保存在本機/iCloud，不會上傳，也不會用於示範或日誌。你隨時可在系統設定中關閉。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Read only after you tap authorize; contacts stay on this device/iCloud, are never uploaded, and are never used for demos or logs. You can turn this off in Settings anytime."
+     }
+    }
+   }
+  },
+  "仅按完整号码匹配，不会因为号段或归属地拦截普通号码；信任名单和你的拦截号码始终优先。更新失败会保留上一份可用名单。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "仅按完整号码匹配，不会因为号段或归属地拦截普通号码；信任名单和你的拦截号码始终优先。更新失败会保留上一份可用名单。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "僅按完整號碼比對，不會因為號段或歸屬地攔截普通號碼；信任名單和你的攔截號碼始終優先。更新失敗會保留上一份可用名單。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Matches full numbers only — ordinary numbers are never blocked by prefix or region. Your trusted list and blocked numbers always win. A failed update keeps the last usable list."
+     }
+    }
+   }
+  },
+  "仅本次使用": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "仅本次使用"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "僅本次使用"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Just this call"
+     }
+    }
+   }
+  },
+  "仅退出这台手机，其他设备不受影响。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "仅退出这台手机，其他设备不受影响。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "僅退出這台手機，其他裝置不受影響。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Only this phone is unpaired; other devices are unaffected."
+     }
+    }
+   }
+  },
+  "从 HTTPS 链接更新": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "从 HTTPS 链接更新"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "從 HTTPS 連結更新"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Update from HTTPS Link"
+     }
+    }
+   }
+  },
+  "从 vCard 导入": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "从 vCard 导入"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "從 vCard 匯入"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Import from vCard"
+     }
+    }
+   }
+  },
+  "从剪贴板粘贴": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "从剪贴板粘贴"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "從剪貼簿貼上"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Paste from Clipboard"
+     }
+    }
+   }
+  },
+  "从剪贴板粘贴收件人": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "从剪贴板粘贴收件人"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "從剪貼簿貼上收件人"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Paste Recipient from Clipboard"
+     }
+    }
+   }
+  },
+  "从文件导入": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "从文件导入"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "從檔案匯入"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Import from File"
+     }
+    }
+   }
+  },
+  "会议成员": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "会议成员"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "會議成員"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Conference Members"
+     }
+    }
+   }
+  },
+  "使用默认线路": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "使用默认线路"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "使用預設線路"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Use Default Line"
+     }
+    }
+   }
+  },
+  "保存": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "保存"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "儲存"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Save"
+     }
+    }
+   }
+  },
+  "保存/分享备份": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "保存/分享备份"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "儲存/分享備份"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Save/Share Backup"
+     }
+    }
+   }
+  },
+  "保守预设（全部默认关闭）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "保守预设（全部默认关闭）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "保守預設（全部預設關閉）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Conservative preset (all defaults off)"
+     }
+    }
+   }
+  },
+  "保持": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "保持"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "保留"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Hold"
+     }
+    }
+   }
+  },
+  "保持中的通话": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "保持中的通话"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "保留中的通話"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Held Calls"
+     }
+    }
+   }
+  },
+  "信号": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "信号"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "訊號"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Signal"
+     }
+    }
+   }
+  },
+  "信息 · 短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "信息 · 短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "資訊 · 簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Messages · SMS"
+     }
+    }
+   }
+  },
+  "信息·短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "信息·短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "資訊·簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Messages·SMS"
+     }
+    }
+   }
+  },
+  "修改会同步到其他已授权手机。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "修改会同步到其他已授权手机。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "修改會同步到其他已授權手機。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Changes sync to your other authorized phones."
+     }
+    }
+   }
+  },
+  "停止播放": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "停止播放"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "停止播放"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Stop Playing"
+     }
+    }
+   }
+  },
+  "停用跨设备自动恢复": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "停用跨设备自动恢复"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "停用跨裝置自動恢復"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Disable Cross-Device Recovery"
+     }
+    }
+   }
+  },
+  "允许本机 HTTP 调试（仅 localhost）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "允许本机 HTTP 调试（仅 localhost）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "允許本機 HTTP 偵錯（僅 localhost）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Allow Local HTTP Debugging (localhost only)"
+     }
+    }
+   }
+  },
+  "全部线路": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "全部线路"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "全部線路"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "All Lines"
+     }
+    }
+   }
+  },
+  "关于": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "关于"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "關於"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "About"
+     }
+    }
+   }
+  },
+  "写入": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "写入"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "寫入"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Write"
+     }
+    }
+   }
+  },
+  "分享导出的 vCard": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "分享导出的 vCard"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "分享匯出的 vCard"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Share Exported vCard"
+     }
+    }
+   }
+  },
+  "删除": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "删除"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "刪除"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Delete"
+     }
+    }
+   }
+  },
+  "删除一位": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "删除一位"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "刪除一位"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Delete One"
+     }
+    }
+   }
+  },
+  "删除留言": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "删除留言"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "刪除留言"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Delete Message"
+     }
+    }
+   }
+  },
+  "删除该名单": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "删除该名单"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "刪除該名單"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Delete This List"
+     }
+    }
+   }
+  },
+  "删除这条语音留言？": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "删除这条语音留言？"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "刪除這則語音留言？"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Delete this voicemail?"
+     }
+    }
+   }
+  },
+  "发件号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "发件号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "發件號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Sender Number"
+     }
+    }
+   }
+  },
+  "发短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "发短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "發簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Send SMS"
+     }
+    }
+   }
+  },
+  "发短信给 %@": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "发短信给 %@"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "發簡訊給 %@"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Text %@"
+     }
+    }
+   }
+  },
+  "发送": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "发送"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "傳送"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Send"
+     }
+    }
+   }
+  },
+  "发送中…": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "发送中…"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "傳送中…"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Sending…"
+     }
+    }
+   }
+  },
+  "取消": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "取消"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "取消"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Cancel"
+     }
+    }
+   }
+  },
+  "只会导入勾选的联系人；不会删除或覆盖现有内容。建议先导出备份。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "只会导入勾选的联系人；不会删除或覆盖现有内容。建议先导出备份。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "只會匯入勾選的聯絡人；不會刪除或覆蓋現有內容。建議先匯出備份。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Only checked contacts are imported; nothing existing is deleted or overwritten. Export a backup first."
+     }
+    }
+   }
+  },
+  "只读系统通讯录，不删除、不改写。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "只读系统通讯录，不删除、不改写。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "唯讀系統通訊錄，不刪除、不改寫。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Read-only access to system contacts; nothing deleted or modified."
+     }
+    }
+   }
+  },
+  "号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Number"
+     }
+    }
+   }
+  },
+  "号码 %@ 命中：%@。这是本机拦截，未通过网关呼出；可在短信/通话规则里修改。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "号码 %@ 命中：%@。这是本机拦截，未通过网关呼出；可在短信/通话规则里修改。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "號碼 %@ 命中：%@。這是本機攔截，未透過網關撥出；可在簡訊/通話規則裡修改。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Number %@ matched: %@. Blocked on this device — no gateway call was placed; adjust it in SMS/call rules."
+     }
+    }
+   }
+  },
+  "号码名单": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "号码名单"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "號碼名單"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Number Lists"
+     }
+    }
+   }
+  },
+  "号码名单（来电）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "号码名单（来电）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "號碼名單（來電）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Number Lists (Calls)"
+     }
+    }
+   }
+  },
+  "号码来源": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "号码来源"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "號碼來源"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Number Source"
+     }
+    }
+   }
+  },
+  "号码（3–20 位数字，可带开头 +）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "号码（3–20 位数字，可带开头 +）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "號碼（3–20 位數字，可帶開頭 +）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Number (3–20 digits, may start with +)"
+     }
+    }
+   }
+  },
+  "合并刚导出的 vCard": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "合并刚导出的 vCard"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "合併剛匯出的 vCard"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Merge Just-Exported vCard"
+     }
+    }
+   }
+  },
+  "合并到现有": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "合并到现有"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "合併到現有"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Merge into Existing"
+     }
+    }
+   }
+  },
+  "合并到现有联系人（保留已有内容）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "合并到现有联系人（保留已有内容）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "合併到現有聯絡人（保留已有內容）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Merge into Existing Contacts (keeps current content)"
+     }
+    }
+   }
+  },
+  "同名且号码/邮箱相同（默认合并）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "同名且号码/邮箱相同（默认合并）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "同名且號碼/信箱相同（預設合併）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Same name and same number/email (merge by default)"
+     }
+    }
+   }
+  },
+  "同步使用 iCloud 私人数据库，号码、正文、姓名写入加密字段（CKRecord.encryptedValues）。不同网关的历史互不混合；下载的历史只读，绝不会因此再发短信或拨号。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "同步使用 iCloud 私人数据库，号码、正文、姓名写入加密字段（CKRecord.encryptedValues）。不同网关的历史互不混合；下载的历史只读，绝不会因此再发短信或拨号。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "同步使用 iCloud 私人資料庫，號碼、正文、姓名寫入加密欄位（CKRecord.encryptedValues）。不同網關的歷史互混合；下載的歷史唯讀，絕不會因此再發簡訊或撥號。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Sync uses your iCloud private database; numbers, bodies and names are written to encrypted fields (CKRecord.encryptedValues). Histories from different gateways never mix; downloaded history is read-only and will never send texts or place calls."
+     }
+    }
+   }
+  },
+  "同步内容": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "同步内容"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "同步內容"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Sync Content"
+     }
+    }
+   }
+  },
+  "名称": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "名称"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "名稱"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Name"
+     }
+    }
+   }
+  },
+  "启用 iCloud 私人同步": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "启用 iCloud 私人同步"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "啟用 iCloud 私人同步"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Enable iCloud Private Sync"
+     }
+    }
+   }
+  },
+  "呼叫 %@": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "呼叫 %@"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "撥打給 %@"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Call %@"
+     }
+    }
+   }
+  },
+  "呼叫该号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "呼叫该号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "撥打該號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Call This Number"
+     }
+    }
+   }
+  },
+  "回复短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "回复短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "回覆簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Reply by SMS"
+     }
+    }
+   }
+  },
+  "回拨": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "回拨"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "回撥"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Call Back"
+     }
+    }
+   }
+  },
+  "在导出的 vCard 中合并勾选的重复项": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "在导出的 vCard 中合并勾选的重复项"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "在匯出的 vCard 中合併勾選的重複項"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Merge checked duplicates in the exported vCard"
+     }
+    }
+   }
+  },
+  "在系统「通讯录」里清理、合并或导入后，此处会自动刷新；App 不维护第二份通讯录。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "在系统「通讯录」里清理、合并或导入后，此处会自动刷新；App 不维护第二份通讯录。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "在系統「通訊錄」裡清理、合併或匯入後，此處會自動重新整理；App 不維護第二份通訊錄。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Clean up, merge or import in system Contacts and this refreshes automatically; the app keeps no second copy."
+     }
+    }
+   }
+  },
+  "在系统设置中管理本 App 权限": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "在系统设置中管理本 App 权限"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "在系統設定中管理本 App 權限"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Manage This App's Permissions in Settings"
+     }
+    }
+   }
+  },
+  "在线": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "在线"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "線上"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Online"
+     }
+    }
+   }
+  },
+  "垃圾拦截规则": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "垃圾拦截规则"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "垃圾攔截規則"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Spam Blocking Rules"
+     }
+    }
+   }
+  },
+  "垃圾规则与信任号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "垃圾规则与信任号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "垃圾規則與信任號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Spam Rules & Trusted Numbers"
+     }
+    }
+   }
+  },
+  "处理方式": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "处理方式"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "處理方式"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Action"
+     }
+    }
+   }
+  },
+  "备份已生成，重新导出": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "备份已生成，重新导出"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "備份已產生，重新匯出"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Backup created; export again"
+     }
+    }
+   }
+  },
+  "多方会议 · %lld 方": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "多方会议 · %lld 方"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "多方會議 · %lld 方"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Conference · %lld parties"
+     }
+    }
+   }
+  },
+  "完全离线，不联网、不发短信、不触发真实系统来电": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "完全离线，不联网、不发短信、不触发真实系统来电"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "完全離線，不連網、不發簡訊、不觸發真實系統來電"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Fully offline — no network, no SMS, no real system calls"
+     }
+    }
+   }
+  },
+  "完成": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "完成"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "完成"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Done"
+     }
+    }
+   }
+  },
+  "完成配对": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "完成配对"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "完成配對"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Complete Pairing"
+     }
+    }
+   }
+  },
+  "导入": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "导入"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "匯入"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Import"
+     }
+    }
+   }
+  },
+  "导入中…": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "导入中…"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "匯入中…"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Importing…"
+     }
+    }
+   }
+  },
+  "导入勾选的联系人（%lld 项）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "导入勾选的联系人（%lld 项）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "匯入勾選的聯絡人（%lld 項）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Import Checked Contacts (%lld)"
+     }
+    }
+   }
+  },
+  "导入号码名单": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "导入号码名单"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "匯入號碼名單"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Import Number List"
+     }
+    }
+   }
+  },
+  "导入联系人": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "导入联系人"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "匯入聯絡人"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Import Contacts"
+     }
+    }
+   }
+  },
+  "导入这些联系人？": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "导入这些联系人？"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "匯入這些聯絡人？"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Import these contacts?"
+     }
+    }
+   }
+  },
+  "导出 vCard (.vcf)": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "导出 vCard (.vcf)"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "匯出 vCard (.vcf)"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Export vCard (.vcf)"
+     }
+    }
+   }
+  },
+  "导出/分享（不写入系统）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "导出/分享（不写入系统）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "匯出/分享（不寫入系統）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Export/Share (not written to system)"
+     }
+    }
+   }
+  },
+  "导出后条数": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "导出后条数"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "匯出後筆數"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Entries After Export"
+     }
+    }
+   }
+  },
+  "导出备份 (.vcf)": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "导出备份 (.vcf)"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "匯出備份 (.vcf)"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Export Backup (.vcf)"
+     }
+    }
+   }
+  },
+  "将从网关删除录音文件，此操作不可撤销。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "将从网关删除录音文件，此操作不可撤销。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "將從網關刪除錄音檔案，此操作無法復原。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "The recording will be deleted from the gateway. This cannot be undone."
+     }
+    }
+   }
+  },
+  "将选中一方移出会议": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "将选中一方移出会议"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "將選取的一方移出會議"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Remove Selected Party from Conference"
+     }
+    }
+   }
+  },
+  "已存在": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "已存在"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "已存在"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Already Exists"
+     }
+    }
+   }
+  },
+  "已存在，无需写入": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "已存在，无需写入"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "已存在，無需寫入"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Already exists; nothing to write"
+     }
+    }
+   }
+  },
+  "已按拦截规则阻止": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "已按拦截规则阻止"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "已按攔截規則封鎖"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Blocked by spam rules"
+     }
+    }
+   }
+  },
+  "已选中的通话方": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "已选中的通话方"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "已選取的通話方"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Selected Party"
+     }
+    }
+   }
+  },
+  "开启后，你通讯录里的号码不会进入垃圾信息；你手动加入的拦截号码仍然优先生效。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "开启后，你通讯录里的号码不会进入垃圾信息；你手动加入的拦截号码仍然优先生效。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "開啟後，你通訊錄裡的號碼不會進入垃圾訊息；你手動加入的攔截號碼仍然優先生效。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "When on, numbers in your contacts won't be flagged as spam; numbers you blocked manually still take precedence."
+     }
+    }
+   }
+  },
+  "当前为受限访问：只能匹配你选中的联系人，不能代表整本通讯录。请在系统设置中允许完全访问后再做完整清理。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "当前为受限访问：只能匹配你选中的联系人，不能代表整本通讯录。请在系统设置中允许完全访问后再做完整清理。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "目前為受限存取：只能比對你選取的聯絡人，不能代表整本通訊錄。請在系統設定中允許完整存取後再做完整清理。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Limited access: only the contacts you select can be matched — this doesn't represent your whole contacts. Allow full access in Settings before a full cleanup."
+     }
+    }
+   }
+  },
+  "当前为受限访问：只能看到你选中的联系人，不能代表整本通讯录。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "当前为受限访问：只能看到你选中的联系人，不能代表整本通讯录。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "目前為受限存取：只能看到你選取的聯絡人，不能代表整本通訊錄。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Limited access: you only see the contacts you select — this doesn't represent your whole contacts."
+     }
+    }
+   }
+  },
+  "当前是旧版按线路配对，无法显示统一网关的线路号码。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "当前是旧版按线路配对，无法显示统一网关的线路号码。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "目前是舊版按線路配對，無法顯示統一網關的線路號碼。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "This is a legacy per-line pairing; unified gateway line numbers can't be shown."
+     }
+    }
+   }
+  },
+  "当前签名没有 iCloud 容器权限，该开关不可用；使用包含 iCloud 能力的描述文件重新签名后即可开启。系统 iCloud 联系人同步不受影响。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "当前签名没有 iCloud 容器权限，该开关不可用；使用包含 iCloud 能力的描述文件重新签名后即可开启。系统 iCloud 联系人同步不受影响。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "目前簽章沒有 iCloud 容器權限，此開關不可用；使用包含 iCloud 能力的描述檔重新簽署後即可開啟。系統 iCloud 聯絡人同步不受影響。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "This build's signature lacks the iCloud container entitlement, so this switch is unavailable; re-sign with an iCloud-capable profile to enable it. System iCloud contact sync is unaffected."
+     }
+    }
+   }
+  },
+  "待发送的设备短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "待发送的设备短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "待傳送的裝置簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Outgoing Device SMS"
+     }
+    }
+   }
+  },
+  "恢复": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "恢复"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "恢復"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Restore"
+     }
+    }
+   }
+  },
+  "恢复 SIM 自动读取": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "恢复 SIM 自动读取"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "恢復 SIM 自動讀取"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Restore SIM Auto-Read"
+     }
+    }
+   }
+  },
+  "恢复为 SIM 自动读取的号码？": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "恢复为 SIM 自动读取的号码？"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "恢復為 SIM 自動讀取的號碼？"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Restore the number read from the SIM?"
+     }
+    }
+   }
+  },
+  "恢复自动读取": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "恢复自动读取"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "恢復自動讀取"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Restore Auto-Read"
+     }
+    }
+   }
+  },
+  "恢复通话": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "恢复通话"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "恢復通話"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Resume Call"
+     }
+    }
+   }
+  },
+  "我的号码名单": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "我的号码名单"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "我的號碼名單"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "My Number Lists"
+     }
+    }
+   }
+  },
+  "所有规则只保存在本机，不会上传短信内容或号码。客户端拦截发生在收到网关来电之后，不能保证对方线路“完全不响铃”；系统电话/短信过滤扩展不在本 App 范围内。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "所有规则只保存在本机，不会上传短信内容或号码。客户端拦截发生在收到网关来电之后，不能保证对方线路“完全不响铃”；系统电话/短信过滤扩展不在本 App 范围内。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "所有規則只保存在本機，不會上傳簡訊內容或號碼。用戶端攔截發生在收到網關來電之後，無法保證對方線路「完全不響鈴」；系統電話/簡訊過濾擴充功能不在本 App 範圍內。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "All rules stay on this device — no message content or numbers are uploaded. Client blocking happens after the gateway call reaches you, so the caller's line may still ring briefly; system call/SMS filter extensions are out of scope."
+     }
+    }
+   }
+  },
+  "手动号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "手动号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "手動號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Manual Number"
+     }
+    }
+   }
+  },
+  "打开系统设置": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "打开系统设置"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "打開系統設定"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Open Settings"
+     }
+    }
+   }
+  },
+  "扫描二维码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "扫描二维码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "掃描 QR 圖碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Scan QR Code"
+     }
+    }
+   }
+  },
+  "扫码或粘贴控制台生成的配对内容，即可连接你的号码与设备。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "扫码或粘贴控制台生成的配对内容，即可连接你的号码与设备。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "掃碼或貼上控制台產生的配對內容，即可連接你的號碼與裝置。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Scan or paste the pairing content generated by the console to link your numbers with this device."
+     }
+    }
+   }
+  },
+  "拒绝": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "拒绝"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "拒絕"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Decline"
+     }
+    }
+   }
+  },
+  "拒绝来电": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "拒绝来电"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "拒絕來電"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Decline Call"
+     }
+    }
+   }
+  },
+  "拨号键盘": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "拨号键盘"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "撥號鍵盤"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Keypad"
+     }
+    }
+   }
+  },
+  "拨打": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "拨打"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "撥打"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Call"
+     }
+    }
+   }
+  },
+  "拨打 %@": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "拨打 %@"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "撥打 %@"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Call %@"
+     }
+    }
+   }
+  },
+  "拨打号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "拨打号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "撥打號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Dial Number"
+     }
+    }
+   }
+  },
+  "拷贝": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "拷贝"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "拷貝"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Copy"
+     }
+    }
+   }
+  },
+  "挂断": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "挂断"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "掛斷"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Hang Up"
+     }
+    }
+   }
+  },
+  "按线路筛选": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "按线路筛选"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "按線路篩選"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Filter by Line"
+     }
+    }
+   }
+  },
+  "授权已失效": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "授权已失效"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "授權已失效"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Authorization Expired"
+     }
+    }
+   }
+  },
+  "授权访问通讯录": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "授权访问通讯录"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "授權存取通訊錄"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Authorize Contacts Access"
+     }
+    }
+   }
+  },
+  "接听": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "接听"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "接聽"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Answer"
+     }
+    }
+   }
+  },
+  "接听当前模拟来电": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "接听当前模拟来电"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "接聽目前模擬來電"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Answer Current Simulated Call"
+     }
+    }
+   }
+  },
+  "接听来电": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "接听来电"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "接聽來電"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Answer Call"
+     }
+    }
+   }
+  },
+  "搜索联系人或号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "搜索联系人或号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "搜尋聯絡人或號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Search contacts or numbers"
+     }
+    }
+   }
+  },
+  "播放留言": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "播放留言"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "播放留言"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Play Message"
+     }
+    }
+   }
+  },
+  "支持 App 导出的 .vcf 与标准 vCard 3.0 文件；只在本机解析，不会上传。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "支持 App 导出的 .vcf 与标准 vCard 3.0 文件；只在本机解析，不会上传。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "支援 App 匯出的 .vcf 與標準 vCard 3.0 檔案；只在本機解析，不會上傳。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Supports app-exported .vcf and standard vCard 3.0 files; parsed on-device only, never uploaded."
+     }
+    }
+   }
+  },
+  "收件人": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "收件人"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "收件人"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Recipient"
+     }
+    }
+   }
+  },
+  "收件人号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "收件人号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "收件人號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Recipient Number"
+     }
+    }
+   }
+  },
+  "整理与导出联系人": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "整理与导出联系人"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "整理與匯出聯絡人"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Organize & Export Contacts"
+     }
+    }
+   }
+  },
+  "文件": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "文件"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "檔案"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "File"
+     }
+    }
+   }
+  },
+  "新增": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "新增"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "新增"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Add"
+     }
+    }
+   }
+  },
+  "新增联系人": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "新增联系人"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "新增聯絡人"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "New Contact"
+     }
+    }
+   }
+  },
+  "新建短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "新建短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "新增簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "New Message"
+     }
+    }
+   }
+  },
+  "无人接听或设备离线时，来电会自动转入语音留言。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "无人接听或设备离线时，来电会自动转入语音留言。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "無人接聽或裝置離線時，來電會自動轉入語音留言。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "When no one answers or the device is offline, incoming calls go to voicemail automatically."
+     }
+    }
+   }
+  },
+  "暂无可选线路": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "暂无可选线路"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "暫無可選線路"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "No lines available"
+     }
+    }
+   }
+  },
+  "暂时无法通过网关拨打": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "暂时无法通过网关拨打"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "暫時無法透過網關撥打"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Can't dial via the gateway right now"
+     }
+    }
+   }
+  },
+  "最近通话": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "最近通话"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "最近通話"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Recents"
+     }
+    }
+   }
+  },
+  "未读 %lld 条": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "未读 %lld 条"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "未讀 %lld 則"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "%lld unread"
+     }
+    }
+   }
+  },
+  "权限": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "权限"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "權限"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Permissions"
+     }
+    }
+   }
+  },
+  "来源": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "来源"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "來源"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Source"
+     }
+    }
+   }
+  },
+  "查看%@详情": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "查看%@详情"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "查看%@詳情"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "View %@ Details"
+     }
+    }
+   }
+  },
+  "标记为已知发件人": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "标记为已知发件人"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "標記為已知發件人"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Mark as Known Sender"
+     }
+    }
+   }
+  },
+  "检测到重复组": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "检测到重复组"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "偵測到重複群組"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Duplicate Groups Detected"
+     }
+    }
+   }
+  },
+  "模拟一通来电": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "模拟一通来电"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "模擬一通來電"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Simulate Incoming Call"
+     }
+    }
+   }
+  },
+  "模拟收到一条短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "模拟收到一条短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "模擬收到一則簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Simulate Receiving an SMS"
+     }
+    }
+   }
+  },
+  "正在载入对话…": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "正在载入对话…"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "正在載入對話…"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Loading conversation…"
+     }
+    }
+   }
+  },
+  "正在载入短信…": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "正在载入短信…"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "正在載入簡訊…"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Loading messages…"
+     }
+    }
+   }
+  },
+  "正在配对…": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "正在配对…"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "正在配對…"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Pairing…"
+     }
+    }
+   }
+  },
+  "正文": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "正文"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "內文"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Body"
+     }
+    }
+   }
+  },
+  "每台 iPhone 仍需分别配对网关；本 App 不使用公共数据库，也不上传统计数据。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "每台 iPhone 仍需分别配对网关；本 App 不使用公共数据库，也不上传统计数据。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "每台 iPhone 仍需分別配對網關；本 App 不使用公共資料庫，也不上傳統計資料。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Each iPhone still pairs with the gateway individually; this app uses no public database and uploads no analytics."
+     }
+    }
+   }
+  },
+  "注册": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "注册"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "註冊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Sign Up"
+     }
+    }
+   }
+  },
+  "测试这条短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "测试这条短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "測試這則簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Test This Message"
+     }
+    }
+   }
+  },
+  "添加": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "添加"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "加入"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Add"
+     }
+    }
+   }
+  },
+  "添加规则": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "添加规则"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "加入規則"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Add Rule"
+     }
+    }
+   }
+  },
+  "清空号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "清空号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "清除號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Clear Number"
+     }
+    }
+   }
+  },
+  "源代码仓库": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "源代码仓库"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "原始碼倉庫"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Source Code Repository"
+     }
+    }
+   }
+  },
+  "演示模式": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "演示模式"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "示範模式"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Demo Mode"
+     }
+    }
+   }
+  },
+  "演示模式（离线）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "演示模式（离线）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "示範模式（離線）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Demo Mode (Offline)"
+     }
+    }
+   }
+  },
+  "演示模式：短信只保存在本机内存中，不会联网或真正发送。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "演示模式：短信只保存在本机内存中，不会联网或真正发送。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "示範模式：簡訊只保存在本機記憶體中，不會連網或真正傳送。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Demo mode: messages live only in this device's memory — nothing is sent over the network."
+     }
+    }
+   }
+  },
+  "状态": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "状态"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "狀態"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Status"
+     }
+    }
+   }
+  },
+  "疑似垃圾：%@": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "疑似垃圾：%@"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "疑似垃圾：%@"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Possible spam: %@"
+     }
+    }
+   }
+  },
+  "知道了": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "知道了"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "知道了"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Got It"
+     }
+    }
+   }
+  },
+  "短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "SMS"
+     }
+    }
+   }
+  },
+  "短信/通话/规则同步": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "短信/通话/规则同步"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "簡訊/通話/規則同步"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "SMS/Call/Rule Sync"
+     }
+    }
+   }
+  },
+  "短信与来电": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "短信与来电"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "簡訊與來電"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "SMS & Calls"
+     }
+    }
+   }
+  },
+  "短信内容": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "短信内容"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "簡訊內容"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Message Content"
+     }
+    }
+   }
+  },
+  "短信正文": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "短信正文"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "簡訊本文"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Message Body"
+     }
+    }
+   }
+  },
+  "短信记录": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "短信记录"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "簡訊記錄"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Message History"
+     }
+    }
+   }
+  },
+  "短信通过已配对网关发送，发送进度会显示在对话中。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "短信通过已配对网关发送，发送进度会显示在对话中。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "簡訊透過已配對網關傳送，傳送進度會顯示在對話中。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Messages are sent through your paired gateway; progress appears in the conversation."
+     }
+    }
+   }
+  },
+  "离线": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "离线"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "離線"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Offline"
+     }
+    }
+   }
+  },
+  "移除": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "移除"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "移除"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Remove"
+     }
+    }
+   }
+  },
+  "立即同步": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "立即同步"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "立即同步"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Sync Now"
+     }
+    }
+   }
+  },
+  "立即更新": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "立即更新"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "立即更新"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Update Now"
+     }
+    }
+   }
+  },
+  "筛选短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "筛选短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "篩選簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Filter Messages"
+     }
+    }
+   }
+  },
+  "管理导入的号码名单": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "管理导入的号码名单"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "管理匯入的號碼名單"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Manage Imported Number Lists"
+     }
+    }
+   }
+  },
+  "类型": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "类型"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "類型"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Type"
+     }
+    }
+   }
+  },
+  "粘贴": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "粘贴"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "貼上"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Paste"
+     }
+    }
+   }
+  },
+  "粘贴号码导入": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "粘贴号码导入"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "貼上號碼匯入"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Paste Numbers to Import"
+     }
+    }
+   }
+  },
+  "粘贴号码（每行一个，支持 # 注释）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "粘贴号码（每行一个，支持 # 注释）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "貼上號碼（每行一個，支援 # 註解）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Paste numbers (one per line, # comments supported)"
+     }
+    }
+   }
+  },
+  "系统权限": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "系统权限"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "系統權限"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "System Permissions"
+     }
+    }
+   }
+  },
+  "线路": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "线路"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "線路"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Line"
+     }
+    }
+   }
+  },
+  "线路号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "线路号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "線路號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Line Number"
+     }
+    }
+   }
+  },
+  "线路详情": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "线路详情"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "線路詳情"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Line Details"
+     }
+    }
+   }
+  },
+  "线路选项": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "线路选项"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "線路選項"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Line Options"
+     }
+    }
+   }
+  },
+  "结束会议": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "结束会议"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "結束會議"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "End Conference"
+     }
+    }
+   }
+  },
+  "编辑": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "编辑"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "編輯"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Edit"
+     }
+    }
+   }
+  },
+  "编辑%@号码": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "编辑%@号码"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "編輯%@號碼"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Edit %@ Number"
+     }
+    }
+   }
+  },
+  "网关": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "网关"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "網關"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Gateway"
+     }
+    }
+   }
+  },
+  "网络": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "网络"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "網路"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Network"
+     }
+    }
+   }
+  },
+  "联系人": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "联系人"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "聯絡人"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Contacts"
+     }
+    }
+   }
+  },
+  "联系人总数": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "联系人总数"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "聯絡人總數"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Total Contacts"
+     }
+    }
+   }
+  },
+  "联系人整理与导入": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "联系人整理与导入"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "聯絡人整理與匯入"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Contact Cleanup & Import"
+     }
+    }
+   }
+  },
+  "能力": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "能力"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "能力"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Capabilities"
+     }
+    }
+   }
+  },
+  "若未预期会收到来自未知发件人的这则信息，其可能为垃圾信息。命中规则：%@": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "若未预期会收到来自未知发件人的这则信息，其可能为垃圾信息。命中规则：%@"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "若未預期會收到來自未知寄件人的這則訊息，其可能為垃圾訊息。命中規則：%@"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "If you didn't expect this message from an unknown sender, it may be spam. Matched rule: %@"
+     }
+    }
+   }
+  },
+  "规则": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "规则"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "規則"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Rules"
+     }
+    }
+   }
+  },
+  "规则测试（不上传内容）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "规则测试（不上传内容）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "規則測試（不上傳內容）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Rule Test (no content uploaded)"
+     }
+    }
+   }
+  },
+  "让下一条演示短信发送失败（可重试）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "让下一条演示短信发送失败（可重试）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "讓下一則示範簡訊傳送失敗（可重試）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Make the Next Demo Message Fail (retryable)"
+     }
+    }
+   }
+  },
+  "设为默认并拨打": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "设为默认并拨打"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "設為預設並撥打"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Set as Default & Dial"
+     }
+    }
+   }
+  },
+  "设置": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "设置"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "設定"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Settings"
+     }
+    }
+   }
+  },
+  "语音": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "语音"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "語音"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Voice"
+     }
+    }
+   }
+  },
+  "语音留言": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "语音留言"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "語音留言"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Voicemail"
+     }
+    }
+   }
+  },
+  "语音留言（%lld）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "语音留言（%lld）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "語音留言（%lld）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Voicemail (%lld)"
+     }
+    }
+   }
+  },
+  "请在系统设置中允许访问通讯录，或使用“受限访问”仅选择部分联系人。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "请在系统设置中允许访问通讯录，或使用“受限访问”仅选择部分联系人。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "請在系統設定中允許存取通訊錄，或使用「受限存取」僅選擇部分聯絡人。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Allow contacts access in Settings, or use “Limited Access” to pick specific contacts only."
+     }
+    }
+   }
+  },
+  "请重新配对以恢复连接。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "请重新配对以恢复连接。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "請重新配對以恢復連線。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Please pair again to restore the connection."
+     }
+    }
+   }
+  },
+  "读取通讯录以拨号、发短信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "读取通讯录以拨号、发短信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "讀取通訊錄以撥號、發簡訊"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Read contacts to dial and text"
+     }
+    }
+   }
+  },
+  "轻点左侧圆点选择通话方": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "轻点左侧圆点选择通话方"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "輕點左側圓點選擇通話方"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Tap the circle to select a party"
+     }
+    }
+   }
+  },
+  "载入失败": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "载入失败"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "載入失敗"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Load Failed"
+     }
+    }
+   }
+  },
+  "载入更早的消息": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "载入更早的消息"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "載入更早的訊息"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Load Earlier Messages"
+     }
+    }
+   }
+  },
+  "输入 +": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "输入 +"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "輸入 +"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Enter +"
+     }
+    }
+   }
+  },
+  "运营商": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "运营商"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "電信業者"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Carrier"
+     }
+    }
+   }
+  },
+  "还没有导入号码名单。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "还没有导入号码名单。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "還沒有匯入號碼名單。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "No number lists imported yet."
+     }
+    }
+   }
+  },
+  "还没有语音留言": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "还没有语音留言"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "還沒有語音留言"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "No voicemails yet"
+     }
+    }
+   }
+  },
+  "连接状态": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "连接状态"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "連線狀態"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Connection"
+     }
+    }
+   }
+  },
+  "退出": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "退出"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "退出"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Sign Out"
+     }
+    }
+   }
+  },
+  "退出演示模式": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "退出演示模式"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "退出示範模式"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Exit Demo Mode"
+     }
+    }
+   }
+  },
+  "退出这台手机": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "退出这台手机"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "退出這台手機"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Unpair This Phone"
+     }
+    }
+   }
+  },
+  "退出这台手机？": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "退出这台手机？"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "退出這台手機？"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Unpair this phone?"
+     }
+    }
+   }
+  },
+  "选择 vCard 文件": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "选择 vCard 文件"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "選擇 vCard 檔案"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Choose vCard File"
+     }
+    }
+   }
+  },
+  "选择外呼线路": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "选择外呼线路"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "選擇外呼線路"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Choose Outgoing Line"
+     }
+    }
+   }
+  },
+  "选择操作": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "选择操作"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "選擇操作"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Choose Action"
+     }
+    }
+   }
+  },
+  "选择文件…": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "选择文件…"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "選擇檔案…"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Choose File…"
+     }
+    }
+   }
+  },
+  "选择本地 TXT/JSON 文件": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "选择本地 TXT/JSON 文件"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "選擇本機 TXT/JSON 檔案"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Choose Local TXT/JSON File"
+     }
+    }
+   }
+  },
+  "选择线路": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "选择线路"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "選擇線路"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Choose Line"
+     }
+    }
+   }
+  },
+  "选择该通话方": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "选择该通话方"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "選擇該通話方"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Select This Party"
+     }
+    }
+   }
+  },
+  "通讯录中的号码视为可信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通讯录中的号码视为可信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通訊錄中的號碼視為可信"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Trust numbers in Contacts"
+     }
+    }
+   }
+  },
+  "通讯录号码视为可信": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通讯录号码视为可信"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通訊錄號碼視為可信"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Trust Contacts Numbers"
+     }
+    }
+   }
+  },
+  "通讯录导入与整理": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通讯录导入与整理"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通訊錄匯入與整理"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Contacts Import & Cleanup"
+     }
+    }
+   }
+  },
+  "通讯录整理": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通讯录整理"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通訊錄整理"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Contacts Cleanup"
+     }
+    }
+   }
+  },
+  "通讯录访问未授权": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通讯录访问未授权"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通訊錄存取未授權"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Contacts Access Not Authorized"
+     }
+    }
+   }
+  },
+  "通话": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通话"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通話"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Calls"
+     }
+    }
+   }
+  },
+  "通话记录": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通话记录"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通話記錄"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Call History"
+     }
+    }
+   }
+  },
+  "配对内容": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "配对内容"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "配對內容"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Pairing Content"
+     }
+    }
+   }
+  },
+  "配对私钥与网关令牌": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "配对私钥与网关令牌"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "配對私鑰與網關權杖"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Pairing Private Key & Gateway Tokens"
+     }
+    }
+   }
+  },
+  "配对网关": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "配对网关"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "配對網關"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Pair Gateway"
+     }
+    }
+   }
+  },
+  "重新导入本机通讯录": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新导入本机通讯录"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新匯入本機通訊錄"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Re-import Device Contacts"
+     }
+    }
+   }
+  },
+  "重新获取线路": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新获取线路"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新取得線路"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Reload Lines"
+     }
+    }
+   }
+  },
+  "重新连接": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新连接"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新連線"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Reconnect"
+     }
+    }
+   }
+  },
+  "重新选择文件": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新选择文件"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新選擇檔案"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Choose a Different File"
+     }
+    }
+   }
+  },
+  "重新配对": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新配对"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新配對"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Pair Again"
+     }
+    }
+   }
+  },
+  "重新配对统一网关": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新配对统一网关"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重新配對統一網關"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Re-pair Unified Gateway"
+     }
+    }
+   }
+  },
+  "重试": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重试"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重試"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Retry"
+     }
+    }
+   }
+  },
+  "重试连接": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重试连接"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "重試連線"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Retry Connection"
+     }
+    }
+   }
+  },
+  "键盘": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "键盘"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "鍵盤"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Keypad"
+     }
+    }
+   }
+  },
+  "长按可粘贴或拷贝": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "长按可粘贴或拷贝"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "長按可貼上或拷貝"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Long-press to paste or copy"
+     }
+    }
+   }
+  },
+  "需确认": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "需确认"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "需確認"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Needs Review"
+     }
+    }
+   }
+  },
+  "需要你确认（不会自动合并）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "需要你确认（不会自动合并）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "需要你確認（不會自動合併）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Needs your review (never merges automatically)"
+     }
+    }
+   }
+  },
+  "需要你确认（默认不合并）": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "需要你确认（默认不合并）"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "需要你確認（預設不合併）"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Needs your review (no merge by default)"
+     }
+    }
+   }
+  },
+  "预览": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "预览"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "預覽"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Preview"
+     }
+    }
+   }
+  },
+  "预览演示：不会读取或写入任何真实通讯录。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "预览演示：不会读取或写入任何真实通讯录。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "預覽示範：不會讀取或寫入任何真實通訊錄。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Preview demo: no real contacts are read or written."
+     }
+    }
+   }
+  },
+  "验证码/取件码等真实通知会被保护，不会因含“订单/验证码”字样被误拦；未知号码本身不等于垃圾。": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "验证码/取件码等真实通知会被保护，不会因含“订单/验证码”字样被误拦；未知号码本身不等于垃圾。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "驗證碼/取件碼等真實通知會被保護，不會因含「訂單/驗證碼」字樣被誤攔；未知號碼本身不等於垃圾。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Real notifications like verification/pickup codes are protected and won't be blocked just for containing 'order' or 'code'; an unknown number alone isn't spam."
+     }
+    }
+   }
+  },
+  "高级选项": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "高级选项"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "進階選項"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Advanced Options"
+     }
+    }
+   }
+  },
+  "默认外呼线路，可临时切换": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "默认外呼线路，可临时切换"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "預設外呼線路，可臨時切換"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Default outgoing line; switchable per call"
+     }
+    }
+   }
+  },
+  "默认拨出线路": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "默认拨出线路"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "預設撥出線路"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Default Outgoing Line"
+     }
+    }
+   }
+  },
+  "默认线路": {
+   "extractionState": "extracted_with_value",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "默认线路"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "預設線路"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Default Line"
+     }
+    }
+   }
+  },
+  "音频连接中断。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "音频连接中断。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "音頻連線中斷。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Audio connection lost."
+     }
+    }
+   }
+  },
+  "音频长时间未恢复，已结束通话。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "音频长时间未恢复，已结束通话。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "音訊長時間未恢復，已結束通話。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Audio did not recover in time; the call has ended."
+     }
+    }
+   }
+  },
+  "未能在限定时间内接通音频。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "未能在限定时间内接通音频。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "未能在限定時間內接通音訊。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Audio could not connect within the time limit."
+     }
+    }
+   }
+  },
+  "会议音频连接中断。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "会议音频连接中断。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "會議音訊連線中斷。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Conference audio connection lost."
+     }
+    }
+   }
+  },
+  "会议音频长时间未恢复，已结束。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "会议音频长时间未恢复，已结束。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "會議音訊長時間未恢復，已結束。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Conference audio did not recover and has ended."
+     }
+    }
+   }
+  },
+  "音频尚未准备好。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "音频尚未准备好。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "音訊尚未準備好。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Audio is not ready yet."
+     }
+    }
+   }
+  },
+  "无法生成本地音频协商信息。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "无法生成本地音频协商信息。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "無法產生本機音訊協商資訊。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Could not create the local audio negotiation data."
+     }
+    }
+   }
+  },
+  "无法创建音频连接。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "无法创建音频连接。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "無法建立音訊連線。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Could not create the audio connection."
+     }
+    }
+   }
+  },
+  "音频已关闭。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "音频已关闭。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "音訊已關閉。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Audio is closed."
+     }
+    }
+   }
+  },
+  "ICE 候选收集超时，无法在限定时间内准备音频。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "ICE 候选收集超时，无法在限定时间内准备音频。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "ICE 候選收集逾時，無法在限定時間內準備音訊。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "ICE candidate gathering timed out; audio could not be prepared in time."
+     }
+    }
+   }
+  },
+  "音频通道未能建立。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "音频通道未能建立。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "音訊通道未能建立。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "The audio channel could not be established."
+     }
+    }
+   }
+  },
+  "无法启用通话音频，请重试。": {
+   "extractionState": "manual",
+   "localizations": {
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "无法启用通话音频，请重试。"
+     }
+    },
+    "zh-Hant": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "無法啟用通話音訊，請重試。"
+     }
+    },
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Could not activate call audio. Please try again."
+     }
+    }
+   }
+  }
+ },
+ "version": "1.0"
+}

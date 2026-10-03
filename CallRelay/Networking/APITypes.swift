@@ -85,6 +85,22 @@ protocol GatewayAPI: Sendable {
     func dtmf(callId: String, digit: String, idempotencyKey: String) async throws
     func webRTCOffer(callId: String, sdp: String, transport: String, idempotencyKey: String) async throws -> WebRTCAnswer
     func iceConfiguration(callId: String) async throws -> ICEConfiguration
+    /// v2: authorized WebSocket upgrade request for a call's WSS PCMU audio
+    /// channel (the cellular-reachable media transport). Throws notReady on
+    /// v1/demo bindings.
+    func mediaWebSocketRequest(callId: String) async throws -> URLRequest
+    /// v2: same, for the hosted conference's client audio channel.
+    func conferenceMediaWebSocketRequest(conferenceId: String) async throws -> URLRequest
+    /// v2: attaches a DETACHED echo probe for candidate-quality measurement.
+    /// The probe never disturbs the live media path; the answer is a normal
+    /// SDP answer for the isolated probe peer connection.
+    func attachMediaProbe(callId: String, sdp: String) async throws -> WebRTCAnswer
+    /// v2: atomically promotes the measured probe onto the live media path.
+    /// The negotiated peer connection becomes the call's host transport; the
+    /// healthy path is only touched after the candidate proved reachable.
+    func commitMediaProbe(callId: String) async throws
+    /// v2: cancels the call's probe (safe no-op when absent).
+    func discardMediaProbe(callId: String) async throws
     func sync(after: Int64, limit: Int) async throws -> SyncResponse
     func registerPush(registration: PushRegistration, idempotencyKey: String) async throws
 
@@ -475,6 +491,26 @@ extension GatewayAPI {
 
     func splitConference(id: String, callId: String, idempotencyKey: String) async throws {
         throw APIError.notReady("当前配对不支持多方会议。")
+    }
+
+    func mediaWebSocketRequest(callId: String) async throws -> URLRequest {
+        throw APIError.notReady("当前配对不支持 WebSocket 音频。")
+    }
+
+    func attachMediaProbe(callId: String, sdp: String) async throws -> WebRTCAnswer {
+        throw APIError.notReady("当前配对不支持媒体探测。")
+    }
+
+    func commitMediaProbe(callId: String) async throws {
+        throw APIError.notReady("当前配对不支持媒体探测。")
+    }
+
+    func discardMediaProbe(callId: String) async throws {
+        throw APIError.notReady("当前配对不支持媒体探测。")
+    }
+
+    func conferenceMediaWebSocketRequest(conferenceId: String) async throws -> URLRequest {
+        throw APIError.notReady("当前配对不支持 WebSocket 音频。")
     }
 
     func listVoicemails() async throws -> [VoicemailRecord] { [] }

@@ -79,6 +79,9 @@ struct V2ICEServer: Decodable, Equatable {
 struct V2ICEConfiguration: Decodable, Equatable {
     let policy: String
     let iceServers: [V2ICEServer]
+    /// Advertised client audio transports ("ice", "ws"); absent on older
+    /// gateways, in which case clients keep using WebRTC/ICE only.
+    let mediaTransports: [String]?
 }
 
 /// `/api/v2` call view: the unified gateway writes `lineId` (lowercase d)

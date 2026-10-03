@@ -417,6 +417,18 @@ struct ICEConfiguration: Decodable, Equatable {
     let iceServers: [ICEServer]
     /// RFC3339 string; fractional seconds are optional.
     let expiresAt: String
+    /// Client audio transports the gateway serves (from the v2 `/ice`
+    /// payload). Absent on older gateways: clients keep using WebRTC/ICE.
+    /// When it contains "ws", the authenticated WSS PCMU path is preferred
+    /// because it rides the same reachable HTTPS route.
+    let mediaTransports: [String]?
+
+    init(policy: String, iceServers: [ICEServer], expiresAt: String, mediaTransports: [String]? = nil) {
+        self.policy = policy
+        self.iceServers = iceServers
+        self.expiresAt = expiresAt
+        self.mediaTransports = mediaTransports
+    }
 
     var expiryDate: Date? {
         RFC3339Date.parse(expiresAt)

@@ -105,7 +105,7 @@ final class AppModel: ObservableObject {
     private var driver: CallDriver?
     private var demoGateway: DemoGatewayAPI?
     private var pushRegistry: PushRegistry?
-    private var callKit: CallKitManager?
+    private var callKit: (any CallKitControlling)?
     private var identityRegistry = CallIdentityRegistry()
     private var pushPolicy: PushReceptionPolicy?
     private var networkMonitor: NetworkMonitor?
@@ -755,7 +755,7 @@ final class AppModel: ObservableObject {
         }
         push.start()
 
-        let manager = CallKitManager()
+        let manager = Self.makeSystemCallManager()
         callKit = manager
         let live = LiveCallDriver(
             api: http, transport: binding.transport,
@@ -1920,8 +1920,17 @@ final class AppModel: ObservableObject {
 
     /// Minimal compliant placeholder: report a short-lived incoming call and
     /// end it, awaiting both so the push completion is only called afterwards.
+    /// One factory for the system-call surface so cold-start push fallback
+    /// never spins up a second (old-API) provider alongside the bound one.
+    static func makeSystemCallManager() -> CallKitControlling {
+        if #available(iOS 17.4, *) {
+            return LiveCommunicationManager()
+        }
+        return CallKitManager()
+    }
+
     func reportPlaceholderCall() async {
-        let manager = callKit ?? CallKitManager()
+        let manager = callKit ?? Self.makeSystemCallManager()
         if callKit == nil { callKit = manager }
         let uuid = UUID()
         let reported = await manager.reportIncoming(uuid: uuid, handle: "未知来电", isVideo: false)
