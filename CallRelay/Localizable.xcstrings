@@ -121,7 +121,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ · On Hold"
+            "value": "%@ · On hold"
           }
         },
         "zh-Hans": {
@@ -133,7 +133,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ · 保留中"
+            "value": "%@ · 已保留"
           }
         }
       },
@@ -599,29 +599,6 @@
       },
       "extractionState": "manual"
     },
-    "仅在手机与网关处于同一可直连网络时可用；不可用时会明确提示，不会假装直连。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Available only when the phone and gateway share a directly reachable network; an unavailable target is reported clearly, never faked."
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "僅在手機與閘道處於同一可直連網路時可用；不可用時會明確提示，不會假裝直連。"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "仅在手机与网关处于同一可直连网络时可用；不可用时会明确提示，不会假装直连。"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "仅按完整号码匹配，不会因为号段或归属地拦截普通号码；信任名单和你的拦截号码始终优先。更新失败会保留上一份可用名单。": {
       "localizations": {
         "en": {
@@ -880,7 +857,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conference Members"
+            "value": "Participants"
           }
         },
         "zh-Hans": {
@@ -1087,7 +1064,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Held Calls"
+            "value": "On hold"
           }
         },
         "zh-Hans": {
@@ -2485,29 +2462,6 @@
       },
       "extractionState": "manual"
     },
-    "始终使用经网关的加密中继，蜂窝网络下最稳定。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Always uses the encrypted gateway relay; most stable on cellular."
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "始終使用經閘道的加密中繼，行動網路下最穩定。"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "始终使用经网关的加密中继，蜂窝网络下最稳定。"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "完全离线，不联网、不发短信、不触发真实系统来电": {
       "localizations": {
         "en": {
@@ -2835,7 +2789,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remove Selected Party from Conference"
+            "value": "Remove selected participant from conference"
           }
         },
         "zh-Hans": {
@@ -2847,7 +2801,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "將選取的一方移出會議"
+            "value": "將選取一方移出會議"
           }
         }
       },
@@ -2973,7 +2927,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Selected Party"
+            "value": "Selected participant"
           }
         },
         "zh-Hans": {
@@ -3295,7 +3249,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Resume Call"
+            "value": "Resume call"
           }
         },
         "zh-Hans": {
@@ -3502,7 +3456,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Decline Call"
+            "value": "Decline call"
           }
         },
         "zh-Hans": {
@@ -3801,7 +3755,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Answer Call"
+            "value": "Answer call"
           }
         },
         "zh-Hans": {
@@ -6308,7 +6262,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tap the circle to select a party"
+            "value": "Tap the circle to select a participant"
           }
         },
         "zh-Hans": {
@@ -6722,7 +6676,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Select This Party"
+            "value": "Select this participant"
           }
         },
         "zh-Hans": {
@@ -7522,29 +7476,6 @@
       },
       "extractionState": "manual"
     },
-    "默认使用稳定的中继；同一局域网内音质明显更好时自动切换直连，变差时自动切回。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Uses the stable relay by default; automatically switches to direct on the same LAN when audio is clearly better, and back if it degrades."
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "預設使用穩定的中繼；同一區域網路中音質明顯更好時自動切換直連，變差時自動切回。"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "默认使用稳定的中继；同一局域网内音质明显更好时自动切换直连，变差时自动切回。"
-          }
-        }
-      },
-      "extractionState": "manual"
-    },
     "默认外呼线路，可临时切换": {
       "localizations": {
         "en": {
@@ -7633,6 +7564,627 @@
           "stringUnit": {
             "state": "translated",
             "value": "This gateway doesn't support route quality measurement."
+          }
+        }
+      }
+    },
+    "来电响铃中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来电响铃中…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "來電響鈴中…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incoming call…"
+          }
+        }
+      }
+    },
+    "正在拨打…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在拨打…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在撥打…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dialing…"
+          }
+        }
+      }
+    },
+    "正在接通音频…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在接通音频…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在接通音訊…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting audio…"
+          }
+        }
+      }
+    },
+    "通话中": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通话中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話中"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In call"
+          }
+        }
+      }
+    },
+    "音频恢复中…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音频恢复中…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音訊恢復中…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recovering audio…"
+          }
+        }
+      }
+    },
+    "正在挂断…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在挂断…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在掛斷…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ending…"
+          }
+        }
+      }
+    },
+    "通话结束": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通话结束"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通話結束"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Call ended"
+          }
+        }
+      }
+    },
+    "已保持": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保持"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已保留"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On hold"
+          }
+        }
+      }
+    },
+    "未知号码": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知号码"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知號碼"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown number"
+          }
+        }
+      }
+    },
+    "参与中": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "参与中"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "參與中"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In call"
+          }
+        }
+      }
+    },
+    "静音": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "静音"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "靜音"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mute"
+          }
+        }
+      }
+    },
+    "扬声器": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扬声器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "揚聲器"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speaker"
+          }
+        }
+      }
+    },
+    "合并": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "合并"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "合併"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merge"
+          }
+        }
+      }
+    },
+    "音频已连接": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音频已连接"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音訊已連接"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio connected"
+          }
+        }
+      }
+    },
+    "音频已连接 · 网络较差": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音频已连接 · 网络较差"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音訊已連接 · 網路較差"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio connected · poor network"
+          }
+        }
+      }
+    },
+    "音频已连接 · 延迟较高": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音频已连接 · 延迟较高"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音訊已連接 · 延遲較高"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio connected · high latency"
+          }
+        }
+      }
+    },
+    "正在协商音频…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在协商音频…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在協商音訊…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Negotiating audio…"
+          }
+        }
+      }
+    },
+    "音频中断，正在恢复…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音频中断，正在恢复…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音訊中斷，正在恢復…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio interrupted, recovering…"
+          }
+        }
+      }
+    },
+    "音频连接失败": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音频连接失败"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音訊連接失敗"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio connection failed"
+          }
+        }
+      }
+    },
+    "未配对网关": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未配对网关"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未配對閘道"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gateway not paired"
+          }
+        }
+      }
+    },
+    "演示模式 · 不会拨打真实电话": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示模式 · 不会拨打真实电话"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示模式 · 不會撥打真實電話"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo mode · no real calls"
+          }
+        }
+      }
+    },
+    "正在连接网关…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在连接网关…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在連接閘道…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to gateway…"
+          }
+        }
+      }
+    },
+    "已注册 · %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已注册 · %@"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已註冊 · %@"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registered · %@"
+          }
+        }
+      }
+    },
+    "已注册到网络": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已注册到网络"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已註冊到網路"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registered on network"
+          }
+        }
+      }
+    },
+    "正在搜索网络…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在搜索网络…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在搜尋網路…"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Searching for network…"
+          }
+        }
+      }
+    },
+    "网络注册被拒绝": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络注册被拒绝"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "網路註冊被拒絕"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network registration denied"
+          }
+        }
+      }
+    },
+    "注册状态未知": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "注册状态未知"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "註冊狀態未知"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registration unknown"
           }
         }
       }

@@ -85,14 +85,23 @@ struct MediaQuality: Equatable {
     var summary: String {
         switch phase {
         case .connected:
-            if let loss = packetLoss, loss > 0.08 { return "音频已连接 · 网络较差" }
-            if let rtt = rttSeconds, rtt > 0.4 { return "音频已连接 · 延迟较高" }
-            return "音频已连接"
-        case .checking: return "正在协商音频…"
-        case .disconnected: return "音频中断，正在恢复…"
-        case .failed: return "音频连接失败"
+            if let loss = packetLoss, loss > 0.08 { return String(localized: "音频已连接 · 网络较差") }
+            if let rtt = rttSeconds, rtt > 0.4 { return String(localized: "音频已连接 · 延迟较高") }
+            return String(localized: "音频已连接")
+        case .checking: return String(localized: "正在协商音频…")
+        case .disconnected: return String(localized: "音频中断，正在恢复…")
+        case .failed: return String(localized: "音频连接失败")
         default: return ""
         }
+    }
+
+    /// True for a plain connected state with no degradation worth surfacing
+    /// (the in-call status already says the call is active).
+    var isPlainConnected: Bool {
+        guard phase == .connected else { return false }
+        let lossOK = (packetLoss ?? 0) <= 0.08
+        let rttOK = (rttSeconds ?? 0) <= 0.4
+        return lossOK && rttOK
     }
 }
 

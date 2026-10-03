@@ -19,7 +19,10 @@ struct ActiveCallView: View {
                 Spacer(minLength: 4)
                 header
 
-                if let quality = model.quality, !quality.summary.isEmpty {
+                // Degraded/recovering audio is worth showing; a plain
+                // "audio connected" is redundant with the active status.
+                if let quality = model.quality, !quality.summary.isEmpty,
+                   !quality.isPlainConnected {
                     Text(quality.summary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -38,7 +41,7 @@ struct ActiveCallView: View {
                     Button {
                         group.resume(callId: callId)
                     } label: {
-                        Text("恢复通话")
+                        Text(String(localized: "恢复通话"))
                             .font(.headline)
                             .padding(.horizontal, 28)
                             .padding(.vertical, 12)
@@ -74,7 +77,7 @@ struct ActiveCallView: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
-            Text(call?.peer ?? "未知")
+            Text(call?.peer ?? String(localized: "未知"))
                 .font(.system(size: 30, weight: .semibold))
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
@@ -90,7 +93,7 @@ struct ActiveCallView: View {
             }
 
             if conference != nil {
-                Text("多方会议 · \(conference?.legs.count ?? 0) 方")
+                Text(String(localized: "多方会议 · \(conference?.legs.count ?? 0) 方"))
                     .font(.caption)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
@@ -99,7 +102,7 @@ struct ActiveCallView: View {
             }
 
             if model.isDemo {
-                Text("演示模式")
+                Text(String(localized: "演示模式"))
                     .font(.caption)
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(Color.accentColor.opacity(0.15), in: Capsule())
@@ -112,7 +115,7 @@ struct ActiveCallView: View {
 
     private var heldSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("保持中的通话")
+            Text(String(localized: "保持中的通话"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
             ForEach(heldCalls) { record in
@@ -121,15 +124,15 @@ struct ActiveCallView: View {
                         .font(.title3)
                         .foregroundStyle(.orange)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(record.peer ?? "未知号码")
+                        Text(record.peer ?? String(localized: "未知号码"))
                             .font(.subheadline.weight(.medium))
                             .lineLimit(1)
-                        Text("\(CallGroupStore.lineLabel(record.lineID)) · 已保持")
+                        Text(String(localized: "\(CallGroupStore.lineLabel(record.lineID)) · 已保持"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 8)
-                    Button("恢复") { group.resume(callId: record.id) }
+                    Button(String(localized: "恢复")) { group.resume(callId: record.id) }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                 }
@@ -144,11 +147,11 @@ struct ActiveCallView: View {
     private var conferenceSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("会议成员")
+                Text(String(localized: "会议成员"))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("轻点左侧圆点选择通话方")
+                Text(String(localized: "轻点左侧圆点选择通话方"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -162,26 +165,26 @@ struct ActiveCallView: View {
                             .foregroundStyle(selectedLegID == leg.id ? Color.accentColor : Color.secondary)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(selectedLegID == leg.id ? "已选中的通话方" : "选择该通话方")
+                    .accessibilityLabel(selectedLegID == leg.id ? String(localized: "已选中的通话方") : String(localized: "选择该通话方"))
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(leg.peer)
                             .font(.subheadline.weight(.medium))
                             .lineLimit(1)
-                        Text("\(leg.lineLabel) · \(leg.held ? "已保持" : "参与中")")
+                        Text("\(leg.lineLabel) · \(leg.held ? String(localized: "已保持") : String(localized: "参与中"))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
 
                     Spacer(minLength: 6)
 
-                    Button(leg.held ? "恢复" : "保持") {
+                    Button(leg.held ? String(localized: "恢复") : String(localized: "保持")) {
                         group.setConferenceLegHeld(callId: leg.id, held: !leg.held)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.mini)
 
-                    Button("移除", role: .destructive) {
+                    Button(String(localized: "移除"), role: .destructive) {
                         group.endConferenceLeg(callId: leg.id)
                     }
                     .buttonStyle(.bordered)
@@ -195,7 +198,7 @@ struct ActiveCallView: View {
             }
 
             if let selectedLegID {
-                Button("将选中一方移出会议") {
+                Button(String(localized: "将选中一方移出会议")) {
                     group.splitConference(callId: selectedLegID)
                 }
                 .font(.caption)
@@ -210,24 +213,24 @@ struct ActiveCallView: View {
 
     private var controls: some View {
         HStack(spacing: 26) {
-            CallControlButton(active: muted, icon: "mic.slash.fill", label: "静音") {
+            CallControlButton(active: muted, icon: "mic.slash.fill", label: String(localized: "静音")) {
                 muted.toggle()
                 model.setMuted(muted)
             }
-            CallControlButton(active: speaker, icon: "speaker.wave.2.fill", label: "扬声器") {
+            CallControlButton(active: speaker, icon: "speaker.wave.2.fill", label: String(localized: "扬声器")) {
                 speaker.toggle()
                 model.setSpeaker(speaker)
             }
-            CallControlButton(active: false, icon: "circle.grid.3x3.fill", label: "键盘") {
+            CallControlButton(active: false, icon: "circle.grid.3x3.fill", label: String(localized: "键盘")) {
                 showKeypad = true
             }
             if conference == nil, supportsHold {
-                CallControlButton(active: false, icon: "pause.circle.fill", label: "保持") {
+                CallControlButton(active: false, icon: "pause.circle.fill", label: String(localized: "保持")) {
                     group.holdActive()
                 }
             }
             if conference == nil, !heldCalls.isEmpty {
-                CallControlButton(active: false, icon: "person.2.fill", label: "合并") {
+                CallControlButton(active: false, icon: "person.2.fill", label: String(localized: "合并")) {
                     group.mergeHeldCalls()
                 }
             }
@@ -253,10 +256,10 @@ struct ActiveCallView: View {
                         Image(systemName: "phone.down.fill").font(.title)
                             .foregroundStyle(.white)
                             .frame(width: 72, height: 72).background(Color.red).clipShape(Circle())
-                        Text("拒绝").font(.caption).foregroundStyle(.secondary)
+                        Text(String(localized: "拒绝")).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                .accessibilityLabel("拒绝来电")
+                .accessibilityLabel(String(localized: "拒绝来电"))
                 Button {
                     model.answerCurrent()
                 } label: {
@@ -264,10 +267,10 @@ struct ActiveCallView: View {
                         Image(systemName: "phone.fill").font(.title)
                             .foregroundStyle(.white)
                             .frame(width: 72, height: 72).background(Color.green).clipShape(Circle())
-                        Text("接听").font(.caption).foregroundStyle(.secondary)
+                        Text(String(localized: "接听")).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                .accessibilityLabel("接听来电")
+                .accessibilityLabel(String(localized: "接听来电"))
             }
             .padding(.bottom, 32)
         } else {
@@ -282,9 +285,9 @@ struct ActiveCallView: View {
                         .background(Color.red)
                         .clipShape(Circle())
                 }
-                .accessibilityLabel(conference != nil ? "结束会议" : "挂断")
+                .accessibilityLabel(conference != nil ? String(localized: "结束会议") : String(localized: "挂断"))
                 if conference != nil {
-                    Text("结束会议").font(.caption).foregroundStyle(.secondary)
+                    Text(String(localized: "结束会议")).font(.caption).foregroundStyle(.secondary)
                 }
             }
             .padding(.bottom, 32)

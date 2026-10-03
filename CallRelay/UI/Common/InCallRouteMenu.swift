@@ -241,8 +241,6 @@ struct RouteModePickerView: View {
                     }
                     .buttonStyle(.plain)
                 }
-            } footer: {
-                Text(model.preferredRouteMode.explainer)
             }
         }
         .navigationTitle(String(localized: "音频线路"))

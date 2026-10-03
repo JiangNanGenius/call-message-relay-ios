@@ -30,6 +30,16 @@ final class VisualReviewUITests: XCTestCase {
         app.launch()
     }
 
+    private func setAppearance(_ style: XCUIDevice.Appearance) {
+        XCUIDevice.shared.appearance = style
+        // Give the presented sheet the time to re-render under the new
+        // interface style before the screenshot is taken.
+        let deadline = Date().addingTimeInterval(1.2)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+    }
+
     private func attach(_ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
@@ -38,9 +48,9 @@ final class VisualReviewUITests: XCTestCase {
     }
 
     private func captureBothAppearances(_ namePrefix: String) {
-        XCUIDevice.shared.appearance = .light
+        setAppearance(.light)
         attach("\(namePrefix)-light")
-        XCUIDevice.shared.appearance = .dark
+        setAppearance(.dark)
         attach("\(namePrefix)-dark")
     }
 
@@ -71,7 +81,7 @@ final class VisualReviewUITests: XCTestCase {
         let menu = button(containing: "Audio route")
         XCTAssertTrue(menu.waitForExistence(timeout: 10), "in-call route menu must render")
 
-        XCUIDevice.shared.appearance = .light
+        setAppearance(.light)
         attach("incall-route-menu-light")
         menu.tap()
         // The menu opens with the three modes and a checkmark on the selected.
@@ -80,7 +90,13 @@ final class VisualReviewUITests: XCTestCase {
         attach("incall-route-menu-open-light")
         app.tap() // dismiss the menu without changing the mode
 
-        XCUIDevice.shared.appearance = .dark
+        setAppearance(.dark)
+        // Re-open under dark so both the sheet and the menu render dark.
+        menu.tap()
+        XCTAssertTrue(button(containing: "Relay").waitForExistence(timeout: 5))
+        attach("incall-route-menu-open-dark")
+        app.tap()
+        setAppearance(.dark)
         attach("incall-route-menu-dark")
     }
 

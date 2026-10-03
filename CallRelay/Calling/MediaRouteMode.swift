@@ -44,17 +44,6 @@ enum MediaRouteMode: String, CaseIterable, Identifiable, Sendable {
         case .relay: return "globe"
         }
     }
-
-    var explainer: String {
-        switch self {
-        case .auto:
-            return String(localized: "默认使用稳定的中继；同一局域网内音质明显更好时自动切换直连，变差时自动切回。")
-        case .direct:
-            return String(localized: "仅在手机与网关处于同一可直连网络时可用；不可用时会明确提示，不会假装直连。")
-        case .relay:
-            return String(localized: "始终使用经网关的加密中继，蜂窝网络下最稳定。")
-        }
-    }
 }
 
 /// The transport actually carrying audio, independent of the chosen mode.

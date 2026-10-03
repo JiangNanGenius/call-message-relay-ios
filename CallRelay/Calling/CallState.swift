@@ -27,15 +27,15 @@ enum ActiveCallPhase: Equatable, Sendable {
     var label: String {
         switch self {
         case .none: return ""
-        case .incomingRinging: return "来电响铃中…"
-        case .outgoingDialing: return "正在拨打…"
-        case .connecting: return "正在接通音频…"
-        case .active: return "通话中"
-        case .reconnecting: return "音频恢复中…"
-        case .ending: return "正在挂断…"
-        case .ended: return "通话结束"
+        case .incomingRinging: return String(localized: "来电响铃中…")
+        case .outgoingDialing: return String(localized: "正在拨打…")
+        case .connecting: return String(localized: "正在接通音频…")
+        case .active: return String(localized: "通话中")
+        case .reconnecting: return String(localized: "音频恢复中…")
+        case .ending: return String(localized: "正在挂断…")
+        case .ended: return String(localized: "通话结束")
         case .failed(let m): return m
-        case .held: return "已保持"
+        case .held: return String(localized: "已保持")
         }
     }
 }
@@ -63,17 +63,19 @@ enum LinePhase: Equatable {
 
     var summaryLine: String {
         switch self {
-        case .unpaired: return "未配对网关"
-        case .demo: return "演示模式 · 不会拨打真实电话"
-        case .connecting: return "正在连接网关…"
+        case .unpaired: return String(localized: "未配对网关")
+        case .demo: return String(localized: "演示模式 · 不会拨打真实电话")
+        case .connecting: return String(localized: "正在连接网关…")
         case .online(let line):
             switch line.registration {
             case .registered:
-                if let op = line.operatorName, !op.isEmpty { return "已注册 · \(op)" }
-                return "已注册到网络"
-            case .searching: return "正在搜索网络…"
-            case .denied: return "网络注册被拒绝"
-            case .unknown: return "注册状态未知"
+                if let op = line.operatorName, !op.isEmpty {
+                    return String(localized: "已注册 · \(op)")
+                }
+                return String(localized: "已注册到网络")
+            case .searching: return String(localized: "正在搜索网络…")
+            case .denied: return String(localized: "网络注册被拒绝")
+            case .unknown: return String(localized: "注册状态未知")
             }
         case .offline(let m): return m
         }
