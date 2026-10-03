@@ -78,6 +78,8 @@ final class CallCoordinator: NSObject {
     private let api: GatewayAPI
     private let callKit: CallKitControlling
     private let mediaProvider: MediaSessionProviding
+    /// WSS relay session construction, injectable in tests (fake socket/graph).
+    private let wsMediaFactory: () -> WebSocketCallMedia
     private let registry: CallIdentityRegistry
     private let transport: String
     private let mediaRecoveryWindow: TimeInterval
@@ -133,11 +135,13 @@ final class CallCoordinator: NSObject {
         registry: CallIdentityRegistry,
         transport: String,
         mediaRecoveryWindow: TimeInterval = 20,
-        gatewayID: String? = nil
+        gatewayID: String? = nil,
+        wsMediaFactory: @escaping @MainActor () -> WebSocketCallMedia = { WebSocketCallMedia() }
     ) {
         self.api = api
         self.callKit = callKit
         self.mediaProvider = mediaProvider
+        self.wsMediaFactory = wsMediaFactory
         self.registry = registry
         self.transport = transport
         self.mediaRecoveryWindow = mediaRecoveryWindow
@@ -145,11 +149,28 @@ final class CallCoordinator: NSObject {
         self.routeGatewayID = gatewayID
         super.init()
         callKit.director = self
+        // Forward activation to EVERY live media session. The WSS relay
+        // (wsMedia / wsConferenceMedia) is a different object from the ICE
+        // session (media); a CallKit answer usually activates the audio
+        // session only AFTER the attach ran (didActivate follows the
+        // fulfilled answer action), so the attach-time replay sees no active
+        // session. Forgetting the WSS session here leaves the relay
+        // connected but permanently silent in both directions.
         AudioSessionBridge.shared.onActivate = { [weak self] session in
-            Task { @MainActor in self?.media?.audioActivated(with: session) }
+            Task { @MainActor in
+                guard let self else { return }
+                self.media?.audioActivated(with: session)
+                self.wsMedia?.audioActivated(with: session)
+                self.wsConferenceMedia?.audioActivated(with: session)
+            }
         }
         AudioSessionBridge.shared.onDeactivate = { [weak self] session in
-            Task { @MainActor in self?.media?.audioDeactivated(with: session) }
+            Task { @MainActor in
+                guard let self else { return }
+                self.media?.audioDeactivated(with: session)
+                self.wsMedia?.audioDeactivated(with: session)
+                self.wsConferenceMedia?.audioDeactivated(with: session)
+            }
         }
     }
 
@@ -747,7 +768,7 @@ final class CallCoordinator: NSObject {
         let request = try await api.conferenceMediaWebSocketRequest(conferenceId: record.id)
         guard gen == generation else { throw CancellationError() }
 
-        let session = WebSocketCallMedia()
+        let session = wsMediaFactory()
         wsConferenceMedia = session
         if let activated = AudioSessionBridge.shared.activeSession {
             session.audioActivated(with: activated)
@@ -1181,7 +1202,7 @@ final class CallCoordinator: NSObject {
         let request = try await api.mediaWebSocketRequest(callId: callId)
         guard gen == self.generation else { throw CancellationError() }
 
-        let session = WebSocketCallMedia()
+        let session = wsMediaFactory()
         // Keep the previous transport + its audio ownership until the new
         // socket is confirmed ready. Assign wsMedia only AFTER connect.
         session.onState = { [weak self, weak session] state in
@@ -1647,10 +1668,32 @@ final class CallCoordinator: NSObject {
         }
     }
 
+    private var lastLoggedPhase: ActiveCallPhase?
+
     private func publishPhase() {
         guard let gatewayId = activeGatewayId else { return }
         let phase = CallPhaseResolver.resolve(gateway: latestGateway, media: latestMedia)
+        if phase != lastLoggedPhase {
+            lastLoggedPhase = phase
+            DiagnosticsStore.shared.log(
+                "call", "phase \(Self.phaseName(phase)) call=\(AppLog.tag(gatewayId))")
+        }
         delegate?.call(gatewayId, phaseChanged: phase)
+    }
+
+    private static func phaseName(_ phase: ActiveCallPhase) -> String {
+        switch phase {
+        case .none: return "none"
+        case .incomingRinging: return "incomingRinging"
+        case .outgoingDialing: return "outgoingDialing"
+        case .connecting: return "connecting"
+        case .active: return "active"
+        case .held: return "held"
+        case .reconnecting: return "reconnecting"
+        case .ending: return "ending"
+        case .ended: return "ended"
+        case .failed: return "failed"
+        }
     }
 
     private func publishFailed(_ message: String) {

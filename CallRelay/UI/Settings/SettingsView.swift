@@ -69,6 +69,11 @@ struct SettingsView: View {
                     Link(destination: URL(string: "https://github.com/JiangNanGenius/call-message-relay-ios")!) {
                         Label("源代码仓库", systemImage: "safari")
                     }
+                    NavigationLink {
+                        DiagnosticsView()
+                    } label: {
+                        Label(String(localized: "诊断"), systemImage: "stethoscope")
+                    }
                 }
             }
             // Readable centered column on iPad while the grouped background

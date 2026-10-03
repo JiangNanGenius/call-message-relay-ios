@@ -22,11 +22,27 @@ final class FakeDirectProbe: DirectProbeControlling {
     var offerError: Error?
     var applyError: Error?
     var shouldFailCommit = false
+    /// When true, makeOffer parks until releaseOfferGate()/cancel(): a
+    /// deterministic in-flight candidate attempt.
+    var gateOffer = false
+    private var offerWaiter: CheckedContinuation<Void, Error>?
 
     func makeOffer(ice: ICEConfiguration) async throws -> String {
         makeOfferCount += 1
         if let offerError { throw offerError }
+        if gateOffer {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                self.offerWaiter = cont
+            }
+        }
         return "v=0\r\n"
+    }
+
+    /// Resolves a parked offer successfully (late-ready simulation).
+    func releaseOfferGate() {
+        let waiter = offerWaiter
+        offerWaiter = nil
+        waiter?.resume()
     }
     func applyAnswer(_ sdp: String) async throws {
         applyAnswerCount += 1
@@ -38,6 +54,9 @@ final class FakeDirectProbe: DirectProbeControlling {
         cancelCount += 1
         connected = false
         mediaReady = false
+        let waiter = offerWaiter
+        offerWaiter = nil
+        waiter?.resume(throwing: MediaError.closed)
     }
     func closeTransport() { closeCount += 1 }
     var samples: [TimeInterval] { samplesToReturn }
@@ -70,6 +89,8 @@ final class CallRouteControllerTests: XCTestCase {
         var isConference = false
         var isMuted = false
         var probes: [FakeDirectProbe] = []
+        /// When true every factory-created probe parks in makeOffer.
+        var gateOffers = false
         var promotedDirectPeers: [FakeDirectProbe] = []
         /// Every promoteStagedRelay invocation, including nil-peer recovery.
         var promoteStagedCalls = 0
@@ -82,7 +103,8 @@ final class CallRouteControllerTests: XCTestCase {
         var cadence: CallRouteController.Cadence {
             .init(autoInterval: 0.05, monitorInterval: 0.05,
                   candidateTimeout: 0.3, connectPoll: 0.02,
-                  unknownReconcileTries: 3, unknownReconcileInterval: 0.02)
+                  unknownReconcileTries: 3, unknownReconcileInterval: 0.02,
+                  attachTimeout: 0.3)
         }
 
         @MainActor
@@ -120,6 +142,7 @@ final class CallRouteControllerTests: XCTestCase {
                 callbacks: cb,
                 probeFactory: { [weak self] in
                     let p = FakeDirectProbe()
+                    p.gateOffer = self?.gateOffers ?? false
                     self?.probes.append(p)
                     return p
                 }, cadence: cadence,
@@ -554,6 +577,148 @@ final class CallRouteControllerTests: XCTestCase {
         XCTAssertEqual(h.controller.routeState.active, .direct,
                        "a failed local re-attach must not claim a working relay")
         XCTAssertEqual(h.promoteStagedCalls, 0)
+        h.controller.teardown()
+    }
+
+    // MARK: Newer selection cancels an in-flight (cancellable) direct attempt
+
+    func testSelectingRelayCancelsParkedDirectAttemptPromptly() async throws {
+        let h = Harness()
+        h.gateOffers = true
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        // The direct attempt parks inside its probe offer, holding the route
+        // transaction — exactly the state that used to freeze the menu.
+        await waitUntil(timeout: 2) { h.probes.first?.makeOfferCount == 1 }
+        XCTAssertTrue(h.controller.routeState.switching)
+
+        let modeTask = Task { await h.controller.setMode(.relay) }
+        // The newer selection must cancel the parked attempt promptly: no
+        // waiting for the offer gate, no commit, no stale failure notice.
+        await waitUntil(timeout: 2) { h.probes.first?.cancelCount == 1 }
+        h.probes.first?.releaseOfferGate()
+        await modeTask.value
+        await pump(0.3)
+
+        XCTAssertEqual(h.api.commitCalls.count, 0, "a cancelled attempt never commits")
+        XCTAssertEqual(h.probes.first?.adoptCount, 0, "a cancelled attempt never adopts")
+        XCTAssertEqual(h.controller.routeState.active, .relay, "relay keeps carrying the call")
+        XCTAssertEqual(h.controller.routeState.switching, false, "no lingering spinner")
+        XCTAssertTrue(h.notices.isEmpty, "a user-initiated cancel is silent")
+        h.controller.teardown()
+    }
+
+    func testCancelledCandidateNeverReusedByLaterAutoLoop() async throws {
+        let h = Harness()
+        h.gateOffers = true
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.probes.first?.makeOfferCount == 1 }
+        // Cancel the parked direct attempt via relay, then let auto probe.
+        let relayTask = Task { await h.controller.setMode(.relay) }
+        await waitUntil(timeout: 2) { h.probes.first?.cancelCount == 1 }
+        await relayTask.value
+        h.gateOffers = false
+        await h.controller.setMode(.auto)
+        await pump(0.5)
+        // Auto measurement uses a FRESH detached probe; the cancelled one is
+        // never revived, adopted, or committed.
+        XCTAssertEqual(h.probes.count, 2, "auto creates a new probe instead of reusing a cancelled one")
+        XCTAssertEqual(h.probes.first?.adoptCount, 0)
+        XCTAssertEqual(h.api.commitCalls.count, 0)
+        XCTAssertEqual(h.controller.routeState.active, .relay)
+        h.controller.teardown()
+    }
+
+    func testAutoPromotionSupersededByNewerRelaySelectionNeverCommits() async throws {
+        let h = Harness()
+        let advisor = MediaRouteAdvisor(
+            minimumSamples: 4, improvementThreshold: 0.2, minimumDwell: 0,
+            maximumPromotions: 3, maximumFallbacks: 1)
+        h.makeController(.auto, advisor: advisor)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { !h.probes.isEmpty }
+        h.probes.forEach { $0.samplesToReturn = Array(repeating: 0.02, count: 6) }
+        // Whatever the loop's interleaving, the newer relay selection must
+        // win and the stale promotion must never commit.
+        await h.controller.setMode(.relay)
+        await pump(0.6)
+        XCTAssertEqual(h.api.commitCalls.count, 0, "stale auto promotion must never commit")
+        XCTAssertEqual(h.probes.first?.adoptCount ?? 0, 0)
+        XCTAssertEqual(h.controller.routeState.active, .relay)
+        XCTAssertEqual(h.controller.routeState.mode, .relay)
+        h.controller.teardown()
+    }
+
+    func testCancelDirectThenSelectDirectAgainCommitsNormally() async throws {
+        let h = Harness()
+        h.gateOffers = true
+        // After a successful commit the gateway reports the adopted direct
+        // transport; without this the reconcile monitor would (correctly)
+        // hand the call back to relay.
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.probes.first?.makeOfferCount == 1 }
+
+        // Cancel via relay, then re-select direct while the old probe is
+        // still parked: recovery must be immediate and functional.
+        let relayTask = Task { await h.controller.setMode(.relay) }
+        await waitUntil(timeout: 2) { h.probes.first?.cancelCount == 1 }
+        await relayTask.value
+        h.gateOffers = false
+        let directTask = Task { await h.controller.setMode(.direct) }
+        await waitUntil(timeout: 3) { h.api.commitCalls.count == 1 }
+        await directTask.value
+        await pump(0.3)
+        XCTAssertEqual(h.probes.last?.adoptCount, 1, "the fresh candidate adopts normally")
+        XCTAssertEqual(h.controller.routeState.active, .direct)
+        h.controller.teardown()
+    }
+
+    // MARK: Hung PRE-COMMIT attach must not hold the route transaction
+
+    func testSelectingRelayDuringHungAttachUnblocksPromptly() async throws {
+        let h = Harness()
+        h.makeController(.direct)
+        h.api.armAttachWait()
+        h.controller.relayDidConnect(wsMedia: nil)
+        // The pre-commit attach is parked; the direct attempt is in flight.
+        await waitUntil(timeout: 2) { h.api.attachProbeCalls.count == 1 }
+        XCTAssertTrue(h.controller.routeState.switching)
+
+        let modeTask = Task { await h.controller.setMode(.relay) }
+        // The newer selection aborts the hung attach and applies immediately:
+        // the relay selection must not wait for the attach timeout.
+        await waitUntil(timeout: 2) {
+            h.controller.routeState.mode == .relay && h.controller.routeState.switching == false
+        }
+        await modeTask.value
+        await pump(0.3)
+        XCTAssertTrue(h.api.attachCancelled, "the abandoned attach task is cancelled")
+        XCTAssertEqual(h.api.commitCalls.count, 0, "a superseded attach never commits")
+        XCTAssertEqual(h.probes.first?.cancelCount, 1)
+        XCTAssertEqual(h.probes.first?.adoptCount, 0)
+        XCTAssertEqual(h.controller.routeState.active, .relay)
+        XCTAssertTrue(h.notices.isEmpty, "a superseded attach is silent")
+        h.controller.teardown()
+    }
+
+    func testHungAttachTimesOutAndKeepsRelay() async throws {
+        let h = Harness()
+        h.makeController(.direct)
+        h.api.armAttachWait() // never resumed: stays hung past the deadline
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 3) { h.controller.routeState.switching == false }
+        await pump(0.2)
+        XCTAssertEqual(h.controller.routeState.active, .relay, "relay keeps carrying the call")
+        XCTAssertFalse(h.notices.isEmpty, "a timed-out attempt reports truthfully")
+        XCTAssertEqual(h.api.commitCalls.count, 0)
+        // A late attach resolution after the timeout must be inert.
+        h.api.resumeAttach(with: .success(WebRTCAnswer(sdp: "v=0\r\n", type: "answer", iceMode: "all")))
+        await pump(0.3)
+        XCTAssertEqual(h.api.commitCalls.count, 0, "a late attach resolution cannot commit")
+        XCTAssertEqual(h.probes.first?.adoptCount ?? 0, 0)
         h.controller.teardown()
     }
 }

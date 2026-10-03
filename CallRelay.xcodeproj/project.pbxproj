@@ -28,10 +28,12 @@
 		1E57FEECB85FF0E17F200D61 /* CallIntentRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5CDFE06EDC7BD7C66C0FA17 /* CallIntentRouter.swift */; };
 		21AD690D98AAFCF526E4114A /* SystemContactRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 655353652620C7C87D2249F1 /* SystemContactRefresh.swift */; };
 		247E120275775EEB7C4ABB58 /* WebSocketCallMediaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002BC2784552BFF3A2ECAD3A /* WebSocketCallMediaTests.swift */; };
+		2604621D7090D6A6DBE80545 /* WSSAudioHandoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70C81D49FBCE98878D4A2F07 /* WSSAudioHandoffTests.swift */; };
 		272523DF263DF1874DCAA24C /* CloudSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED147AF8C4E97E5632501D8 /* CloudSyncEngine.swift */; };
 		28648ECAD5F9E81C3F29200C /* SpamFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 497ACBA1F83FDC8A12937941 /* SpamFilterTests.swift */; };
 		291E132B6EB6171E5376C8F4 /* WSMediaMeasure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D61291AD987C29064A67B6 /* WSMediaMeasure.swift */; };
 		2943039C45504ADBDCA8F9AF /* PushEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F34F1F3DE6D2F70406BE58 /* PushEnvironmentTests.swift */; };
+		29A7B6694327D220E2346739 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC82F5A00516A4395A9D274 /* DiagnosticsView.swift */; };
 		2A3DC768AC199832F7D0B52A /* CheckIncomingCallIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83DD817B3F96040DC1813E86 /* CheckIncomingCallIntent.swift */; };
 		313D53DF0BA818844554FC5C /* Wire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65399AE40AE5F9E959667CDC /* Wire.swift */; };
 		331FE9809BD4F511D5CCA1B9 /* UITestNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA797429A1513B21399994F /* UITestNavigation.swift */; };
@@ -52,9 +54,11 @@
 		454CB2CC2CCEC0B9EB4FF9A3 /* VoIPPushPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A66C9DBB90543E55C02CD36D /* VoIPPushPayload.swift */; };
 		4556F5DAE1E07024772EAF7E /* MediaTransportSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA719A7BAF14F2DBF8FAC1FB /* MediaTransportSupportTests.swift */; };
 		4592DF5E9ED226766C5FA05F /* SpamPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790DB59B2E1C6BDD355E800C /* SpamPolicy.swift */; };
+		46A808F6B26F17DBD5207739 /* DiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0B4094E0617F44383F724F /* DiagnosticsTests.swift */; };
 		4AE3B9EE984B3B00F4F90FFC /* SafetyAndPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B1F80F83B232F1C87894F28 /* SafetyAndPolicyTests.swift */; };
 		4EECE8C7467CAB323FB1F16D /* APITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B24B1137456D9029D5D036 /* APITypes.swift */; };
 		4F930407CD97FB4D07C8AD58 /* DemoCallDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A772A3DADD60E9829B43C7E /* DemoCallDriver.swift */; };
+		50D0CD611B1D3AD677EB1E7F /* Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2075222C9CB2E00DF3FD0F7 /* Diagnostics.swift */; };
 		515BDA7BE0A2140A1DE8C9FA /* CallDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5200A77B86E1F9545F6207E5 /* CallDriver.swift */; };
 		51D998A27BAAED7A4A777A00 /* AdaptiveLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 984EE27BD7E28474C46BF3C6 /* AdaptiveLayoutUITests.swift */; };
 		52BA789A458D280FD7079956 /* UnifiedGatewayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD363457A02585F2F385C685 /* UnifiedGatewayTests.swift */; };
@@ -248,6 +252,7 @@
 		5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireCompatibilityTests.swift; sourceTree = "<group>"; };
 		5A588139CFF48C724501CBCD /* MessageInboxSpamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageInboxSpamTests.swift; sourceTree = "<group>"; };
 		5C0578D59989C935F5182D0E /* NumberList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumberList.swift; sourceTree = "<group>"; };
+		5C0B4094E0617F44383F724F /* DiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsTests.swift; sourceTree = "<group>"; };
 		5D25999B1DF31DDC1F356766 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		5E2FA0BA6159B54457B7990A /* CallLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallLifecycleTests.swift; sourceTree = "<group>"; };
 		60004AE25C5C1B99740CE26F /* SMSHTTPClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMSHTTPClientTests.swift; sourceTree = "<group>"; };
@@ -262,6 +267,7 @@
 		6B1F80F83B232F1C87894F28 /* SafetyAndPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyAndPolicyTests.swift; sourceTree = "<group>"; };
 		6BD1D6124FBCB269EB6F0FC7 /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
 		6FB4F36A44706DA364FB2943 /* ContactVCardExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactVCardExportTests.swift; sourceTree = "<group>"; };
+		70C81D49FBCE98878D4A2F07 /* WSSAudioHandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSSAudioHandoffTests.swift; sourceTree = "<group>"; };
 		7238771D6D65B9B4C9A34307 /* Info-Bark.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Info-Bark.plist"; sourceTree = "<group>"; };
 		7645C567EC9502D507AF685B /* CloudSyncSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncSettingsView.swift; sourceTree = "<group>"; };
 		776CC7F799D6B6D0D3AC31E9 /* VoicemailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicemailView.swift; sourceTree = "<group>"; };
@@ -328,6 +334,7 @@
 		DF1712358EAF8763B2FDF8D4 /* CallHandleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHandleTests.swift; sourceTree = "<group>"; };
 		E0CA426203C8DD5F8170FCEC /* ContactMergePlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactMergePlannerTests.swift; sourceTree = "<group>"; };
 		E143357666B2A1132FBA2858 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
+		E2075222C9CB2E00DF3FD0F7 /* Diagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Diagnostics.swift; sourceTree = "<group>"; };
 		E29B1E29BF8F845FC3285F8A /* TestHTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHTTPServer.swift; sourceTree = "<group>"; };
 		E2C3C40493EFE71246E0A52C /* DialerNativeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialerNativeUITests.swift; sourceTree = "<group>"; };
 		E45F27461DB963B2F932BE7D /* NumberListsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumberListsView.swift; sourceTree = "<group>"; };
@@ -342,6 +349,7 @@
 		F03311AAD0BE8B5012CE8DE3 /* RetryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryPolicy.swift; sourceTree = "<group>"; };
 		F7E7DF245408812D10FA4A76 /* ActiveCallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveCallView.swift; sourceTree = "<group>"; };
 		FAA797429A1513B21399994F /* UITestNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestNavigation.swift; sourceTree = "<group>"; };
+		FAC82F5A00516A4395A9D274 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		FB0730972643F1C299521240 /* ContactDeduperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactDeduperTests.swift; sourceTree = "<group>"; };
 		FCC14582B4BA466AA1A7AEB5 /* CallGroupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallGroupStore.swift; sourceTree = "<group>"; };
 		FD363457A02585F2F385C685 /* UnifiedGatewayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedGatewayTests.swift; sourceTree = "<group>"; };
@@ -477,6 +485,7 @@
 				FB0730972643F1C299521240 /* ContactDeduperTests.swift */,
 				E0CA426203C8DD5F8170FCEC /* ContactMergePlannerTests.swift */,
 				6FB4F36A44706DA364FB2943 /* ContactVCardExportTests.swift */,
+				5C0B4094E0617F44383F724F /* DiagnosticsTests.swift */,
 				1A9B2A41BD38902A3FF52D4F /* EventStreamTests.swift */,
 				DEF5C45E75AC8A3B3ED95D63 /* Fakes.swift */,
 				FED4DCDF083D3E2962363EB3 /* IdentityTests.swift */,
@@ -512,6 +521,7 @@
 				002BC2784552BFF3A2ECAD3A /* WebSocketCallMediaTests.swift */,
 				5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */,
 				3BB1A7EA52ED05399F8C3D2A /* WSAudioGraphTests.swift */,
+				70C81D49FBCE98878D4A2F07 /* WSSAudioHandoffTests.swift */,
 				D7620C89F766008B03BC07B5 /* UITests */,
 			);
 			path = CallRelayTests;
@@ -605,6 +615,7 @@
 				E143357666B2A1132FBA2858 /* AppLog.swift */,
 				699956D5A94012622192E059 /* BarkLocalization.swift */,
 				E5252BE7A5377965154F12A7 /* DemoConstants.swift */,
+				E2075222C9CB2E00DF3FD0F7 /* Diagnostics.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -678,6 +689,7 @@
 			children = (
 				D3E5A706A286C198DBD3AF3C /* BarkBridgeSettingsView.swift */,
 				7645C567EC9502D507AF685B /* CloudSyncSettingsView.swift */,
+				FAC82F5A00516A4395A9D274 /* DiagnosticsView.swift */,
 				E70900E433D0A77B08A1CF00 /* LineDetailView.swift */,
 				416626581AF27D91234CF4E1 /* LineNumberEditView.swift */,
 				E45F27461DB963B2F932BE7D /* NumberListsView.swift */,
@@ -888,6 +900,7 @@
 				D85FEB560030C5B83C27C9B0 /* ContactDeduperTests.swift in Sources */,
 				8B98599956D012D3945EB45E /* ContactMergePlannerTests.swift in Sources */,
 				CB6F3A7F5D3D25CD1E0B4BDD /* ContactVCardExportTests.swift in Sources */,
+				46A808F6B26F17DBD5207739 /* DiagnosticsTests.swift in Sources */,
 				B256B95DC33274B95900EF26 /* EventStreamTests.swift in Sources */,
 				B25E95F679A71598C09445BC /* Fakes.swift in Sources */,
 				0C6CE48C385B45FB903AEB8F /* IdentityTests.swift in Sources */,
@@ -920,6 +933,7 @@
 				3994DDA38898E51294073BDA /* VoicemailDeleteTests.swift in Sources */,
 				F627C7D82E267828162473C2 /* VoicemailPlaybackTests.swift in Sources */,
 				FE6B6F47D29D5F2D0C770A6E /* WSAudioGraphTests.swift in Sources */,
+				2604621D7090D6A6DBE80545 /* WSSAudioHandoffTests.swift in Sources */,
 				37172BAFE0D79FF923D0A34C /* WebRTCOfferPipelineTests.swift in Sources */,
 				247E120275775EEB7C4ABB58 /* WebSocketCallMediaTests.swift in Sources */,
 				A2D3645DDBDE78663F4D4713 /* WireCompatibilityTests.swift in Sources */,
@@ -985,6 +999,8 @@
 				0A468E39D6CDEEB00882D760 /* DemoConstants.swift in Sources */,
 				A7D1997CAEC4247CBD988E33 /* DemoGatewayAPI.swift in Sources */,
 				C5C52EC08F103CD7FA2DC1B9 /* DeviceIdentity.swift in Sources */,
+				50D0CD611B1D3AD677EB1E7F /* Diagnostics.swift in Sources */,
+				29A7B6694327D220E2346739 /* DiagnosticsView.swift in Sources */,
 				76BBDF4D0F3AC75499465427 /* DialerView.swift in Sources */,
 				019340D00967E9B43EE96612 /* EmptyStateView.swift in Sources */,
 				5D58E702A27616F0D2291A18 /* EventStream.swift in Sources */,
@@ -1109,7 +1125,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1125,7 +1141,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.6;
+				MARKETING_VERSION = 0.3.7;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1337,7 +1353,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1359,7 +1375,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.6;
+				MARKETING_VERSION = 0.3.7;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1430,7 +1446,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1452,7 +1468,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.6;
+				MARKETING_VERSION = 0.3.7;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1519,7 +1535,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 13;
+				CURRENT_PROJECT_VERSION = 14;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1535,7 +1551,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.6;
+				MARKETING_VERSION = 0.3.7;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

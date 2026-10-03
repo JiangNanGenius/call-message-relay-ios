@@ -65,12 +65,14 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             installCapture(pipeline: pipeline)
         } catch {
             AppLog.media.notice("ws audio engine start failed: \((error as NSError).code)")
+            DiagnosticsCensus.shared.increment("audio.graphStartFail")
             teardownEngine()
             capture = nil
             sink = nil
             return false
         }
         running = true
+        DiagnosticsCensus.shared.increment("audio.graphStart")
         playback.start()
         armFeedTimer()
         return true
@@ -99,6 +101,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     func stop() {
         guard running else { return }
         running = false
+        DiagnosticsCensus.shared.increment("audio.graphStop")
 
         feedTimer?.cancel()
         feedTimer = nil
@@ -180,6 +183,8 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
                 frame = real
             }
         }
+        // Aggregate counters only — never a per-frame log line.
+        DiagnosticsCensus.shared.increment("audio.micFrames")
         onMicFrame?(frame)
     }
 
@@ -189,6 +194,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     /// oldest frame beyond ~1 s of backlog and pumps the player immediately.
     func pushPlayback(_ frame: [Int16]) {
         guard running else { return }
+        DiagnosticsCensus.shared.increment("audio.playbackFrames")
         playback.enqueue(frame)
     }
 

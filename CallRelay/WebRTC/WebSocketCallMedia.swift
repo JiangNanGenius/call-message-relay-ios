@@ -319,10 +319,16 @@ final class WebSocketCallMedia: NSObject {
         }
     }
 
+    private var lastLoggedSocketState: MediaState?
+
     private func socketDidFail(toFailed: Bool = false) {
         guard connected else { return }
         connected = false
         currentState = toFailed ? .failed : .disconnected
+        if currentState != lastLoggedSocketState {
+            lastLoggedSocketState = currentState
+            DiagnosticsStore.shared.log("audio", "ws socket \(currentState == .failed ? "failed" : "disconnected")")
+        }
     }
 
     // MARK: Send path
@@ -414,9 +420,11 @@ final class WebSocketCallMedia: NSObject {
         selfManagedAudioActive = false
         guard audioIO.startIfNeeded() else {
             // Never claim audio that cannot run.
+            DiagnosticsStore.shared.log("audio", "ws system activation failed: graph start error")
             socketDidFail(toFailed: true)
             return
         }
+        DiagnosticsStore.shared.log("audio", "ws audio activated (system)")
         AppLog.media.debug("ws audio activated")
     }
 
@@ -437,12 +445,15 @@ final class WebSocketCallMedia: NSObject {
             try session.setActive(true)
             guard audioIO.startIfNeeded() else {
                 try? session.setActive(false, options: .notifyOthersOnDeactivation)
+                DiagnosticsStore.shared.log("audio", "ws direct-answer activation failed: graph start error")
                 return false
             }
             selfManagedAudioActive = true
+            DiagnosticsStore.shared.log("audio", "ws audio activated (direct answer)")
             return true
         } catch {
             AppLog.media.notice("ws direct-answer audio activation failed")
+            DiagnosticsStore.shared.log("audio", "ws direct-answer activation error: \(error.localizedDescription)")
             return false
         }
     }

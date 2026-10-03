@@ -188,6 +188,19 @@ final class FakeGatewayAPI: GatewayAPI {
     var attachProbeResult: Result<WebRTCAnswer, Error> = .success(
         WebRTCAnswer(sdp: "v=0\r\n", type: "answer", iceMode: "all"))
     private(set) var attachProbeCalls: [String] = []
+    /// When armed once, the next attach parks until resumeAttach/cancel
+    /// (hung-attach routing tests). Cancellation mirrors a real
+    /// URLSession.data(for:) throwing on task cancel.
+    private var attachArmed = false
+    private var attachContinuation: CheckedContinuation<WebRTCAnswer, Error>?
+    private(set) var attachCancelled = false
+
+    func armAttachWait() { attachArmed = true }
+    func resumeAttach(with result: Result<WebRTCAnswer, Error>) {
+        attachContinuation?.resume(with: result)
+        attachContinuation = nil
+    }
+
     var commitError: Error?
     private(set) var commitCalls: [String] = []
     private var commitContinuation: CheckedContinuation<Void, Error>?
@@ -407,13 +420,25 @@ final class FakeGatewayAPI: GatewayAPI {
         return WebRTCAnswer(sdp: "v=0\r\n", type: "answer", iceMode: "relay")
     }
 
+    /// When set, returned instead of the default ICE-only configuration
+    /// (e.g. to advertise the WSS media transport).
+    var iceConfigOverride: ICEConfiguration?
+    /// When set, returned by mediaWebSocketRequest (default throws notReady).
+    var mediaWSRequestOverride: URLRequest?
+
     func iceConfiguration(callId: String) async throws -> ICEConfiguration {
         if let iceError { throw iceError }
+        if let iceConfigOverride { return iceConfigOverride }
         return ICEConfiguration(
             policy: "tailnet-turn",
             iceServers: [ICEServer(urls: ["turn:turn.example:3478?transport=udp"], username: "u", credential: "c")],
             expiresAt: "2026-10-01T00:00:00Z"
         )
+    }
+
+    func mediaWebSocketRequest(callId: String) async throws -> URLRequest {
+        if let mediaWSRequestOverride { return mediaWSRequestOverride }
+        throw APIError.notReady("当前配对不支持 WebSocket 音频。")
     }
 
     func sync(after: Int64, limit: Int) async throws -> SyncResponse {
@@ -505,6 +530,21 @@ final class FakeGatewayAPI: GatewayAPI {
 
     func attachMediaProbe(callId: String, sdp: String) async throws -> WebRTCAnswer {
         attachProbeCalls.append(callId)
+        if attachArmed {
+            attachArmed = false
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<WebRTCAnswer, Error>) in
+                    self.attachContinuation = cont
+                }
+            } onCancel: { [weak self] in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.attachCancelled = true
+                    self.attachContinuation?.resume(throwing: CancellationError())
+                    self.attachContinuation = nil
+                }
+            }
+        }
         return try attachProbeResult.get()
     }
     func commitMediaProbe(callId: String) async throws {

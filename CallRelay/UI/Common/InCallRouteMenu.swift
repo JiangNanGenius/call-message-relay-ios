@@ -53,8 +53,11 @@ struct InCallRouteMenu: View {
         }
     }
 
+    /// The menu stays ENABLED while a switch is in progress: picking another
+    /// mode cancels the in-flight (cancellable) attempt and applies the new
+    /// selection immediately. Only a merged conference locks routing.
     private var disabled: Bool {
-        (state?.switching ?? false) || (state?.conferenceLocked ?? false)
+        state?.conferenceLocked ?? false
     }
 
     @ViewBuilder

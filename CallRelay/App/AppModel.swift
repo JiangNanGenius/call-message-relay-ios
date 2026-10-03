@@ -2163,7 +2163,13 @@ final class AppModel: ObservableObject {
             locale: Locale.current.identifier
         )
         Task {
-            try? await api.registerPush(registration: registration, idempotencyKey: UUID().uuidString)
+            do {
+                try await api.registerPush(registration: registration, idempotencyKey: UUID().uuidString)
+                // Tokens themselves never reach the log; environment only.
+                DiagnosticsStore.shared.log("push", "tokens registered environment=\(env)")
+            } catch {
+                DiagnosticsStore.shared.log("push", "token registration failed: \(error)")
+            }
         }
     }
 

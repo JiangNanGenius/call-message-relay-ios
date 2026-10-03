@@ -67,6 +67,11 @@ final class CallRouteController {
     private var transport: Transport = .relay
     private var expectingRelayClose = false
     private var epoch: UInt64 = 0
+    /// Bumped on EVERY selection change. Unlike `epoch` (teardown only), a
+    /// selection change promptly cancels an in-flight *candidate* attempt so
+    /// a newer user selection applies immediately; an in-flight COMMIT is
+    /// never cancelled through this (its server-side outcome must reconcile).
+    private var selectionEpoch: UInt64 = 0
     private var tearingDown = false
     private var connectedAt = Date()
     private var state = CallRouteState()
@@ -86,6 +91,9 @@ final class CallRouteController {
         var connectPoll: TimeInterval = 0.5
         var unknownReconcileTries = 4
         var unknownReconcileInterval: TimeInterval = 0.5
+        /// Absolute bound on the PRE-COMMIT probe attach; a stalled tunnel
+        /// can never hold the route transaction longer than this.
+        var attachTimeout: TimeInterval = 8
     }
 
     init(callId: String,
@@ -116,8 +124,19 @@ final class CallRouteController {
 
     var routeState: CallRouteState { state }
 
+    private var lastLoggedSummary = ""
+
     private func publish(_ mutate: (inout CallRouteState) -> Void) {
         mutate(&state)
+        // Diff-based diagnostics: one line per actual state change, never a
+        // per-tick flood. RTT is rounded so jitter does not spam the log.
+        let summary = "mode=\(state.mode.rawValue) active=\(state.active.rawValue)"
+            + " switching=\(state.switching) probing=\(state.probing)"
+            + " degraded=\(state.directDegraded) rtt=\(state.rttMilliseconds ?? -1)"
+        if summary != lastLoggedSummary {
+            lastLoggedSummary = summary
+            DiagnosticsStore.shared.log("route", summary)
+        }
         callbacks.onState(state)
     }
 
@@ -126,6 +145,7 @@ final class CallRouteController {
             $0.notice = text
             $0.offersAutoFallback = offersAuto
         }
+        DiagnosticsStore.shared.log("route", "notice: \(text)")
         callbacks.onNotice(text, offersAuto)
     }
 
@@ -182,13 +202,22 @@ final class CallRouteController {
         guard newMode != mode, !tearingDown else { return }
         mode = newMode
         advisor = makeAdvisor()
+        selectionEpoch &+= 1
         publish {
             $0.mode = newMode
             $0.notice = nil
             $0.offersAutoFallback = false
         }
-        // Serialized behind any in-flight commit/handover; when this runs it
-        // applies the LATEST mode (mode is read inside).
+        // A newer selection immediately retires a detached CANDIDATE attempt:
+        // the probe cancel releases any parked offer wait, the abort signal
+        // releases a parked pre-commit attach, the selection guards unwind it
+        // silently, and the queued transaction then applies this latest mode.
+        // A probe whose COMMIT is in flight is never touched here — its
+        // outcome must still reconcile server-side.
+        if committingProbe == nil {
+            cancelCandidate()
+            abortPreCommitAttach()
+        }
         await withTransaction { [weak self] in
             await self?.performApplyCurrentMode()
         }
@@ -242,6 +271,7 @@ final class CallRouteController {
         candidate?.cancel()
         candidate = nil
         committingProbe = nil
+        abortPreCommitAttach()
         activeDirect?.closeTransport()
         activeDirect = nil
         measure?.close()
@@ -272,36 +302,144 @@ final class CallRouteController {
         case unavailable(String)
     }
 
-    private func establishCandidate(_ gen: UInt64) async -> ProbeOutcome {
+    /// Failure modes of the bounded, selection-cancellable PRE-COMMIT attach
+    /// phase. The commit phase itself is never bounded or cancelled here: its
+    /// server-side outcome must always reconcile.
+    private enum CandidateAttachError: Error {
+        /// A newer selection or teardown aborted the wait.
+        case superseded
+        /// The attach exceeded its deadline.
+        case timedOut
+    }
+
+    /// Thread-safe one-shot abort for a parked pre-commit attach. `fire()`
+    /// resumes the waiter (if any); a waiter armed after `fire()` completes
+    /// immediately, so no signal can be lost.
+    private final class AbortSignal: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Void, Error>?
+        private var fired = false
+
+        func arm(_ continuation: CheckedContinuation<Void, Error>) {
+            lock.lock()
+            if fired {
+                lock.unlock()
+                continuation.resume(returning: ())
+            } else {
+                self.continuation = continuation
+                lock.unlock()
+            }
+        }
+
+        func fire() {
+            lock.lock()
+            fired = true
+            let continuation = self.continuation
+            self.continuation = nil
+            lock.unlock()
+            continuation?.resume(returning: ())
+        }
+    }
+
+    /// The currently parked pre-commit attach, if any.
+    private var attachAbort: AbortSignal?
+
+    /// Aborts a parked pre-commit attach (newer selection with no commit in
+    /// flight, or teardown). The attach deadline still bounds any missed
+    /// signal, so the route transaction can never be held hostage.
+    private func abortPreCommitAttach() {
+        let signal = attachAbort
+        attachAbort = nil
+        signal?.fire()
+    }
+
+    /// Runs the pre-commit probe attach bounded by an absolute deadline AND
+    /// cancellable by a newer selection/teardown. A stalled tunnel therefore
+    /// cannot pin the single route transaction: the user's newer selection
+    /// applies immediately.
+    private func attachWithBound(_ offer: String, signal: AbortSignal) async throws -> WebRTCAnswer {
+        let api = self.api
+        let callId = self.callId
+        let timeout = cadence.attachTimeout
+        return try await withThrowingTaskGroup(of: WebRTCAnswer.self) { group in
+            group.addTask {
+                try await api.attachMediaProbe(callId: callId, sdp: offer)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                throw CandidateAttachError.timedOut
+            }
+            group.addTask {
+                try await withTaskCancellationHandler {
+                    try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                        signal.arm(cont)
+                    }
+                    throw CandidateAttachError.superseded
+                } onCancel: {
+                    signal.fire()
+                }
+            }
+            do {
+                let answer = try await group.next()!
+                group.cancelAll()
+                return answer
+            } catch {
+                group.cancelAll()
+                throw error
+            }
+        }
+    }
+
+    private func establishCandidate(_ gen: UInt64, selection: UInt64) async -> ProbeOutcome {
         if committingProbe == nil { candidate?.cancel() }
         let probe = probeFactory()
         if committingProbe == nil { candidate = probe }
         publish { $0.probing = true }
 
+        // A failure caused by cancellation (teardown, newer selection, or a
+        // replaced probe) is SILENT: the queued transaction applies the newer
+        // state and no stale failure notice may overwrite it. Cancellation
+        // status is ALWAYS captured before any cleanup that would change the
+        // identity checks below.
+        func isCancelled() -> Bool {
+            tearingDown || epoch != gen || selection != selectionEpoch
+                || (candidate !== probe && committingProbe !== probe)
+        }
+
+        let abortSignal = AbortSignal()
+        attachAbort = abortSignal
+        defer { if attachAbort === abortSignal { attachAbort = nil } }
+
         do {
             let offer = try await probe.makeOffer(ice: ice)
-            guard candidate === probe || committingProbe === probe,
-                  !tearingDown, epoch == gen else { return .unavailable("") }
-            let answer = try await api.attachMediaProbe(callId: callId, sdp: offer)
-            guard candidate === probe || committingProbe === probe,
-                  !tearingDown, epoch == gen else { return .unavailable("") }
+            guard !isCancelled() else { return .unavailable("") }
+            let answer: WebRTCAnswer
+            do {
+                answer = try await attachWithBound(offer, signal: abortSignal)
+            } catch CandidateAttachError.superseded {
+                return .unavailable("")
+            } catch CandidateAttachError.timedOut {
+                if candidate === probe { cancelCandidate() }
+                return .unavailable(String(localized: "直连候选在限定时间内未连通。"))
+            }
+            guard !isCancelled() else { return .unavailable("") }
             try await probe.applyAnswer(answer.sdp)
-            guard candidate === probe || committingProbe === probe,
-                  !tearingDown, epoch == gen else { return .unavailable("") }
+            guard !isCancelled() else { return .unavailable("") }
         } catch APIError.http(let status, let code, _) {
+            let cancelled = isCancelled()
             if candidate === probe { cancelCandidate() }
-            return .unavailable(probeFailureMessage(status: status, code: code))
+            return .unavailable(cancelled ? "" : probeFailureMessage(status: status, code: code))
         } catch {
+            let cancelled = isCancelled()
             if candidate === probe { cancelCandidate() }
-            return .unavailable(String(localized: "直连候选无法建立。"))
+            return .unavailable(cancelled ? "" : String(localized: "直连候选无法建立。"))
         }
 
         let deadline = Date(timeIntervalSinceNow: cadence.candidateTimeout)
         while Date() < deadline {
             if probe.mediaReady, candidate === probe { return .ready(probe) }
             try? await Task.sleep(nanoseconds: UInt64(cadence.connectPoll * 1_000_000_000))
-            if tearingDown || epoch != gen { return .unavailable("") }
-            if candidate !== probe, committingProbe !== probe { return .unavailable("") }
+            if isCancelled() { return .unavailable("") }
         }
         if candidate === probe { cancelCandidate() }
         return .unavailable(String(localized: "直连候选在限定时间内未连通。"))
@@ -317,15 +455,16 @@ final class CallRouteController {
         }
         policyTask?.cancel()
         let gen = epoch
-        policyTask = Task { [weak self] in await self?.autoLoop(gen: gen) }
+        let sel = selectionEpoch
+        policyTask = Task { [weak self] in await self?.autoLoop(gen: gen, selection: sel) }
     }
 
-    private func autoLoop(gen: UInt64) async {
-        guard case .ready(let probe) = await establishCandidate(gen) else {
+    private func autoLoop(gen: UInt64, selection: UInt64) async {
+        guard case .ready(let probe) = await establishCandidate(gen, selection: selection) else {
             publish { $0.probing = false }
             return
         }
-        while !Task.isCancelled, gen == epoch, !tearingDown,
+        while !Task.isCancelled, gen == epoch, selection == selectionEpoch, !tearingDown,
               committingProbe == nil, transport == .relay, candidate === probe {
             try? await Task.sleep(nanoseconds: UInt64(cadence.autoInterval * 1_000_000_000))
             guard !Task.isCancelled, gen == epoch, !tearingDown else { return }
@@ -350,6 +489,13 @@ final class CallRouteController {
                 $0.probing = true
             }
             if advisor.decide(metrics, callDuration: duration, baselineHealthy: true) == .promote {
+                // A newer selection supersedes this promotion: retire the
+                // probe silently; the queued transaction applies latest mode.
+                guard selection == selectionEpoch, !tearingDown else {
+                    if candidate === probe { cancelCandidate() }
+                    publish { $0.probing = false }
+                    return
+                }
                 // Serialize the auto commit with every other transaction; a
                 // queued mode change applies afterwards (latest mode wins).
                 await withTransaction { [weak self] in
@@ -371,9 +517,18 @@ final class CallRouteController {
         }
         guard transport == .relay else { return }
         let gen = epoch
+        let sel = selectionEpoch
         publish { $0.switching = true }
-        switch await establishCandidate(gen) {
+        switch await establishCandidate(gen, selection: sel) {
         case .ready(let probe):
+            // The user may have picked another mode while the candidate was
+            // establishing: a stale ready probe must never overwrite that
+            // newer selection.
+            guard sel == selectionEpoch, mode == .direct, gen == epoch, !tearingDown else {
+                if candidate === probe { cancelCandidate() }
+                publish { $0.switching = false }
+                return
+            }
             await performCommit(probe, gen: gen, forced: true)
             publish { $0.switching = false }
         case .unavailable(let message):
