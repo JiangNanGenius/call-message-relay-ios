@@ -277,6 +277,38 @@ final class AppModel: ObservableObject {
                 self?.syncRulesIfEnabled()
             }
             .store(in: &cancellables)
+
+        // PushKit must be live before the app finishes launching: a VoIP push
+        // delivered on cold start (app killed in the background) is dropped
+        // if the PKPushRegistry delegate exists only after the async gateway
+        // identity verification in bootstrap(). Starting it here keeps the
+        // delegate available from process start; handler/token callbacks are
+        // safe with no pairing yet (placeholder reporting covers PushKit
+        // compliance until the live driver attaches).
+        if !Self.isRunningUnitTests {
+            let push = PushRegistry()
+            push.handler = self
+            push.placeholderReporter = { [weak self] in
+                await self?.reportPlaceholderCall()
+            }
+            push.onVoIPToken = { [weak self] token in
+                Task { @MainActor in
+                    self?.voipTokenHex = PushRegistry.hexString(from: token)
+                    self?.registerPushIfReady()
+                }
+            }
+            push.onTokenInvalidated = { [weak self] in
+                Task { @MainActor in self?.voipTokenHex = nil }
+            }
+            pushRegistry = push
+            push.start()
+        }
+    }
+
+    /// Unit/UI test hosts must not open a real PushKit registration; the
+    /// production app process always starts it.
+    private static var isRunningUnitTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
 
     // MARK: Lifecycle observation
@@ -727,6 +759,11 @@ final class AppModel: ObservableObject {
         let tokens = tokenStore
         let http = HTTPGatewayAPI(origin: origin, tokens: tokens)
         api = http
+        // PushKit starts at process launch, so the VoIP token can arrive
+        // BEFORE this pairing session exists; flush the registration now that
+        // an authenticated API is available (the token callback covers the
+        // opposite ordering).
+        registerPushIfReady()
         gatewayName = binding.gatewayName ?? binding.gatewayId
         preferredRouteMode = MediaRoutePreferenceStore.shared.mode(for: binding.gatewayId)
         currentGatewayScope = GatewayScope.identifier(gatewayID: binding.gatewayId)
@@ -772,22 +809,33 @@ final class AppModel: ObservableObject {
         }
         events.start()
 
-        let push = PushRegistry()
-        pushRegistry = push
-        push.handler = self
-        push.placeholderReporter = { [weak self] in
+        // The PushKit registry is created once in init() so it survives
+        // unpair/re-pair and, critically, exists from process launch for a
+        // cold-start VoIP push. Only the live token binding belongs here.
+        pushRegistry?.handler = self
+        pushRegistry?.placeholderReporter = { [weak self] in
             await self?.reportPlaceholderCall()
         }
-        push.onVoIPToken = { [weak self] token in
-            Task { @MainActor in
-                self?.voipTokenHex = PushRegistry.hexString(from: token)
-                self?.registerPushIfReady()
+        if pushRegistry == nil {
+            // Unit-test host or a launch that skipped init wiring: still
+            // ensure a registry exists in the live path.
+            let push = PushRegistry()
+            push.handler = self
+            push.placeholderReporter = { [weak self] in
+                await self?.reportPlaceholderCall()
             }
+            push.onVoIPToken = { [weak self] token in
+                Task { @MainActor in
+                    self?.voipTokenHex = PushRegistry.hexString(from: token)
+                    self?.registerPushIfReady()
+                }
+            }
+            push.onTokenInvalidated = { [weak self] in
+                Task { @MainActor in self?.voipTokenHex = nil }
+            }
+            pushRegistry = push
+            push.start()
         }
-        push.onTokenInvalidated = { [weak self] in
-            Task { @MainActor in self?.voipTokenHex = nil }
-        }
-        push.start()
 
         let manager = Self.makeSystemCallManager()
         callKit = manager
@@ -839,8 +887,11 @@ final class AppModel: ObservableObject {
         networkMonitor = nil
         eventStream?.stop()
         eventStream = nil
-        pushRegistry?.stop()
-        pushRegistry = nil
+        // Keep the PushKit registry running for the process lifetime: a VoIP
+        // push arriving while unpaired must still reach a delegate (PushKit
+        // compliance), and the next pairing re-registers the same token.
+        // Only the gateway-bound token is cleared here.
+        voipTokenHex = nil
         driver?.reset()
         callKit?.invalidate()
         callKit = nil
@@ -1982,7 +2033,10 @@ final class AppModel: ObservableObject {
 
     private func registerPushIfReady() {
         guard let api, let voip = voipTokenHex, let apns = apnsTokenHex else { return }
-        let env = PushEnvironment.sandbox
+        // The gateway sends to the APNs host named by this environment and
+        // rejects a target that disagrees with its broker; a TestFlight build
+        // is distributed-signed (production) and must never claim sandbox.
+        let env = PushEnvironmentResolver.live()
         let registration = PushRegistration(
             apnsToken: apns, voipToken: voip, environment: env,
             locale: Locale.current.identifier
@@ -2076,11 +2130,28 @@ extension AppModel: VoIPPushHandling {
 
         case .reportIncoming(let target):
             reservedCallIds.insert(target.gatewayCallId)
-            let driver = self.driver
+            // Cold start: a VoIP push can be delivered before the async
+            // gateway-identity verification has produced the live driver.
+            // Wait a short, bounded moment for it so a real ringing call is
+            // not downgraded to a placeholder; past the bound, PushKit
+            // compliance takes the placeholder path.
+            var liveDriver = driver
+            if liveDriver == nil {
+                liveDriver = await waitForDriver(upTo: 1.5)
+                guard voipGeneration == sessionGeneration else { return }
+                if let expected = pushPolicy?.expectedGatewayId,
+                   expected != payload.gatewayId {
+                    // Pairing landed during the wait and this push belongs to
+                    // another gateway: never surface it as a live call.
+                    reservedCallIds.remove(target.gatewayCallId)
+                    if mustReport { await reportPlaceholderCall() }
+                    return
+                }
+            }
             let api = self.api
             let reported: Bool
-            if let driver {
-                await driver.reportIncomingPush(
+            if let liveDriver {
+                await liveDriver.reportIncomingPush(
                     gatewayId: target.gatewayCallId, uuid: target.uuid,
                     handle: target.handle, record: nil
                 )
@@ -2113,6 +2184,17 @@ extension AppModel: VoIPPushHandling {
                 reconcileIncoming(payload.callId, generation: voipGeneration, api: api)
             }
         }
+    }
+
+    /// Bounded cold-start bridge to the live driver created after the async
+    /// gateway-identity verification. Never blocks a push longer than 1.5 s.
+    private func waitForDriver(upTo seconds: TimeInterval) async -> CallDriver? {
+        let deadline = Date().addingTimeInterval(seconds)
+        while driver == nil, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            if Task.isCancelled { break }
+        }
+        return driver
     }
 
     /// After the minimal CallKit report, converge with real gateway state.

@@ -23,7 +23,7 @@ struct CloudSyncSettingsView: View {
                     if checking { ProgressView().padding(.leading, 4) }
                 }
                 Toggle("启用 iCloud 私人同步", isOn: Binding(
-                    get: { engine.status != .off },
+                    get: { engine.status.enabledSwitchIsOn },
                     set: { enabled in
                         Task {
                             if enabled { await model.enableCloudSync() }
@@ -32,7 +32,10 @@ struct CloudSyncSettingsView: View {
                         }
                     }
                 ))
-                .disabled(availability != .available)
+                // Only OFF needs a proven-available container to turn ON. An
+                // ON switch must always be turnable OFF, even if a transient
+                // re-probe currently reports unavailable.
+                .disabled(!engine.status.enabledSwitchIsOn && availability != .available)
                 .accessibilityIdentifier("cloudSyncToggle")
                 Button("立即同步") { Task { await model.syncCloudNow() } }
                     .disabled(engine.status == .off)

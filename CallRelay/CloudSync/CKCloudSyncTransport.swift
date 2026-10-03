@@ -366,8 +366,18 @@ final class CKCloudSyncTransport: CloudSyncTransport, @unchecked Sendable {
                     if let anchor = anchors[name],
                        let base = try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKRecord.self, from: anchor) {
                         // Optimistic update on the last-known server version.
-                        copyFields(from: record, into: base)
-                        records.append(base)
+                        // The copy is the production crash boundary: if the
+                        // field transfer raises (or fails), fall back to the
+                        // freshly built record. CloudKit then answers with a
+                        // serverRecordChanged conflict instead of an
+                        // unrecoverable SIGABRT, and the engine converges.
+                        if let failure = Self.copyFields(from: record, into: base) {
+                            AppLog.network.error(
+                                "cloud sync: field copy failed, pushing fresh record: \(failure, privacy: .public)")
+                            records.append(record)
+                        } else {
+                            records.append(base)
+                        }
                     } else {
                         records.append(record)
                     }
@@ -492,15 +502,49 @@ final class CKCloudSyncTransport: CloudSyncTransport, @unchecked Sendable {
     }
 
     /// Copy user-editable fields between records of the same type/ID, keeping
-    /// the base record's change tag/system fields.
-    private func copyFields(from source: CKRecord, into base: CKRecord) {
-        guard source.recordType == base.recordType else { return }
-        for key in source.allKeys() {
-            base[key] = source[key]
+    /// the base record's change tag/system fields. Returns nil on success or a
+    /// short sanitized failure note.
+    ///
+    /// Crash root cause (build 12, two TestFlight reports): `allKeys()` lists
+    /// the keys of BOTH stores — plaintext AND encrypted. `CKRecord` raises
+    /// `NSInvalidArgumentException` ("You cannot set the same key <k> on both
+    /// CKRecord and -[CKRecord encryptedValues]") when an encrypted field is
+    /// written through the plaintext subscript, and Swift cannot catch an
+    /// NSException: the naive `for key in source.allKeys() { base[key] =
+    /// source[key] }` therefore aborted the process on the FIRST anchored
+    /// push of a message/call (peer/body/state are encrypted). The stores are
+    /// partitioned FIRST: plaintext keys go through the subscript, encrypted
+    /// keys through `encryptedValues`, and each store's assignment loop runs
+    /// inside the ObjC exception boundary so a future schema/store mismatch
+    /// degrades to a reported failure instead of killing the app.
+    ///
+    /// Keys present only in the base (removed locally with a nil assignment)
+    /// are cleared as well, so a stale server value can never be resurrected.
+    static func copyFields(from source: CKRecord, into base: CKRecord) -> String? {
+        guard source.recordType == base.recordType else {
+            return "record type mismatch (\(source.recordType) vs \(base.recordType))"
         }
-        for key in source.encryptedValues.allKeys() {
-            base.encryptedValues[key] = source.encryptedValues[key]
-        }
+        let encryptedKeys = Set(source.encryptedValues.allKeys())
+        let plainKeys = Set(source.allKeys()).subtracting(encryptedKeys)
+        let baseEncryptedKeys = Set(base.encryptedValues.allKeys())
+        let basePlainKeys = Set(base.allKeys()).subtracting(baseEncryptedKeys)
+        var caught: NSString?
+        let plainOK = CKExceptionGuard.executeCatchingException({
+            for key in plainKeys { base[key] = source[key] }
+            for key in basePlainKeys.subtracting(plainKeys) { base[key] = nil }
+        }, error: &caught)
+        guard plainOK else { return caught as String? ?? "plaintext field copy failed" }
+        caught = nil
+        let encryptedOK = CKExceptionGuard.executeCatchingException({
+            for key in encryptedKeys {
+                base.encryptedValues[key] = source.encryptedValues[key]
+            }
+            for key in baseEncryptedKeys.subtracting(encryptedKeys) {
+                base.encryptedValues[key] = nil
+            }
+        }, error: &caught)
+        guard encryptedOK else { return caught as String? ?? "encrypted field copy failed" }
+        return nil
     }
 
     private func buildTombstoneRecord(_ tombstone: SyncTombstone, recordName: String) -> CKRecord {

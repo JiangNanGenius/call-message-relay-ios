@@ -156,6 +156,78 @@ final class WebSocketCallMediaLifecycleTests: XCTestCase {
         XCTAssertEqual(states.last, .closed)
     }
 
+    // MARK: Send backpressure (bounded uplink delay)
+
+    /// A stalled tunnel must not accumulate old voice. One frame is allowed
+    /// in flight; the queue holds at most 8 frames and drops the OLDEST, so
+    /// after a 30-frame burst the frames that eventually go out are the first
+    /// (already in flight) plus the newest eight — never a 600 ms+ backlog.
+    func testStalledSendQueueDropsOldVoiceAndKeepsNewestBounded() async throws {
+        let socket = FakeMediaSocket()
+        socket.scripted = [.message(.success(.string(#"{"type":"ready"}"#))), .park]
+        socket.holdSendCompletions = true
+        let graph = FakeAudioGraph()
+        let media = WebSocketCallMedia(socketFactory: { _, _ in socket }, audioGraph: graph)
+        try await media.connect(request: URLRequest(url: readyURL))
+
+        func frameData(_ sample: Int16) -> Data {
+            PCMUCodec.encode([Int16](repeating: sample, count: 160))
+        }
+        // G.711 quantizes, so pick 30 sample values whose encodings are
+        // provably distinct; each burst frame then has an identifiable marker.
+        var markerSamples: [Int16] = []
+        var usedEncodings = Set<Data>()
+        var candidate: Int16 = 1
+        while markerSamples.count < 30 {
+            if usedEncodings.insert(frameData(candidate)).inserted {
+                markerSamples.append(candidate)
+            }
+            candidate += 1
+        }
+        for sample in markerSamples {
+            graph.onMicFrame?([Int16](repeating: sample, count: 160))
+        }
+        // Let the drain task park on the first (held) send and the queue fill.
+        try await Task.sleep(nanoseconds: 60_000_000)
+        func binarySends() -> [(message: URLSessionWebSocketTask.Message, completion: (Error?) -> Void)] {
+            socket.sends.filter {
+                if case .data = $0.message { return true } else { return false }
+            }
+        }
+        XCTAssertEqual(binarySends().count, 1,
+                       "only one frame may be in flight while the tunnel is stalled")
+
+        // Release completions one at a time; each release pops the next frame.
+        var released = 0
+        for _ in 0..<40 {
+            let sends = binarySends()
+            if released < sends.count {
+                sends[released].completion(nil)
+                released += 1
+            } else {
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+        }
+        let sentFrames = binarySends().compactMap { entry -> Data? in
+            guard case .data(let data) = entry.message else { return nil }
+            return data
+        }
+        XCTAssertLessThanOrEqual(sentFrames.count, 9,
+                                 "1 in flight + 8 queued bounds the uplink backlog")
+        // Decode which burst marker each transmitted frame carries. Every
+        // frame that reaches the wire must be from the newest 8-marker window
+        // (positions 23...30): old voice from a stalled tunnel is dropped.
+        let allFrames = markerSamples.map(frameData)
+        let positions = sentFrames.compactMap { data in
+            allFrames.firstIndex(of: data).map { $0 + 1 }
+        }
+        XCTAssertEqual(positions.count, sentFrames.count, "all sent payloads are burst frames")
+        XCTAssertEqual(positions, Array(23...30),
+                       "only the newest bounded window may go out; got \(positions)")
+        XCTAssertTrue(media.connectedForTest())
+        media.close()
+    }
+
     // MARK: Timeout
 
     func testStalledHandshakeCancelsTheOwnedSocket() async {

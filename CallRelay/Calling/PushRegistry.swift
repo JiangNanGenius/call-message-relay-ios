@@ -7,7 +7,7 @@ import PushKit
 /// widely-supported completion-handler callback; only one is invoked by the OS.
 final class PushRegistry: NSObject {
     private var registry: PKPushRegistry?
-    var handler: VoIPPushHandling?
+    weak var handler: VoIPPushHandling?
     var onVoIPToken: ((Data) -> Void)?
     var onTokenInvalidated: (() -> Void)?
     /// Called when a VoIP push with `mustReport` cannot be reported as a real

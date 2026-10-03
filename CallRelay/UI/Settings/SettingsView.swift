@@ -35,7 +35,7 @@ struct SettingsView: View {
 
                 Section("iCloud 同步（可选）") {
                     NavigationLink {
-                        CloudSyncSettingsView()
+                        CloudSyncSettingsView(engine: model.cloudSync)
                     } label: {
                         Label("短信/通话/规则同步", systemImage: "icloud")
                     }

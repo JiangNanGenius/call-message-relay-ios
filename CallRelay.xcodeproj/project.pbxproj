@@ -29,6 +29,7 @@
 		272523DF263DF1874DCAA24C /* CloudSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED147AF8C4E97E5632501D8 /* CloudSyncEngine.swift */; };
 		28648ECAD5F9E81C3F29200C /* SpamFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 497ACBA1F83FDC8A12937941 /* SpamFilterTests.swift */; };
 		291E132B6EB6171E5376C8F4 /* WSMediaMeasure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D61291AD987C29064A67B6 /* WSMediaMeasure.swift */; };
+		2943039C45504ADBDCA8F9AF /* PushEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F34F1F3DE6D2F70406BE58 /* PushEnvironmentTests.swift */; };
 		313D53DF0BA818844554FC5C /* Wire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65399AE40AE5F9E959667CDC /* Wire.swift */; };
 		331FE9809BD4F511D5CCA1B9 /* UITestNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA797429A1513B21399994F /* UITestNavigation.swift */; };
 		34037B09212B5495522E8614 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 5D25999B1DF31DDC1F356766 /* Localizable.xcstrings */; };
@@ -123,6 +124,7 @@
 		CC91ED89889055CC01F274F6 /* SMSWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9C46BCF75DFE9B41A5BB1C /* SMSWireTests.swift */; };
 		CE25CA301281A67A1FE37CB0 /* ContactImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DAE0DE739F1CD0A614301B6 /* ContactImportView.swift */; };
 		CFB89DCAE6ECB0AAE5BDA5DB /* NumberListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BBFC039A979CA61D7614E3E /* NumberListTests.swift */; };
+		D1619AF668102C303A82B35F /* CloudSyncTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 561D052EE1D79B619393BD46 /* CloudSyncTransportTests.swift */; };
 		D3041E7A325EC6F17D7CABAC /* ContactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE8CEC9770D37E66F3A120C0 /* ContactsView.swift */; };
 		D5980D2EC4C6E4F3D71ADBD3 /* PairingRuntimeRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBA78DC07BCCADBDB5461650 /* PairingRuntimeRegressionTests.swift */; };
 		D85FEB560030C5B83C27C9B0 /* ContactDeduperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0730972643F1C299521240 /* ContactDeduperTests.swift */; };
@@ -193,6 +195,7 @@
 		218A231BA4DBC03932C09DB0 /* CallRelayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallRelayApp.swift; sourceTree = "<group>"; };
 		21AB65F255615EB0BC3D4051 /* ContactExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactExportView.swift; sourceTree = "<group>"; };
 		21E6407350D96D3CBB7BFDAC /* MessagesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagesView.swift; sourceTree = "<group>"; };
+		21F34F1F3DE6D2F70406BE58 /* PushEnvironmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushEnvironmentTests.swift; sourceTree = "<group>"; };
 		23D6C5702132450ACA6B62AE /* CallRelay-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "CallRelay-LICENSE.txt"; sourceTree = "<group>"; };
 		23DA30B41AAD7CD48A5D672E /* WebRTC-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "WebRTC-LICENSE.txt"; sourceTree = "<group>"; };
 		24A262CF8CFE3BC7D5383283 /* ComposeMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeMessageView.swift; sourceTree = "<group>"; };
@@ -226,6 +229,7 @@
 		534375935CF5486D02579EA6 /* CloudProvisioningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudProvisioningTests.swift; sourceTree = "<group>"; };
 		5414A860CAFDFACE2D75C624 /* LiveCallDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCallDriver.swift; sourceTree = "<group>"; };
 		55C457701ED5FCBFB8643F6F /* VoicemailPlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicemailPlaybackTests.swift; sourceTree = "<group>"; };
+		561D052EE1D79B619393BD46 /* CloudSyncTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncTransportTests.swift; sourceTree = "<group>"; };
 		570B277AE0721CACCDEF9076 /* CallState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallState.swift; sourceTree = "<group>"; };
 		571FDBDEE26D76EB7641E3D9 /* MediaReconnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaReconnectionTests.swift; sourceTree = "<group>"; };
 		5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireCompatibilityTests.swift; sourceTree = "<group>"; };
@@ -441,6 +445,7 @@
 				C42FABD134FDE80135B3512C /* CallRouteControllerTests.swift */,
 				534375935CF5486D02579EA6 /* CloudProvisioningTests.swift */,
 				2E8B1C2C4B334AD05FA70F48 /* CloudSyncTests.swift */,
+				561D052EE1D79B619393BD46 /* CloudSyncTransportTests.swift */,
 				FB0730972643F1C299521240 /* ContactDeduperTests.swift */,
 				E0CA426203C8DD5F8170FCEC /* ContactMergePlannerTests.swift */,
 				6FB4F36A44706DA364FB2943 /* ContactVCardExportTests.swift */,
@@ -460,6 +465,7 @@
 				2BBFC039A979CA61D7614E3E /* NumberListTests.swift */,
 				3BD3FDBD2F16E7C9812308CC /* OutgoingLineSelectionTests.swift */,
 				CBA78DC07BCCADBDB5461650 /* PairingRuntimeRegressionTests.swift */,
+				21F34F1F3DE6D2F70406BE58 /* PushEnvironmentTests.swift */,
 				E8565B8A812FB15C9ECC1DE7 /* RecoveryGrantTests.swift */,
 				91F1C73CB1F265028D221DB1 /* RetryPolicyTests.swift */,
 				6B1F80F83B232F1C87894F28 /* SafetyAndPolicyTests.swift */,
@@ -844,6 +850,7 @@
 				FF68B5365D5B30D6B39CF14B /* CallRouteControllerTests.swift in Sources */,
 				EA0FA814F23C47748E9E6979 /* CloudProvisioningTests.swift in Sources */,
 				5F25DBFB70ABD293F8042ED9 /* CloudSyncTests.swift in Sources */,
+				D1619AF668102C303A82B35F /* CloudSyncTransportTests.swift in Sources */,
 				D85FEB560030C5B83C27C9B0 /* ContactDeduperTests.swift in Sources */,
 				8B98599956D012D3945EB45E /* ContactMergePlannerTests.swift in Sources */,
 				CB6F3A7F5D3D25CD1E0B4BDD /* ContactVCardExportTests.swift in Sources */,
@@ -863,6 +870,7 @@
 				CFB89DCAE6ECB0AAE5BDA5DB /* NumberListTests.swift in Sources */,
 				C0B48EBFDE896CDB9167C4F7 /* OutgoingLineSelectionTests.swift in Sources */,
 				D5980D2EC4C6E4F3D71ADBD3 /* PairingRuntimeRegressionTests.swift in Sources */,
+				2943039C45504ADBDCA8F9AF /* PushEnvironmentTests.swift in Sources */,
 				B47D483AF10B690AEE0C9022 /* RecoveryGrantTests.swift in Sources */,
 				819CC34A3D0039785EE01FAB /* RetryPolicyTests.swift in Sources */,
 				77ADD4F4D122F26778117546 /* SMSHTTPClientTests.swift in Sources */,

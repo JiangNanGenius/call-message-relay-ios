@@ -126,6 +126,19 @@ final class CloudSyncEngine: ObservableObject {
             default: return false
             }
         }
+
+        /// Truth for the settings switch. `checking/ready/syncing/offline`
+        /// mean the owner's preference is ON (syncing may be waiting on the
+        /// network, which is NOT a silent flip-off). Terminal states where
+        /// enabling did not persist (missing account/entitlement) must show
+        /// OFF so the accompanying actionable note is visible instead of a
+        /// switch that snaps back with no explanation.
+        var enabledSwitchIsOn: Bool {
+            switch self {
+            case .off, .unavailable, .needsAccount: return false
+            case .checking, .ready, .syncing, .offline: return true
+            }
+        }
     }
 
     private let store: CloudSyncStore

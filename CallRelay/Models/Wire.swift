@@ -491,6 +491,66 @@ enum PushEnvironment: String, Encodable, Equatable, Sendable {
     case sandbox, production
 }
 
+/// Resolves the APNs environment a build must register with the gateway. The
+/// gateway routes each target to the sandbox or production APNs host and
+/// rejects a target whose environment disagrees with its configured broker,
+/// so a TestFlight/App Store build must never register `sandbox` (build 12
+/// hardcoded it, which breaks background VoIP delivery). The embedded
+/// provisioning profile is authoritative: `aps-environment` is `development`
+/// for debug signing and `production` for distribution/App Store profiles.
+enum PushEnvironmentResolver {
+    static func resolve(apsEnvironment: String?,
+                        fallback: PushEnvironment = .production) -> PushEnvironment {
+        switch apsEnvironment?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "development": return .sandbox
+        case "production": return .production
+        default: return fallback
+        }
+    }
+
+    static func resolve(profileData: Data?,
+                        fallback: PushEnvironment = .production) -> PushEnvironment {
+        guard let profileData,
+              let entitlements = CKCloudSyncTransport.profileEntitlements(profileData) else {
+            return fallback
+        }
+        return resolve(apsEnvironment: entitlements["aps-environment"] as? String,
+                       fallback: fallback)
+    }
+
+    /// Reads the running bundle's embedded profile. The `production` fallback
+    /// is deliberate: shipping builds always embed a distribution profile
+    /// (or none at all on App Store re-signs), and an unsigned/simulator
+    /// build never receives real pushes.
+    ///
+    /// TestFlight/App Store installs carry a store receipt and are always
+    /// production-signed by Apple, even though a locally built archive embeds
+    /// the DEVELOPMENT profile (`aps-environment = development`) until it is
+    /// uploaded and re-signed. A distribution receipt therefore never
+    /// downgrades to sandbox; debug/Xcode installs without a receipt still
+    /// follow the embedded development profile.
+    static func live(bundle: Bundle = .main,
+                     fallback: PushEnvironment = .production,
+                     distributionReceipt: Bool? = nil) -> PushEnvironment {
+        let url = bundle.url(forResource: "embedded", withExtension: "mobileprovision")
+            ?? Optional(bundle.bundleURL.appendingPathComponent("embedded.mobileprovision"))
+        let data = url.flatMap { try? Data(contentsOf: $0) }
+        let resolved = resolve(profileData: data, fallback: fallback)
+        let isDistribution = distributionReceipt ?? hasDistributionReceipt(bundle)
+        if isDistribution, resolved == .sandbox { return .production }
+        return resolved
+    }
+
+    /// True when the bundle has a real store receipt at the sandbox endpoint:
+    /// TestFlight and App Store distribution installs. A debug install
+    /// without a receipt file is not classified as distribution.
+    static func hasDistributionReceipt(_ bundle: Bundle = .main) -> Bool {
+        guard let url = bundle.appStoreReceiptURL,
+              FileManager.default.fileExists(atPath: url.path) else { return false }
+        return url.lastPathComponent == "sandboxReceipt"
+    }
+}
+
 struct PushRegistration: Encodable, Equatable {
     let apnsToken: String
     let voipToken: String

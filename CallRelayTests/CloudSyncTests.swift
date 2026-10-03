@@ -47,6 +47,59 @@ final class CloudSyncEngineTests: XCTestCase {
         engine.enqueueMessage(makeMessage())
     }
 
+    // MARK: Settings switch truth (build-12 "iCloud switch flips off" fix)
+
+    /// The switch truth must track the engine the settings screen observes:
+    /// ON across checking/ready/syncing/offline, OFF (with an actionable
+    /// status note) for terminal enable failures, never a silent snap-back.
+    func testSwitchStateTracksEngineStatusAcrossEnableAndDisable() async {
+        let (engine, store, _) = makeEngine()
+        XCTAssertFalse(engine.status.enabledSwitchIsOn, "off before enable")
+
+        await engine.enable()
+        XCTAssertEqual(engine.status, .ready)
+        XCTAssertTrue(engine.status.enabledSwitchIsOn)
+        XCTAssertTrue(store.snapshot.enabled, "a proven enable persists")
+
+        engine.disable()
+        XCTAssertEqual(engine.status, .off)
+        XCTAssertFalse(engine.status.enabledSwitchIsOn)
+        XCTAssertFalse(store.snapshot.enabled)
+    }
+
+    func testFailedEnableShowsOffWithActionableNoteAndDoesNotPersist() async {
+        let fake = ScriptedCloudTransport()
+        fake.identityMode = .none
+        let (engine, store, _) = makeEngine(transport: fake)
+        await engine.enable()
+        XCTAssertEqual(engine.status, .needsAccount)
+        XCTAssertFalse(engine.status.enabledSwitchIsOn,
+                       "a failed enable must not render as an ON switch that snaps back")
+        XCTAssertNotNil(engine.availabilityNote, "the failure must be visible to the owner")
+        XCTAssertFalse(store.snapshot.enabled, "no proven account: preference is not persisted")
+
+        let unavailable = ScriptedCloudTransport()
+        unavailable.availabilityResult = .unavailable("no entitlement")
+        let (engine2, store2, _) = makeEngine(transport: unavailable)
+        await engine2.enable()
+        XCTAssertFalse(engine2.status.enabledSwitchIsOn)
+        XCTAssertNotNil(engine2.availabilityNote)
+        XCTAssertFalse(store2.snapshot.enabled)
+    }
+
+    /// A transient outage keeps the owner's preference ON (offline retries),
+    /// and the switch maps that state to ON rather than flipping itself off.
+    func testTransientEnableKeepsSwitchOnAndRetries() async {
+        let fake = ScriptedCloudTransport()
+        fake.availabilityResult = .transient
+        let (engine, store, _) = makeEngine(transport: fake)
+        await engine.enable()
+        XCTAssertEqual(engine.status, .offline)
+        XCTAssertTrue(engine.status.enabledSwitchIsOn)
+        XCTAssertTrue(store.snapshot.enabled, "transient keep-preference-on path")
+        engine.disable()
+    }
+
     // MARK: #1 dotted logical ids survive record naming
 
     func testDottedLogicalIDsMapToPayloadAndRecordName() async {
