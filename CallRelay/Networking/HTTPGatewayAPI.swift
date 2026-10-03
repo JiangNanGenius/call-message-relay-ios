@@ -438,7 +438,9 @@ final class HTTPGatewayAPI: GatewayAPI {
     }
 
     // MARK: Optional Bark bridge (v2)
+    // Part of the Bark/Shortcuts edition only (BARK_BRIDGE).
 
+#if BARK_BRIDGE
     func barkSettings() async throws -> BarkBridgeSettings {
         guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
         let deviceId = try barkDeviceId()
@@ -464,6 +466,7 @@ final class HTTPGatewayAPI: GatewayAPI {
         guard let deviceId = tokens.tokens()?.deviceId else { throw APIError.noCredentials }
         return deviceId
     }
+#endif
 
     // MARK: SMS
 

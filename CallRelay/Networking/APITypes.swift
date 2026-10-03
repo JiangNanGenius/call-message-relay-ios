@@ -150,6 +150,8 @@ protocol GatewayAPI: Sendable {
     func enroll(_ request: EnrollmentRequest) async throws -> EnrollmentResponse
 
     // MARK: Optional Bark bridge (v2); the app works without ever calling these
+    // Part of the Bark/Shortcuts edition only (BARK_BRIDGE).
+#if BARK_BRIDGE
     /// The device's redacted opt-in settings. Never contains the device key.
     func barkSettings() async throws -> BarkBridgeSettings
     /// Saves opt-in settings; the response is the same redacted view.
@@ -157,6 +159,7 @@ protocol GatewayAPI: Sendable {
     func updateBarkSettings(_ update: BarkBridgeSettingsUpdate) async throws -> BarkBridgeSettings
     /// Sends one rate-limited test notification through the stored server.
     func sendBarkTestNotification() async throws
+#endif
 }
 
 /// Newest-first page of one thread plus the gateway's X-CellBridge-Has-More
@@ -544,6 +547,7 @@ extension GatewayAPI {
     }
 
     // Optional Bark bridge: demo/v1 bindings simply keep the feature off.
+#if BARK_BRIDGE
     func barkSettings() async throws -> BarkBridgeSettings {
         throw APIError.notReady("当前配对不是统一网关，无法使用可选 Bark 通知。")
     }
@@ -556,4 +560,5 @@ extension GatewayAPI {
     func sendBarkTestNotification() async throws {
         throw APIError.notReady("当前配对不是统一网关，无法使用可选 Bark 通知。")
     }
+#endif
 }

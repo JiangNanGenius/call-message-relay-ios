@@ -1,3 +1,7 @@
+// This file belongs to the optional App Store Bark/Shortcuts edition.
+// It is compiled only with the BARK_BRIDGE build configuration so the
+// native Feather artifact has no Bark UI, route or AppIntent registration.
+#if BARK_BRIDGE
 import AppIntents
 
 /// “Check incoming call”: an inline (non-opening) Shortcuts/Siri action that
@@ -6,9 +10,12 @@ import AppIntents
 /// app's stored pairing (never with anything from the notification), ignores
 /// ended/foreign/duplicate calls and never answers automatically.
 struct CheckIncomingCallIntent: AppIntent {
-    static let title: LocalizedStringResource = "检查来电"
+    static let title: LocalizedStringResource = LocalizedStringResource("检查来电", table: "BarkBridge")
     static let description = IntentDescription(
-        "通过已配对的网关检查是否有正在响铃的来电，并显示系统来电界面；不会自动接听。"
+        LocalizedStringResource(
+            "通过已配对的网关检查是否有正在响铃的来电，并显示系统来电界面；不会自动接听。",
+            table: "BarkBridge"
+        )
     )
     static let openAppWhenRun = false
 
@@ -36,3 +43,4 @@ struct CallRelayAppShortcuts: AppShortcutsProvider {
         )
     }
 }
+#endif

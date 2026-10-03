@@ -1,3 +1,7 @@
+// This file belongs to the optional App Store Bark/Shortcuts edition.
+// It is compiled only with the BARK_BRIDGE build configuration so the
+// native Feather artifact has no Bark UI, route or AppIntent registration.
+#if BARK_BRIDGE
 import Foundation
 
 /// Optional Bark notification bridge (gateway v2). The feature is strictly
@@ -92,13 +96,13 @@ struct BarkBridgeDraft: Equatable {
     var problem: String? {
         let server = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if enabled && server.isEmpty {
-            return String(localized: "启用 Bark 通知需要填写服务器地址。")
+            return BarkL10n.text("启用 Bark 通知需要填写服务器地址。")
         }
         if !server.isEmpty, let issue = BarkBridgeValidation.serverURLProblem(server, allowPrivate: allowPrivate) {
             return issue
         }
         if enabled && !keyConfigured && deviceKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return String(localized: "启用 Bark 通知需要填写设备密钥。")
+            return BarkL10n.text("启用 Bark 通知需要填写设备密钥。")
         }
         if let issue = BarkBridgeValidation.keyProblem(deviceKey) {
             return issue
@@ -129,19 +133,19 @@ enum BarkBridgeValidation {
     static func serverURLProblem(_ raw: String, allowPrivate: Bool) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count <= 512, let url = URL(string: trimmed) else {
-            return String(localized: "服务器地址不是有效网址。")
+            return BarkL10n.text("服务器地址不是有效网址。")
         }
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
-            return String(localized: "服务器地址必须以 http:// 或 https:// 开头。")
+            return BarkL10n.text("服务器地址必须以 http:// 或 https:// 开头。")
         }
         if url.user != nil {
-            return String(localized: "服务器地址不能包含账号或密码。")
+            return BarkL10n.text("服务器地址不能包含账号或密码。")
         }
         if url.query != nil || url.fragment != nil {
-            return String(localized: "服务器地址不能包含查询参数或片段。")
+            return BarkL10n.text("服务器地址不能包含查询参数或片段。")
         }
         guard let host = url.host, !host.isEmpty else {
-            return String(localized: "服务器地址缺少主机名。")
+            return BarkL10n.text("服务器地址缺少主机名。")
         }
         if scheme == "http" {
             // Clear-text is only for a deliberate LAN self-host. A public IP
@@ -149,13 +153,13 @@ enum BarkBridgeValidation {
             // checked by the gateway against its resolved addresses at dial
             // time.
             if !allowPrivate {
-                return String(localized: "服务器地址使用 HTTP 时必须开启“局域网自建服务器”。")
+                return BarkL10n.text("服务器地址使用 HTTP 时必须开启“局域网自建服务器”。")
             }
             if !isPrivateHost(host), isIPLiteral(host) {
-                return String(localized: "HTTP 只允许连接局域网或本机地址。")
+                return BarkL10n.text("HTTP 只允许连接局域网或本机地址。")
             }
         } else if !allowPrivate, isPrivateHost(host) {
-            return String(localized: "该地址在局域网或本机；请开启“局域网自建服务器”。")
+            return BarkL10n.text("该地址在局域网或本机；请开启“局域网自建服务器”。")
         }
         return nil
     }
@@ -166,11 +170,11 @@ enum BarkBridgeValidation {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return nil }
         if trimmed.count > 256 {
-            return String(localized: "设备密钥过长。")
+            return BarkL10n.text("设备密钥过长。")
         }
         for scalar in trimmed.unicodeScalars {
             if scalar.value < 0x21 || scalar.value > 0x7e {
-                return String(localized: "设备密钥只能是可见 ASCII 字符，不能包含空格或换行。")
+                return BarkL10n.text("设备密钥只能是可见 ASCII 字符，不能包含空格或换行。")
             }
         }
         return nil
@@ -208,3 +212,4 @@ enum BarkBridgeValidation {
         return parts.count == 4 && parts.allSatisfy { (0...255).contains($0) }
     }
 }
+#endif

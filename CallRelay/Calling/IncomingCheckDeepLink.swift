@@ -1,3 +1,7 @@
+// This file belongs to the optional App Store Bark/Shortcuts edition.
+// It is compiled only with the BARK_BRIDGE build configuration so the
+// native Feather artifact has no Bark UI, route or AppIntent registration.
+#if BARK_BRIDGE
 import Foundation
 
 /// The static, credential-free deeplink used by the optional Bark
@@ -23,3 +27,4 @@ enum IncomingCheckDeepLink {
         return host.isEmpty && (path == "incoming" || path == "check-incoming")
     }
 }
+#endif
