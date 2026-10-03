@@ -315,7 +315,10 @@ final class AppModel: ObservableObject {
                 }
             }
             push.onTokenInvalidated = { [weak self] in
-                Task { @MainActor in self?.voipTokenHex = nil }
+                Task { @MainActor in
+                    self?.voipTokenHex = nil
+                    DiagnosticsStore.shared.log("push", "voip token invalidated")
+                }
             }
             pushRegistry = push
             push.start()
@@ -848,7 +851,10 @@ final class AppModel: ObservableObject {
                 }
             }
             push.onTokenInvalidated = { [weak self] in
-                Task { @MainActor in self?.voipTokenHex = nil }
+                Task { @MainActor in
+                    self?.voipTokenHex = nil
+                    DiagnosticsStore.shared.log("push", "voip token invalidated")
+                }
             }
             pushRegistry = push
             push.start()
@@ -906,9 +912,12 @@ final class AppModel: ObservableObject {
         eventStream = nil
         // Keep the PushKit registry running for the process lifetime: a VoIP
         // push arriving while unpaired must still reach a delegate (PushKit
-        // compliance), and the next pairing re-registers the same token.
-        // Only the gateway-bound token is cleared here.
-        voipTokenHex = nil
+        // compliance). The VoIP token is DEVICE-scoped, not gateway-scoped:
+        // it must survive unpair so the next pairing can re-upload it via
+        // registerPushIfReady() — PushKit only re-fires didUpdate on token
+        // CHANGE, so clearing it here would leave the gateway without a voip
+        // token until the next process launch (silent background-ring loss
+        // after any re-pair without restart).
         driver?.reset()
         callKit?.invalidate()
         callKit = nil
@@ -1696,6 +1705,17 @@ final class AppModel: ObservableObject {
         await refreshAuthorizedLines()
     }
 
+    #if DEBUG
+    /// Tests: simulate the PushKit token callback (the real registry never
+    /// runs in a test host) and read back the retained token. Locks the
+    /// build-15 contract that the device-scoped voip token survives unpair.
+    func testingSimulateVoIPToken(_ hex: String) {
+        voipTokenHex = hex
+    }
+
+    var testingVoIPTokenHex: String? { voipTokenHex }
+    #endif
+
     /// Drives the private event-auth recovery path in tests.
     func testingRecoverEventAuthorization() async {
         await recoverEventAuthorization()
@@ -2185,6 +2205,7 @@ final class AppModel: ObservableObject {
     }
 
     func reportPlaceholderCall() async {
+        DiagnosticsStore.shared.log("push", "placeholder reported")
         let manager = callKit ?? Self.makeSystemCallManager()
         if callKit == nil { callKit = manager }
         let uuid = UUID()
@@ -2253,9 +2274,15 @@ extension AppModel: VoIPPushHandling {
         switch decision {
         case .alreadyReported:
             // A system call already exists; fulfill without a new report.
+            DiagnosticsStore.shared.log("push",
+                "alreadyReported call=\(Self.logPrefix(payload.callId))")
             return
 
         case .reportIncoming(let target):
+            DiagnosticsStore.shared.log("push",
+                "reportIncoming call=\(Self.logPrefix(target.gatewayCallId)) "
+                + "age=\(Int(Date().timeIntervalSince(payload.issuedDate)))s "
+                + "mustReport=\(mustReport)")
             reservedCallIds.insert(target.gatewayCallId)
             // Cold start: a VoIP push can be delivered before the async
             // gateway-identity verification has produced the live driver.
@@ -2296,6 +2323,10 @@ extension AppModel: VoIPPushHandling {
                 if mustReport { await reportPlaceholderCall() }
                 return
             }
+            // "report ok" only means reportNewIncomingCall returned without
+            // error; it does NOT by itself prove the system UI rang.
+            DiagnosticsStore.shared.log("push",
+                "report ok call=\(Self.logPrefix(target.gatewayCallId))")
             reconcileIncoming(target.gatewayCallId, generation: voipGeneration, api: api)
             await applyScreening(handle: target.handle, gatewayId: target.gatewayCallId,
                                  generation: voipGeneration)
@@ -2304,6 +2335,10 @@ extension AppModel: VoIPPushHandling {
             // Not a presentable call for this gateway/session. If the OS
             // mandates a report, show and immediately end a placeholder rather
             // than risk a fake/foreign live call.
+            DiagnosticsStore.shared.log("push",
+                "\(decision == .staleReconcile ? "stale" : "foreignGateway") "
+                + "call=\(Self.logPrefix(payload.callId)) "
+                + "age=\(Int(Date().timeIntervalSince(payload.issuedDate)))s")
             if mustReport {
                 await reportPlaceholderCall()
             }
@@ -2311,6 +2346,12 @@ extension AppModel: VoIPPushHandling {
                 reconcileIncoming(payload.callId, generation: voipGeneration, api: api)
             }
         }
+    }
+
+    /// Short, privacy-safe call identifier for diagnostics (matches the
+    /// route-log prefix convention); never the full gateway id.
+    static func logPrefix(_ callId: String) -> String {
+        String(callId.prefix(8))
     }
 
     /// Bounded cold-start bridge to the live driver created after the async

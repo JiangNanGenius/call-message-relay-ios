@@ -79,6 +79,12 @@ extension PushRegistry: PKPushRegistryDelegate {
     private func receive(payload: PKPushPayload, mustReport: Bool, completion: @escaping () -> Void) {
         guard payload.type == .voIP else { completion(); return }
         Task { @MainActor in
+            // Raw receipt evidence BEFORE parsing/deciding: a background
+            // "never rang" report hinges on knowing whether APNs delivery
+            // reached PushKit at all. Keys count and push type only — never
+            // values.
+            DiagnosticsStore.shared.log("push",
+                "voip push received keys=\(payload.dictionaryPayload.count) mustReport=\(mustReport)")
             switch VoIPPushPayloadParser.parse(payload.dictionaryPayload) {
             case .success(let value):
                 if let handler {

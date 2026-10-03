@@ -377,10 +377,21 @@ final class AudioSessionBridge {
 
     func didActivate(_ session: AVAudioSession) {
         lock.lock(); activatedSession = session; lock.unlock()
+        let summary = "session activated mode=\(session.mode.rawValue) "
+            + "rate=\(Int(session.sampleRate)) "
+            + "out=\(Self.outputPortSummary(session))"
+        Task { @MainActor in DiagnosticsStore.shared.log("audio", summary) }
         onActivate?(session)
     }
     func didDeactivate(_ session: AVAudioSession) {
         lock.lock(); activatedSession = nil; lock.unlock()
+        Task { @MainActor in DiagnosticsStore.shared.log("audio", "session deactivated") }
         onDeactivate?(session)
+    }
+
+    /// Port types only (receiver/speaker/bluetooth…), never device names.
+    static func outputPortSummary(_ session: AVAudioSession) -> String {
+        let ports = session.currentRoute.outputs.map(\.portType.rawValue)
+        return ports.isEmpty ? "none" : ports.joined(separator: "+")
     }
 }

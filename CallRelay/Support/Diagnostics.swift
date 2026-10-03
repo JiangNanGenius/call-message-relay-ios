@@ -18,6 +18,23 @@ final class DiagnosticsCensus: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Accumulates a signed sample (e.g. per-frame audio level sums) so hot
+    /// paths never read-modify-write under a second lock.
+    func add(_ name: String, _ value: Int) {
+        lock.lock()
+        values[name, default: 0] += value
+        lock.unlock()
+    }
+
+    /// Keeps the maximum observed value (e.g. worst tick interval, peak level).
+    func maximize(_ name: String, _ value: Int) {
+        lock.lock()
+        if value > values[name, default: Int.min] {
+            values[name] = value
+        }
+        lock.unlock()
+    }
+
     func snapshot() -> [String: Int] {
         lock.lock()
         let copy = values

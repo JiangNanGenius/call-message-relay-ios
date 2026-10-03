@@ -55,6 +55,7 @@
 		4556F5DAE1E07024772EAF7E /* MediaTransportSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA719A7BAF14F2DBF8FAC1FB /* MediaTransportSupportTests.swift */; };
 		4592DF5E9ED226766C5FA05F /* SpamPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 790DB59B2E1C6BDD355E800C /* SpamPolicy.swift */; };
 		46A808F6B26F17DBD5207739 /* DiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0B4094E0617F44383F724F /* DiagnosticsTests.swift */; };
+		4AB8C12A4AEB90CCE72EC62B /* AudioDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E3BBBAEB469D6E419EF75B /* AudioDiagnosticsTests.swift */; };
 		4AE3B9EE984B3B00F4F90FFC /* SafetyAndPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B1F80F83B232F1C87894F28 /* SafetyAndPolicyTests.swift */; };
 		4EECE8C7467CAB323FB1F16D /* APITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B24B1137456D9029D5D036 /* APITypes.swift */; };
 		4F930407CD97FB4D07C8AD58 /* DemoCallDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A772A3DADD60E9829B43C7E /* DemoCallDriver.swift */; };
@@ -341,6 +342,7 @@
 		E4C8EE3BF4C8729A36FD9B58 /* CallIntentDonor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallIntentDonor.swift; sourceTree = "<group>"; };
 		E5252BE7A5377965154F12A7 /* DemoConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoConstants.swift; sourceTree = "<group>"; };
 		E5BE4A948288B607404EDEAA /* WSCapturePipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSCapturePipeline.swift; sourceTree = "<group>"; };
+		E5E3BBBAEB469D6E419EF75B /* AudioDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioDiagnosticsTests.swift; sourceTree = "<group>"; };
 		E70900E433D0A77B08A1CF00 /* LineDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LineDetailView.swift; sourceTree = "<group>"; };
 		E73C07502BB800A12322596B /* OutgoingLineMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutgoingLineMenu.swift; sourceTree = "<group>"; };
 		E8565B8A812FB15C9ECC1DE7 /* RecoveryGrantTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryGrantTests.swift; sourceTree = "<group>"; };
@@ -474,6 +476,7 @@
 		40197F870E308E6A91FCF750 /* CallRelayTests */ = {
 			isa = PBXGroup;
 			children = (
+				E5E3BBBAEB469D6E419EF75B /* AudioDiagnosticsTests.swift */,
 				494D8DBC562A6C43F76EDC5F /* BarkBridgeTests.swift */,
 				DF1712358EAF8763B2FDF8D4 /* CallHandleTests.swift */,
 				30D4369B7315FE5C470E2A51 /* CallKitConfigurationTests.swift */,
@@ -889,6 +892,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4AB8C12A4AEB90CCE72EC62B /* AudioDiagnosticsTests.swift in Sources */,
 				1D60D48FACDDA5C3FCE84124 /* BarkBridgeTests.swift in Sources */,
 				9D818860AD8A8EF85D114463 /* CallHandleTests.swift in Sources */,
 				EE1CC4AB444AAFF1529C24F6 /* CallKitConfigurationTests.swift in Sources */,
@@ -1125,7 +1129,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1141,7 +1145,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.7;
+				MARKETING_VERSION = 0.3.8;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1353,7 +1357,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1375,7 +1379,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.7;
+				MARKETING_VERSION = 0.3.8;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1446,7 +1450,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1468,7 +1472,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.7;
+				MARKETING_VERSION = 0.3.8;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1535,7 +1539,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1551,7 +1555,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.7;
+				MARKETING_VERSION = 0.3.8;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";

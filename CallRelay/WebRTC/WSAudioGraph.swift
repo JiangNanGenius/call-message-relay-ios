@@ -52,10 +52,14 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     @discardableResult
     func startIfNeeded() -> Bool {
         guard !running else { return true }
+        var captureRate = 0
+        var playbackRate = 0
         do {
             let setup = try audioSurface.prepare()
             engine = setup.engine
             player = setup.player
+            captureRate = Int(setup.captureSourceFormat.sampleRate)
+            playbackRate = Int(setup.playbackFormat.sampleRate)
             let pipeline = WSCapturePipeline(sourceFormat: setup.captureSourceFormat)
             capture = pipeline
             let sink = PlayerNodeSink(player: setup.player)
@@ -73,6 +77,8 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         }
         running = true
         DiagnosticsCensus.shared.increment("audio.graphStart")
+        DiagnosticsStore.shared.log("audio",
+            "graph start capRate=\(captureRate) playRate=\(playbackRate)")
         playback.start()
         armFeedTimer()
         return true
@@ -101,7 +107,11 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     func stop() {
         guard running else { return }
         running = false
+        lastTickUptime = nil
         DiagnosticsCensus.shared.increment("audio.graphStop")
+        DiagnosticsStore.shared.log("audio",
+            "graph stop capDropped=\(capture?.droppedSamples ?? 0) "
+            + "playDropped=\(playback.droppedFrames) inFlight=\(playback.framesInFlight)")
 
         feedTimer?.cancel()
         feedTimer = nil
@@ -172,8 +182,26 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
 
     private func tick() {
         guard running else { return }
+        recordCadence()
         emitMicFrame()
         playback.pump()
+    }
+
+    /// Feed-cadence evidence: late ticks starve BOTH the mic feed and the
+    /// playback scheduler, so the worst interval is diagnosed, never guessed.
+    /// Threshold 26 ms tolerates normal timer jitter (>20 ms + hop).
+    /// Monotonic uptime (not Date) so clock changes cannot corrupt it.
+    private var lastTickUptime: TimeInterval?
+    private func recordCadence() {
+        let now = ProcessInfo.processInfo.systemUptime
+        if let lastTickUptime {
+            let intervalMs = Int((now - lastTickUptime) * 1000)
+            DiagnosticsCensus.shared.maximize("audio.tickMsMax", intervalMs)
+            if intervalMs > 26 {
+                DiagnosticsCensus.shared.increment("audio.tickLate")
+            }
+        }
+        lastTickUptime = now
     }
 
     private func emitMicFrame() {
@@ -185,7 +213,33 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         }
         // Aggregate counters only — never a per-frame log line.
         DiagnosticsCensus.shared.increment("audio.micFrames")
+        Self.recordLevel(frame, absSumKey: "audio.micAbsSum",
+                         silentKey: "audio.micSilentFrames", peakKey: "audio.micPeakMax")
         onMicFrame?(frame)
+    }
+
+    /// Aggregate level evidence for one 160-sample frame: running |sample|
+    /// sum (normalized mean level = sum / (32767 × frames × 160)),
+    /// near-silence frame count and peak. Answers "which direction carried
+    /// signal" without recording audio. A frame counts as silent when its
+    /// mean |sample| stays under ~0.6 % of full scale (phone speech sits
+    /// well above).
+    static func recordLevel(_ frame: [Int16], absSumKey: String,
+                            silentKey: String, peakKey: String,
+                            silentThreshold: Int = 200) {
+        var absSum = 0
+        var peak = 0
+        for sample in frame {
+            let magnitude = abs(Int(sample))
+            absSum += magnitude
+            if magnitude > peak { peak = magnitude }
+        }
+        let census = DiagnosticsCensus.shared
+        census.add(absSumKey, absSum)
+        census.maximize(peakKey, peak)
+        if absSum < frame.count * silentThreshold {
+            census.increment(silentKey)
+        }
     }
 
     // MARK: Playback
@@ -195,6 +249,8 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     func pushPlayback(_ frame: [Int16]) {
         guard running else { return }
         DiagnosticsCensus.shared.increment("audio.playbackFrames")
+        Self.recordLevel(frame, absSumKey: "audio.playAbsSum",
+                         silentKey: "audio.playSilentFrames", peakKey: "audio.playPeakMax")
         playback.enqueue(frame)
     }
 

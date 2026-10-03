@@ -28,7 +28,7 @@ configs:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.7"
+    MARKETING_VERSION: "0.3.8"
     # v0.3.5 public build 9 stays immutable. Build 12 (0.3.5) was the
     # TestFlight CloudKit/WSS/LCK repair; build 13 ships the build-12 crash,
     # iCloud, push-environment and audio fixes in BOTH editions and adds the
@@ -36,8 +36,12 @@ settings:
     # (0.3.7) repairs silent relay audio (CallKit activation now reaches the
     # WSS session), stuck direct-route switching (cancellable, bounded
     # pre-commit attempts; stale attempts cannot overwrite a newer selection)
-    # and adds the exportable redacted diagnostics log.
-    CURRENT_PROJECT_VERSION: "14"
+    # and adds the exportable redacted diagnostics log. Build 15 (0.3.8) pairs
+    # with the gateway audio repair (worker ALSA capture now paced at the 20 ms
+    # voice frame, fixing the choppy/silent downlink) and deepens diagnostics:
+    # per-direction audio level aggregates, feed-cadence and route evidence,
+    # and the PushKit receive→decision→report lifecycle.
+    CURRENT_PROJECT_VERSION: "15"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.

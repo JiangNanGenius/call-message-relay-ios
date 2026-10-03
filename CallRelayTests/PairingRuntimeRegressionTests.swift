@@ -492,3 +492,26 @@ final class GhostRingReconciliationTests: XCTestCase {
                       "a ring that just started is never a ghost")
     }
 }
+
+// MARK: - VoIP token retention across unpair (build 15)
+
+@MainActor
+final class VoIPTokenRetentionTests: XCTestCase {
+    /// The PushKit voip token is DEVICE-scoped. `teardownLive` used to clear
+    /// it, but PushKit only re-fires didUpdate on token CHANGE — after an
+    /// unpair/re-pair without process restart the gateway would never receive
+    /// the voip token again and background ringing silently stayed dead.
+    func testUnpairRetainsVoIPTokenForRepairReRegistration() {
+        let model = AppModel(
+            identities: IdentityStore(keychain: DictionaryKeychain()),
+            tokenStore: TokenStore(keychain: DictionaryKeychain()),
+            bindingStore: BindingStore(storeURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("voip-retention-\(UUID().uuidString).json")),
+            defaults: UserDefaults(suiteName: UUID().uuidString)!
+        )
+        model.testingSimulateVoIPToken("a1b2c3d4e5f6")
+        model.unpair()
+        XCTAssertEqual(model.testingVoIPTokenHex, "a1b2c3d4e5f6",
+                       "the device-scoped voip token must survive unpair so re-pair can re-upload it")
+    }
+}
