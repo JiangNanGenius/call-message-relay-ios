@@ -70,7 +70,15 @@ final class CallRouteControllerTests: XCTestCase {
         var isConference = false
         var isMuted = false
         var probes: [FakeDirectProbe] = []
+        var promotedDirectPeers: [FakeDirectProbe] = []
+        /// Every promoteStagedRelay invocation, including nil-peer recovery.
+        var promoteStagedCalls = 0
+        var promoteStagedNilPeer = 0
         var controller: CallRouteController!
+        var advisorFactory: () -> MediaRouteAdvisor = {
+            MediaRouteAdvisor(minimumSamples: 4, improvementThreshold: 0.2,
+                              minimumDwell: 0, maximumPromotions: 1, maximumFallbacks: 1)
+        }
         var cadence: CallRouteController.Cadence {
             .init(autoInterval: 0.05, monitorInterval: 0.05,
                   candidateTimeout: 0.3, connectPoll: 0.02,
@@ -84,9 +92,20 @@ final class CallRouteControllerTests: XCTestCase {
                 isMuted: { [weak self] in self?.isMuted ?? false },
                 isConference: { [weak self] in self?.isConference ?? false },
                 retireRelay: { [weak self] in self?.retiredRelay += 1 },
-                attachRelay: { [weak self] in
+                stageRelay: { [weak self] in
                     self?.attachRelayCalls += 1
                     return self?.attachRelayResult ?? false
+                },
+                promoteStagedRelay: { [weak self] peer in
+                    self?.promoteStagedCalls += 1
+                    if let p = peer as? FakeDirectProbe {
+                        self?.promotedDirectPeers.append(p)
+                        // Production coordinator closes the peer + starts the
+                        // staged relay graph here.
+                        p.closeTransport()
+                    } else {
+                        self?.promoteStagedNilPeer += 1
+                    }
                 },
                 fetchTransport: { [weak self] in
                     self?.transportFetchCount += 1
@@ -96,25 +115,17 @@ final class CallRouteControllerTests: XCTestCase {
                 onState: { [weak self] in self?.states.append($0) },
                 onNotice: { [weak self] in self?.notices.append(($0, $1)) }
             )
-            if let advisor {
-                controller = CallRouteController(
-                    callId: "c1", initialMode: mode, api: api, ice: Harness.ice,
-                    advisor: advisor, callbacks: cb,
-                    probeFactory: { [weak self] in
-                        let p = FakeDirectProbe()
-                        self?.probes.append(p)
-                        return p
-                    }, cadence: cadence)
-            } else {
-                controller = CallRouteController(
-                    callId: "c1", initialMode: mode, api: api, ice: Harness.ice,
-                    callbacks: cb,
-                    probeFactory: { [weak self] in
-                        let p = FakeDirectProbe()
-                        self?.probes.append(p)
-                        return p
-                    }, cadence: cadence)
-            }
+            controller = CallRouteController(
+                callId: "c1", initialMode: mode, api: api, ice: Harness.ice,
+                callbacks: cb,
+                probeFactory: { [weak self] in
+                    let p = FakeDirectProbe()
+                    self?.probes.append(p)
+                    return p
+                }, cadence: cadence,
+                advisorFactory: { [weak self] in
+                    advisor ?? (self?.advisorFactory() ?? MediaRouteAdvisor())
+                })
         }
     }
 
@@ -202,6 +213,9 @@ final class CallRouteControllerTests: XCTestCase {
         h.controller.relayDidConnect(wsMedia: nil)
         await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
         await pump(0.2)
+        // Keep the peer healthy while switching policy: auto must not close
+        // a live direct transport just because the policy changed.
+        h.probes.forEach { $0.samplesToReturn = Array(repeating: 0.03, count: 6) }
         let activePeer = h.probes.first
         XCTAssertEqual(h.controller.routeState.active, .direct)
 
@@ -324,5 +338,222 @@ final class CallRouteControllerTests: XCTestCase {
         h.api.resumeCommit(with: .success(()))
         await pump(0.3)
         XCTAssertEqual(h.probes.first?.adoptCount, 0, "a commit resolving after teardown cannot adopt")
+    }
+
+    // MARK: Commit in flight: EOF suppression + queued mode change
+
+    func testRelayEOFDuringCommitIsSuppressed() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.api.armCommitWait()
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.api.commitCalls.count == 1 }
+        // The server may close the OLD relay BEFORE the commit HTTP returns.
+        XCTAssertTrue(h.controller.consumeRelayState(.disconnected),
+                      "relay EOF during an in-flight commit is expected, not a failure")
+        XCTAssertTrue(h.controller.consumeRelayState(.closed))
+        h.api.resumeCommit(with: .success(()))
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        h.controller.teardown()
+    }
+
+    func testModeChangeDuringCommitQueuesAndAppliesAfterOutcome() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.api.armCommitWait()
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.api.commitCalls.count == 1 }
+        let probe = h.probes.first
+
+        // User picks relay while the commit HTTP is still parked: the probe
+        // must NOT be cancelled mid-transaction.
+        let modeTask = Task { await h.controller.setMode(.relay) }
+        await Task.yield()
+        XCTAssertEqual(probe?.cancelCount, 0, "an in-flight commit probe is never cancelled by policy")
+
+        h.api.resumeCommit(with: .success(()))
+        await waitUntil(timeout: 3) { h.controller.routeState.active == .relay }
+        await modeTask.value
+        XCTAssertEqual(h.controller.routeState.mode, .relay)
+        XCTAssertEqual(h.retiredRelay, 1, "direct adopted then handed back on the queued relay request")
+        XCTAssertEqual(h.promotedDirectPeers.count, 1, "the adopted peer retires only at staged handover")
+        h.controller.teardown()
+    }
+
+    // MARK: Unknown outcome with no authoritative view
+
+    func testUnknownOutcomeWithoutCallViewActivelyRecoversInAuto() async throws {
+        let h = Harness()
+        h.makeController(.auto)
+        h.api.commitError = URLError(.timedOut)
+        h.transportReported = nil
+        h.attachRelayResult = true
+        h.controller.relayDidConnect(wsMedia: nil)
+        // Strong candidate samples so auto promotes and the commit is sent.
+        await waitUntil(timeout: 2) { !h.probes.isEmpty }
+        h.probes.forEach { $0.samplesToReturn = Array(repeating: 0.02, count: 6) }
+        await pump(1.2)
+        XCTAssertGreaterThanOrEqual(h.attachRelayCalls, 1,
+                                    "auto actively re-attaches relay instead of claiming a route")
+        XCTAssertEqual(h.controller.routeState.active, .relay)
+        h.controller.teardown()
+    }
+
+    func testUnknownOutcomeWithoutCallViewReportsTruthForForcedDirect() async throws {
+        let h = Harness()
+        h.makeController(.direct)
+        h.api.commitError = URLError(.timedOut)
+        h.transportReported = nil
+        h.controller.relayDidConnect(wsMedia: nil)
+        await pump(1.0)
+        XCTAssertEqual(h.controller.routeState.active, .relay)
+        XCTAssertTrue(h.notices.contains { $0.0.contains("直连状态未知") },
+                      "forced direct must not fabricate direct; it reports the unknown state")
+        h.controller.teardown()
+    }
+
+    // MARK: Manual direct -> auto still protects the active peer
+
+    func testAutoFallsBackAfterManualDirectDegrades() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        // Keep the peer demonstrably healthy across the policy switch.
+        h.probes.forEach { $0.samplesToReturn = Array(repeating: 0.03, count: 6) }
+        h.relaySamples = Array(repeating: 0.10, count: 8)
+        await h.controller.setMode(.auto)
+        await pump(0.2)
+        XCTAssertEqual(h.controller.routeState.active, .direct)
+        XCTAssertEqual(h.promotedDirectPeers.count, 0, "peer not retired by the mode change")
+
+        // Direct dies; relay path measurably better/fresh.
+        let peer = h.probes.first
+        peer?.connected = false
+        peer?.samplesToReturn = []
+        h.relaySamples = Array(repeating: 0.05, count: 8)
+        h.attachRelayResult = true
+        await waitUntil(timeout: 3) { h.controller.routeState.active == .relay }
+        XCTAssertEqual(h.controller.routeState.active, .relay,
+                       "auto falls back from a manually adopted, now-degraded peer")
+        XCTAssertEqual(h.promotedDirectPeers.count, 1)
+        h.controller.teardown()
+    }
+
+    // MARK: Transaction serialization under an in-flight auto commit
+
+    func testAutoCommitHeldBlocksSecondProbeUntilReconciled() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.auto)
+        h.api.armCommitWait()
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { !h.probes.isEmpty }
+        h.probes.forEach { $0.samplesToReturn = Array(repeating: 0.02, count: 6) }
+        await waitUntil(timeout: 2) { h.api.commitCalls.count == 1 }
+        XCTAssertEqual(h.api.attachProbeCalls.count, 1)
+
+        // User picks relay while the auto commit HTTP is parked: NO second
+        // probe/attach may start, and no cancel of the committing probe.
+        let modeTask = Task { await h.controller.setMode(.relay) }
+        await pump(0.3)
+        XCTAssertEqual(h.api.attachProbeCalls.count, 1, "no second probe during the transaction")
+        XCTAssertEqual(h.attachRelayCalls, 0, "no relay attach before the outcome is known")
+        XCTAssertEqual(h.probes.first?.cancelCount, 0)
+
+        h.api.resumeCommit(with: .success(()))
+        await waitUntil(timeout: 3) { h.controller.routeState.active == .relay }
+        await modeTask.value
+        XCTAssertEqual(h.api.attachProbeCalls.count, 1, "still exactly one probe")
+        XCTAssertGreaterThanOrEqual(h.promoteStagedCalls, 1, "queued relay wins after adoption")
+        XCTAssertEqual(h.controller.routeState.mode, .relay)
+        h.controller.teardown()
+    }
+
+    func testSetModeCompletesWhenTeardownHappensFirst() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.auto)
+        h.api.armCommitWait()
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { !h.probes.isEmpty }
+        h.probes.forEach { $0.samplesToReturn = Array(repeating: 0.02, count: 6) }
+        await waitUntil(timeout: 2) { h.api.commitCalls.count == 1 }
+
+        let modeTask = Task { await h.controller.setMode(.relay) }
+        await Task.yield()
+        h.controller.teardown()
+        // Cancellation-safe: the waiting setMode must resume, not hang.
+        let completed = await withTaskGroup(of: Bool.self) { group in
+            group.addTask { await modeTask.value; return true }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+        XCTAssertTrue(completed, "setMode must resume exactly once after teardown")
+        h.api.resumeCommit(with: .success(()))
+        await pump(0.2)
+    }
+
+    // MARK: Unknown outcome recovery with NO local peer
+
+    func testUnknownOutcomeWithNilActiveDirectPromotesStagedRelayAudio() async throws {
+        let h = Harness()
+        h.makeController(.auto)
+        h.api.commitError = URLError(.timedOut)
+        h.transportReported = nil
+        h.attachRelayResult = true
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { !h.probes.isEmpty }
+        h.probes.forEach { $0.samplesToReturn = Array(repeating: 0.02, count: 6) }
+        await pump(1.2)
+        XCTAssertGreaterThanOrEqual(h.promoteStagedCalls, 1,
+                                    "staged relay audio must be promoted even with no local peer")
+        XCTAssertGreaterThanOrEqual(h.promoteStagedNilPeer, 1)
+        XCTAssertEqual(h.controller.routeState.active, .relay)
+        h.controller.teardown()
+    }
+
+    // MARK: Server reconciliation requires a LOCAL staged attach
+
+    func testServerReconciliationToRelayPerformsLocalStagedAttach() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        // Keep the peer healthy so only server truth triggers reconciliation.
+        h.probes.forEach { $0.samplesToReturn = Array(repeating: 0.03, count: 6) }
+        let attachCallsBefore = h.attachRelayCalls
+        h.transportReported = "ws"
+        h.attachRelayResult = true
+        await waitUntil(timeout: 3) { h.controller.routeState.active == .relay }
+        XCTAssertGreaterThan(h.attachRelayCalls, attachCallsBefore,
+                             "reconciliation must perform a LOCAL staged attach")
+        XCTAssertGreaterThanOrEqual(h.promoteStagedCalls, 1)
+        h.controller.teardown()
+    }
+
+    func testServerReconciliationStageFailureNeverClaimsRelay() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        h.probes.forEach { $0.samplesToReturn = Array(repeating: 0.03, count: 6) }
+        h.transportReported = "ws"
+        h.attachRelayResult = false
+        await waitUntil(timeout: 3) { h.notices.contains { $0.0.contains("仍保持当前线路") } }
+        XCTAssertEqual(h.controller.routeState.active, .direct,
+                       "a failed local re-attach must not claim a working relay")
+        XCTAssertEqual(h.promoteStagedCalls, 0)
+        h.controller.teardown()
     }
 }

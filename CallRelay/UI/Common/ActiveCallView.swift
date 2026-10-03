@@ -83,8 +83,10 @@ struct ActiveCallView: View {
                 .font(.headline)
                 .foregroundStyle(statusColor)
 
-            if !model.isDemo, call?.phase.isLive == true {
-                InCallRouteMenu()
+            if !model.isDemo || LaunchArguments.isRoutePreview {
+                if call?.phase.isLive == true {
+                    InCallRouteMenu()
+                }
             }
 
             if conference != nil {

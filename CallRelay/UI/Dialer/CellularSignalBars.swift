@@ -35,7 +35,7 @@ struct CellularSignalBars: View {
     /// against any cell background in both schemes.
     private var emptyColor: Color { Color(UIColor.tertiarySystemFill) }
 
-    private var accessibilityText: String {
+    var accessibilityText: String {
         guard let bars else { return "蜂窝信号未知" }
         if bars <= 0 { return "蜂窝信号无服务" }
         return "蜂窝信号 \(min(bars, 4)) 格"

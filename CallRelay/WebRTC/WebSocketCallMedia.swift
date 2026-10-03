@@ -130,6 +130,26 @@ final class WebSocketCallMedia: NSObject {
     func connectedForTest() -> Bool { connected }
     #endif
 
+    /// Closes a socket whose handshake failed BEFORE it took audio
+    /// ownership: retires the network task without touching the audio graph
+    /// or deactivating another transport's session.
+    func closeWithoutAudio() {
+        receiveGeneration &+= 1
+        connected = false
+        pingTimer?.invalidate()
+        pingTimer = nil
+        sendWaiter?.resume(returning: false)
+        sendWaiter = nil
+        sendDrainTask?.cancel()
+        sendDrainTask = nil
+        sendQueue.removeAll()
+        socket?.cancel()
+        socket = nil
+        session?.invalidateAndCancel()
+        session = nil
+        currentState = .closed
+    }
+
     /// Retires THIS socket after the gateway atomically replaced it (a route
     /// commit or a WSS re-attach): stops ping/drain/tasks without deactivating
     /// the system-owned audio session and without publishing a failure state.
@@ -196,9 +216,22 @@ final class WebSocketCallMedia: NSObject {
             session = nil
             throw MediaError.neverConnected
         }
+        // The socket is READY but does not own the audio graph yet. The
+        // caller enables it via activateAudio() at the exact handover moment,
+        // so a staging attach never double-captures while another transport
+        // still carries the call, and a failed attach leaves the previous
+        // transport untouched. The receive loop is transport-level and
+        // starts now (audio ownership is independent).
         connected = true
         currentState = .connected
         startSendDrain()
+        startReceiveLoop()
+    }
+
+    /// Binds the audio graph (mic capture + playback) AFTER a ready
+    /// handshake. Used by the route handover so the system audio session is
+    /// owned by exactly one transport at a time.
+    func activateAudio() {
         startAudio()
     }
 
@@ -425,12 +458,13 @@ final class WebSocketCallMedia: NSObject {
     private func startAudio() {
         // A system call may have activated the session before the socket was
         // ready; otherwise a direct answer self-activates before connecting.
-        if AudioSessionBridge.shared.activeSession != nil || selfManagedAudioActive,
-           !audioIO.startIfNeeded() {
-            socketDidFail(toFailed: true)
-            return
+        // Audio activation failure fails the media session truthfully.
+        if AudioSessionBridge.shared.activeSession != nil || selfManagedAudioActive {
+            guard audioIO.startIfNeeded() else {
+                socketDidFail(toFailed: true)
+                return
+            }
         }
-        startReceiveLoop()
     }
 
     func setMicMuted(_ muted: Bool) {

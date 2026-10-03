@@ -163,6 +163,35 @@ struct InCallRouteMenu: View {
     }
 }
 
+/// Screenshot-only fixture (launch-argument gated): all 0..4 signal-bar
+/// states in one deterministic surface for the visual review.
+struct SignalBarsPreviewFixture: View {
+    private let states: [Int?] = [0, 1, 2, 3, 4, nil]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("蜂窝信号 0–4 格")
+                .font(.headline)
+            ForEach(Array(states.enumerated()), id: \.offset) { _, bars in
+                HStack(spacing: 14) {
+                    Text(bars.map(String.init) ?? "未知")
+                        .font(.subheadline.monospacedDigit())
+                        .frame(width: 36, alignment: .trailing)
+                    CellularSignalBars(bars: bars)
+                    Text(CellularSignalBars(bars: bars).accessibilityText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(minHeight: 44)
+            }
+            Spacer()
+        }
+        .padding(24)
+        .frame(maxWidth: 480, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
 /// One native Settings row: the persisted default route mode for this
 /// gateway, using the system navigation-link picker (checkmark list,
 /// Dynamic Type, dark mode, 44pt targets).

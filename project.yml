@@ -48,6 +48,8 @@ targets:
       - path: CallRelay
         excludes:
           - "**/.DS_Store"
+          # Provenance copy of the approved icon original (not a build input).
+          - "Resources/AppIconApproved/**"
     resources: []
     dependencies:
       - package: WebRTC

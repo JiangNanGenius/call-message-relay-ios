@@ -309,6 +309,13 @@ final class AppModel: ObservableObject {
     // MARK: Lifecycle
 
     func bootstrap() {
+        // Screenshot fixtures for the batched visual review: deterministic,
+        // offline, launch-argument gated (never reachable in normal use).
+        if LaunchArguments.isRoutePreview || LaunchArguments.isRouteSettingsPreview
+            || LaunchArguments.isSignalBarsPreview {
+            enableVisualReviewFixture()
+            return
+        }
         // Signed-in screenshot fixture: renders the real paired-mode line
         // surfaces from synthetic lines without touching network or
         // credentials. Must win over a persisted demo flag from a previous run.
@@ -565,6 +572,23 @@ final class AppModel: ObservableObject {
         authorizedLines = syntheticPreviewLines()
         defaultLineId = "line1"
         linePhase = .online(authorizedLines[0].status)
+    }
+
+    /// Screenshot/UI-test only (launch-argument gated): deterministic route
+    /// menu / settings picker fixtures. Offline, no credentials.
+    func enableVisualReviewFixture() {
+        enterDemo(persist: false)
+        if LaunchArguments.isRoutePreview {
+            demoSimulateIncoming()
+            demoAnswer()
+            preferredRouteMode = .direct
+            routeState = CallRouteState(
+                mode: .direct, active: .direct, switching: false, probing: false,
+                directDegraded: false, conferenceLocked: false,
+                rttSeconds: 0.028, notice: nil, offersAutoFallback: false)
+        } else if LaunchArguments.isRouteSettingsPreview {
+            preferredRouteMode = .auto
+        }
     }
 
     /// Screenshot/UI-test only: renders the live paired-mode line surfaces

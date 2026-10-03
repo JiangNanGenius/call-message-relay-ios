@@ -6,64 +6,68 @@ import AVFoundation
 ///
 /// Two phases:
 /// 1. **Probe** (detached): an isolated PCMU peer connection to the
-///    gateway's probe endpoint. It never opens the mic (the local track is
-///    disabled) and never touches the live call path — losing it is
-///    harmless. Quality is measured with the SELECTED candidate pair's
-///    `currentRoundTripTime` (already SECONDS per the WebRTC stats spec),
-///    comparable to the WSS app-level ping RTT.
+///    gateway's probe endpoint. It never opens the mic (local track disabled,
+///    RTCAudioSession never enabled by a detached probe) and never touches
+///    the live call path — losing it is harmless. Quality is measured ONLY by
+///    the application-level `callrelay-probe` DataChannel echo (exactly
+///    comparable to the WSS ping path); selected-pair stats are kept for
+///    diagnostics but never drive an automatic decision.
 /// 2. **Adopted** (after the gateway's atomic ready-first commit): the same
-///    peer connection becomes the live transport. The local track is enabled
+///    peer connection becomes the live transport; the local track is enabled
 ///    and the (already active) CallKit/LCK audio session is handed to
 ///    RTCAudioSession exactly once — no second offer, no new negotiation.
-///
-/// The optional `callrelay-probe` DataChannel carries an inaudible JSON
-/// ping/echo RTT measurement (no marked PCM injection). It is enabled only
-/// once the gateway contract advertises it; until then selected-pair stats
-/// are the quality source.
 @MainActor
 final class MediaProbeController: NSObject {
+    private struct EchoMessage: Decodable { let type: String?; let tag: UInt64? }
+
     private let factory: RTCPeerConnectionFactory
     private var peerConnection: RTCPeerConnection?
     private var statsTimer: Timer?
-    private var echoChannel: RTCDataChannel?
+    private var echoTimer: Timer?
+    private var gatheringObserver: NSKeyValueObservation?
+    private var gatheringContinuation: CheckedContinuation<Void, Error>?
+
+    /// Selected candidate-pair RTT (diagnostics only; never auto-promotion).
     private var statsSamples: [TimeInterval] = []
-    /// Quality RTT samples in seconds: application-level echo on the data
-    /// channel (exactly comparable to WSS ping) when available, otherwise the
-    /// selected candidate pair's currentRoundTripTime.
-    var samples: [TimeInterval] {
-        echoSamples.isEmpty ? statsSamples : echoSamples
-    }
+    private var echoStamps: [(rtt: TimeInterval, at: Date)] = []
+    private(set) var echoSamples: [TimeInterval] = []
+    /// Comparable quality RTT samples in seconds: application-level echo on
+    /// the data channel ONLY. Empty until fresh echoes arrive, which keeps
+    /// an unmeasured candidate on the healthy baseline (no stale reuse).
+    var samples: [TimeInterval] { echoSamples }
+
     private(set) var connected = false
     private(set) var adopted = false
-
-    /// Becomes true after BOTH ICE is fully connected AND (when enabled) the
-    /// echo channel opened. Commit is only legal once this is true.
+    /// True only after THIS instance adopted the peer and owns audio; only
+    /// then may teardown disable the shared RTCAudioSession.
+    private var audioOwned = false
     private(set) var mediaReady = false
 
     var onConnected: (() -> Void)?
-    /// After a successful commit this forwards the adopted peer connection's
-    /// state to the coordinator (same MediaState contract as any transport).
     var onState: ((MediaState) -> Void)?
     var onMediaReady: (() -> Void)?
 
-    /// When true the offer includes the `callrelay-probe` application
-    /// m-section. Per the finalized gateway contract the client creates the
-    /// channel on BOTH probe and normal call offers; the gateway echoes
-    /// `{"type":"ping","tag":n}` messages exactly.
+    /// The offer includes the `callrelay-probe` application m-section, which
+    /// the client must create before offer generation (per contract §4).
     private let echoChannelEnabled: Bool
+    private var echoChannel: RTCDataChannel?
+    private var echoChannelOpen = false
+    private var echoSequence: UInt64 = 0
+    private var pendingEcho: (tag: UInt64, sent: Date)?
+    private(set) var echoStallCount = 0
 
     init(echoChannelEnabled: Bool = true) {
         self.echoChannelEnabled = echoChannelEnabled
         self.factory = RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil)
         super.init()
-        // Manual audio: while the probe is DETACHED it must never activate the
-        // microphone/renderer. Audio is enabled exclusively on adoption, under
-        // the CallKit/LCK-owned session (same contract as the live transport).
+        // Manual audio mode matches the live transport's policy; a detached
+        // probe never flips the GLOBAL isAudioEnabled (that could mute an
+        // already-adopted peer of another instance).
         RTCAudioSession.sharedInstance().useManualAudio = true
-        RTCAudioSession.sharedInstance().isAudioEnabled = false
     }
 
-    /// Builds the nontrickle PCMU-only offer (gathered candidates included).
+    // MARK: Offer / answer
+
     func makeOffer(ice: ICEConfiguration) async throws -> String {
         let config = RTCConfiguration()
         config.iceServers = ice.iceServers.map {
@@ -81,9 +85,7 @@ final class MediaProbeController: NSObject {
             throw MediaError.peerConnectionUnavailable
         }
         peerConnection = pc
-        // A silent local audio track keeps the m-section audio-active so the
-        // candidate pair stays selected and gives the adopted transport a
-        // mic track; it stays DISABLED (no capture) until commit/adoption.
+        // Silent mic track keeps the audio m-section active while detached.
         let source = factory.audioSource(with: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil))
         let audioTrack = factory.audioTrack(with: source, trackId: "probe-audio0")
         audioTrack.isEnabled = false
@@ -108,18 +110,14 @@ final class MediaProbeController: NSObject {
         try await pc.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp))
     }
 
-    /// Promotes the probe to the LIVE transport: enables the mic track and
-    /// binds the already-active system audio session. Safe to call once;
-    /// repeated calls are no-ops.
+    // MARK: Adoption (exclusive audio ownership)
+
     func adopt(activatedSession session: AVAudioSession?) {
         guard !adopted else { return }
         adopted = true
-        // Hand the active CallKit/LCK session to WebRTC and enable its audio
-        // device + the local track so capture/render flow on this PC.
+        audioOwned = true
         let rtc = RTCAudioSession.sharedInstance()
-        if let session {
-            rtc.audioSessionDidActivate(session)
-        }
+        if let session { rtc.audioSessionDidActivate(session) }
         rtc.isAudioEnabled = true
         enableAudioTrack(true)
         statsTimerCadence(1.0)
@@ -133,10 +131,13 @@ final class MediaProbeController: NSObject {
     }
 
     private func enableAudioTrack(_ enabled: Bool) {
-        peerConnection?.transceivers.compactMap { $0.sender.track as? RTCAudioTrack }.forEach { $0.isEnabled = enabled }
+        peerConnection?.transceivers
+            .compactMap { $0.sender.track as? RTCAudioTrack }
+            .forEach { $0.isEnabled = enabled }
     }
 
-    private func startSampling() {
+    private func onConnectedState() {
+        guard !connected else { return }
         connected = true
         statsTimerCadence(1.0)
         startEchoSampling()
@@ -154,38 +155,15 @@ final class MediaProbeController: NSObject {
     }
 
     private func evaluateReady() {
-        // The gateway commit gate is the connected peer connection; the echo
-        // channel is opportunistic measurement, never a commit blocker.
-        let ready = connected
-        guard ready, !mediaReady else { return }
+        // Commit gate is the connected peer connection (server re-checks).
+        guard connected, !mediaReady else { return }
         mediaReady = true
         onMediaReady?()
     }
 
-    private var echoChannelOpen = false
-    private var echoSequence: UInt64 = 0
-    private var echoTimer: Timer?
-    private var pendingEcho: (tag: UInt64, sent: Date)?
-    private var echoStamps: [(rtt: TimeInterval, at: Date)] = []
-    private(set) var echoSamples: [TimeInterval] = []
+    // MARK: Echo DataChannel (comparable RTT)
 
-    /// Sends one inaudible echo probe over the data channel (no-op when the
-    /// channel is unavailable/disabled). A previous unanswered ping counts
-    /// as one stall (continuous-quality hysteresis input).
-    func sendEchoPing() {
-        guard echoChannelEnabled, let channel = echoChannel, echoChannelOpen else { return }
-        if pendingEcho != nil { echoStallCount += 1 }
-        echoSequence &+= 1
-        let tag = echoSequence
-        let payload = Array("{\"type\":\"ping\",\"tag\":\(tag)}".utf8)
-        let buffer = RTCDataBuffer(data: Data(payload), isBinary: false)
-        channel.sendData(buffer)
-        pendingEcho = (tag, Date())
-    }
-
-    /// Starts 1 Hz continuous echo sampling (used on both the detached probe
-    /// and the adopted live transport).
-    func startEchoSampling() {
+    private func startEchoSampling() {
         echoTimer?.invalidate()
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.sendEchoPing() }
@@ -194,30 +172,60 @@ final class MediaProbeController: NSObject {
         echoTimer = timer
     }
 
-    func stopEchoSampling() {
-        echoTimer?.invalidate()
-        echoTimer = nil
+    /// An unanswered ping counts one stall (continuous-quality hysteresis).
+    func sendEchoPing() {
+        guard echoChannelEnabled, let channel = echoChannel, echoChannelOpen else { return }
+        if pendingEcho != nil { echoStallCount += 1 }
+        echoSequence &+= 1
+        let tag = echoSequence
+        let payload = Array("{\"type\":\"ping\",\"tag\":\(tag)}".utf8)
+        channel.sendData(RTCDataBuffer(data: Data(payload), isBinary: false))
+        pendingEcho = (tag, Date())
+    }
+
+    /// FRESH app-level echo samples only (seconds); empty until echoes
+    /// arrive or after they go stale — auto then keeps the healthy baseline.
+    func freshQualitySamples(within window: TimeInterval, now: Date = Date()) -> [TimeInterval] {
+        echoStamps.filter { now.timeIntervalSince($0.at) <= window }.map(\.rtt)
+    }
+
+    private func handleEchoData(_ data: Data, channelLabel: String?) {
+        // Identity: only the probe channel can drive measurements.
+        guard channelLabel == nil || channelLabel == "callrelay-probe" else { return }
+        guard let pending = pendingEcho,
+              Self.matchesEcho(data, expectedTag: pending.tag) else { return }
+        echoStamps.append((Date().timeIntervalSince(pending.sent), Date()))
+        if echoStamps.count > 120 { echoStamps.removeFirst(echoStamps.count - 120) }
+        echoSamples = echoStamps.map(\.rtt)
+        echoStallCount = 0
         pendingEcho = nil
     }
 
-    /// Fresh comparable RTT samples in seconds: application-level echo is
-    /// preferred over selected-pair stats because it is exactly comparable
-    /// to the WSS ping path; falls back to stats samples.
-    func freshQualitySamples(within window: TimeInterval, now: Date = Date()) -> [TimeInterval] {
-        let freshEcho = echoStamps.filter { now.timeIntervalSince($0.at) <= window }.map(\.rtt)
-        if !freshEcho.isEmpty { return freshEcho }
-        return samples
+    /// Exact JSON match of the gateway echo: `{"type":"ping","tag":<n>}` with
+    /// the numeric tag compared structurally (substring matching would let
+    /// tag 1 match 10/100). Pure and unit-testable.
+    static func matchesEcho(_ data: Data, expectedTag: UInt64) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = object["type"] as? String, type == "ping",
+              let number = object["tag"] as? NSNumber,
+              number.uint64Value == expectedTag else { return false }
+        return true
     }
 
-    /// Consecutive echo pings whose echo never returned (a stalled/dead path).
-    private(set) var echoStallCount = 0
+    // MARK: Test seams (no WebRTC connection required)
+
+    /// Seeds echo stamps to verify freshness arithmetic without a channel.
+    func injectEchoSamplesForTest(_ stamps: [(rtt: TimeInterval, at: Date)]) {
+        echoStamps = stamps
+        echoSamples = stamps.map(\.rtt)
+    }
+
+    // MARK: Stats (diagnostics)
 
     private func pollStats() {
         guard let pc = peerConnection, connected else { return }
         pc.statistics { [weak self] report in
             guard let self else { return }
-            // The SELECTED (nominated) candidate pair only; currentRoundTripTime
-            // is already in SECONDS — no ms conversion.
             for statistic in report.statistics.values {
                 guard statistic.type == "candidate-pair",
                       (statistic.values["nominated"] as? NSNumber)?.boolValue == true,
@@ -225,65 +233,112 @@ final class MediaProbeController: NSObject {
                       rttSeconds > 0 else { continue }
                 Task { @MainActor in
                     self.statsSamples.append(rttSeconds)
-                    if self.statsSamples.count > 120 { self.statsSamples.removeFirst(self.statsSamples.count - 120) }
+                    if self.statsSamples.count > 120 {
+                        self.statsSamples.removeFirst(self.statsSamples.count - 120)
+                    }
                 }
             }
         }
     }
 
+    // MARK: Teardown
+
+    /// Detached cancellation: closes the peer but NEVER touches the global
+    /// audio session (this instance never owned it).
     func cancel() {
-        teardown(closeState: false)
+        teardown(closeState: false, disableAudio: false)
     }
 
-    /// Full close after adoption/teardown.
+    /// Full close after adoption: releases the audio ownership this instance
+    /// took and stops the capture/render graph.
     func closeTransport() {
-        teardown(closeState: true)
+        teardown(closeState: true, disableAudio: audioOwned)
     }
 
-    private func teardown(closeState: Bool) {
-        statsTimer?.invalidate()
-        statsTimer = nil
-        stopEchoSampling()
+    private func teardown(closeState: Bool, disableAudio: Bool) {
+        statsTimer?.invalidate(); statsTimer = nil
+        echoTimer?.invalidate(); echoTimer = nil
+        gatheringObserver?.invalidate(); gatheringObserver = nil
+        if let cont = gatheringContinuation {
+            gatheringContinuation = nil
+            cont.resume(throwing: MediaError.closed)
+        }
         connected = false
         mediaReady = false
         echoChannelOpen = false
         echoChannel = nil
-        if adopted {
-            RTCAudioSession.sharedInstance().isAudioEnabled = false
-        }
+        pendingEcho = nil
+        if disableAudio { RTCAudioSession.sharedInstance().isAudioEnabled = false }
         adopted = false
-        peerConnection?.close()
+        audioOwned = false
+        let pc = peerConnection
         peerConnection = nil
+        pc?.close()
         if closeState { onState?(.closed) }
     }
 
+    // MARK: Gathering (one-shot, cancellable, observer retained to completion)
+
     private func waitForGatheringComplete(_ pc: RTCPeerConnection) async throws {
         if pc.iceGatheringState == .complete { return }
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            var resumed = false
-            let observer = pc.observe(\.iceGatheringState, options: [.new]) { pc, _ in
-                guard !resumed, pc.iceGatheringState == .complete else { return }
-                resumed = true
-                cont.resume()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                var resumed = false
+                let finish: (Result<Void, Error>) -> Void = { result in
+                    guard !resumed else { return }
+                    resumed = true
+                    self.gatheringContinuation = nil
+                    self.gatheringObserver?.invalidate()
+                    self.gatheringObserver = nil
+                    switch result {
+                    case .success: cont.resume()
+                    case .failure(let error): cont.resume(throwing: error)
+                    }
+                }
+                self.gatheringContinuation = nil
+                // Retain the observer for the whole wait (stored on self).
+                let observer = pc.observe(\.iceGatheringState, options: [.new]) { pc, _ in
+                    Task { @MainActor in
+                        guard pc.iceGatheringState == .complete else { return }
+                        finish(.success(()))
+                    }
+                }
+                self.gatheringObserver = observer
+                let deadlineTask = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: 8_000_000_000)
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run { finish(.success(())) }
+                    _ = self
+                }
+                // Keep the deadline alive alongside the observer.
+                gatheringDeadlineTask = deadlineTask
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
-                guard !resumed else { return }
-                resumed = true
-                cont.resume()
+        } onCancel: {
+            Task { @MainActor in
+                self.gatheringContinuation?.resume(throwing: CancellationError())
+                self.gatheringContinuation = nil
+                self.gatheringObserver?.invalidate()
+                self.gatheringObserver = nil
+                gatheringDeadlineTask?.cancel()
             }
-            withExtendedLifetime(observer) { }
         }
+        if peerConnection == nil { throw MediaError.closed }
     }
+    private var gatheringDeadlineTask: Task<Void, Never>?
 }
+
+// MARK: - Peer connection delegate
 
 extension MediaProbeController: RTCPeerConnectionDelegate {
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) { }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
         Task { @MainActor in
+            // Reject callbacks from a stale/replaced peer after cancel.
+            guard peerConnection === self.peerConnection else { return }
             switch newState {
             case .connected:
-                if !connected { startSampling() }
+                onConnectedState()
                 onState?(.connected)
             case .disconnected:
                 connected = false
@@ -294,6 +349,7 @@ extension MediaProbeController: RTCPeerConnectionDelegate {
                 mediaReady = false
                 onState?(.failed)
             case .closed:
+                guard peerConnection === self.peerConnection else { return }
                 connected = false
                 mediaReady = false
                 onState?(.closed)
@@ -304,7 +360,18 @@ extension MediaProbeController: RTCPeerConnectionDelegate {
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) { }
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) { }
+    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {
+        Task { @MainActor in
+            guard newState == .complete else { return }
+            if let cont = gatheringContinuation {
+                gatheringContinuation = nil
+                gatheringObserver?.invalidate()
+                gatheringObserver = nil
+                gatheringDeadlineTask?.cancel()
+                cont.resume()
+            }
+        }
+    }
     func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) { }
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) { }
     func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) { }
@@ -312,55 +379,42 @@ extension MediaProbeController: RTCPeerConnectionDelegate {
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) { }
     func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {
         Task { @MainActor in
+            guard peerConnection === self.peerConnection,
+                  dataChannel.label == "callrelay-probe" else { return }
             echoChannelOpen = true
-            evaluateReady()
         }
     }
 }
 
+// MARK: - DataChannel delegate
+
 extension MediaProbeController: RTCDataChannelDelegate {
     func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {
         Task { @MainActor in
-            if dataChannel.readyState == .open {
-                echoChannelOpen = true
-                evaluateReady()
-            } else {
-                echoChannelOpen = false
-            }
+            guard dataChannel === echoChannel,
+                  dataChannel.label == "callrelay-probe" else { return }
+            echoChannelOpen = dataChannel.readyState == .open
         }
     }
 
     func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
         Task { @MainActor in
-            // The gateway echoes the EXACT message: {"type":"ping","tag":n}.
-            guard let pending = pendingEcho,
-                  let text = String(data: buffer.data, encoding: .utf8),
-                  text.contains("\"type\":\"ping\""),
-                  text.contains("\"tag\":\(pending.tag)") else { return }
-            let rtt = Date().timeIntervalSince(pending.sent)
-            echoStamps.append((rtt, Date()))
-            if echoStamps.count > 120 { echoStamps.removeFirst(echoStamps.count - 120) }
-            echoSamples = echoStamps.map(\.rtt)
-            echoStallCount = 0
-            pendingEcho = nil
+            guard dataChannel === echoChannel else { return }
+            handleEchoData(buffer.data, channelLabel: dataChannel.label)
         }
     }
 }
 
-/// Test seam: the routing orchestration depends on this, never on the
-/// concrete WebRTC probe, so commit/failure/fallback sequencing is
-/// deterministically testable.
+// MARK: - Test seam
+
 @MainActor
 protocol DirectProbeControlling: AnyObject {
     var onState: ((MediaState) -> Void)? { get set }
     var onMediaReady: (() -> Void)? { get set }
     var connected: Bool { get }
-    /// ICE fully connected: the gateway's commit gate.
     var mediaReady: Bool { get }
-    /// Fresh comparable RTT samples in SECONDS (application echo, falling
-    /// back to the selected candidate-pair stats).
+    /// Fresh comparable RTT samples in SECONDS (app echo only).
     var samples: [TimeInterval] { get }
-    /// Consecutive unanswered echo pings / lost samples (stall hysteresis).
     var echoStallCount: Int { get }
     func freshQualitySamples(within window: TimeInterval, now: Date) -> [TimeInterval]
     func makeOffer(ice: ICEConfiguration) async throws -> String

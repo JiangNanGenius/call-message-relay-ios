@@ -148,6 +148,14 @@ struct MediaRouteAdvisor {
         return bad ? considerFallback() : .keepBaseline
     }
 
+    /// Marks the active transport as already on the candidate (e.g. a manual
+    /// direct adoption that auto monitoring must now protect). Enables the
+    /// one-shot fallback path without counting a promotion.
+    mutating func markAlreadyPromoted() {
+        promoted = true
+        promotionsUsed = max(promotionsUsed, 1)
+    }
+
     var canFallback: Bool { promoted && fallbacksUsed < maximumFallbacks }
 
     mutating func considerFallback() -> Decision {

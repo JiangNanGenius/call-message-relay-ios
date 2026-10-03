@@ -88,6 +88,9 @@ final class CallCoordinator: NSObject {
     private var media: CallMediaSession?
     private var wsMedia: WebSocketCallMedia?
     private var wsConferenceMedia: WebSocketCallMedia?
+    /// Previous relay kept alive (with audio ownership) while a replacement
+    /// attach is staged; retired at exclusive promotion.
+    private var stagedPreviousRelay: WebSocketCallMedia?
     /// Auto/Direct/Relay routing for the active non-conference call.
     private var route: CallRouteController?
     private let routeModeDefault: MediaRouteMode
@@ -432,6 +435,8 @@ final class CallCoordinator: NSObject {
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        stagedPreviousRelay?.closeWithoutAudio()
+        stagedPreviousRelay = nil
         route?.teardown()
         route = nil
         if var entry = tracked[callId] {
@@ -556,6 +561,8 @@ final class CallCoordinator: NSObject {
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        stagedPreviousRelay?.closeWithoutAudio()
+        stagedPreviousRelay = nil
         route?.teardown()
         route = nil
         latestMedia = .idle
@@ -863,6 +870,8 @@ final class CallCoordinator: NSObject {
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        stagedPreviousRelay?.closeWithoutAudio()
+        stagedPreviousRelay = nil
         route?.teardown()
         route = nil
         latestMedia = .idle
@@ -982,6 +991,8 @@ final class CallCoordinator: NSObject {
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        stagedPreviousRelay?.closeWithoutAudio()
+        stagedPreviousRelay = nil
         route?.teardown()
         route = nil
         latestMedia = .idle
@@ -1155,25 +1166,24 @@ final class CallCoordinator: NSObject {
 
     /// Builds/connects one WSS session and wires its callbacks. Used for the
     /// initial attach AND for ICE -> WSS rollback after a direct session.
+    ///
+    /// `ownAudioImmediately` is false during a staged route rollback: the
+    /// socket completes its handshake and becomes the READY replacement
+    /// WITHOUT starting the capture/playback graph; the caller enables audio
+    /// only once the previous transport is retired, so exactly one transport
+    /// ever owns the mic. A failed staged attach is closed here and never
+    /// replaces `wsMedia`, so the still-working path is untouched.
     @discardableResult
     private func attachWSSession(
         callId: String, uuid: UUID, gen: UInt64, ice: ICEConfiguration,
-        selfManagedAudio: Bool
+        selfManagedAudio: Bool, ownAudioImmediately: Bool = true
     ) async throws -> WebSocketCallMedia {
         let request = try await api.mediaWebSocketRequest(callId: callId)
         guard gen == self.generation else { throw CancellationError() }
 
         let session = WebSocketCallMedia()
-        let previous = wsMedia
-        wsMedia = session
-        if let activated = AudioSessionBridge.shared.activeSession {
-            session.audioActivated(with: activated)
-        } else if selfManagedAudio {
-            guard session.activateAudioWithoutCallKit() else {
-                session.close()
-                throw MediaError.audioActivationFailed
-            }
-        }
+        // Keep the previous transport + its audio ownership until the new
+        // socket is confirmed ready. Assign wsMedia only AFTER connect.
         session.onState = { [weak self, weak session] state in
             Task { @MainActor in
                 guard let self, gen == self.generation, self.wsMedia === session else { return }
@@ -1181,8 +1191,7 @@ final class CallCoordinator: NSObject {
                 // or a WSS re-attach must never end the call.
                 if let route = self.route, route.consumeRelayState(state) {
                     if state == .closed || state == .failed {
-                        // Server closed the superseded host: retire the socket
-                        // locally without deactivating the system session.
+                        // Server closed the superseded host: retire it.
                         self.wsMedia = nil
                         session?.retireAfterHandover()
                     }
@@ -1218,12 +1227,51 @@ final class CallCoordinator: NSObject {
                 self.onQuality?(quality)
             }
         }
-        try await session.connect(request: request)
-        guard gen == self.generation else {
-            session.close()
-            throw CancellationError()
+        let previous = wsMedia
+        if ownAudioImmediately {
+            // Initial attach: the session owns this call's only transport, so
+            // it is installed (and audio-bound) BEFORE connecting; the
+            // `.connected` callback below must see `wsMedia === session`.
+            wsMedia = session
+            if let activated = AudioSessionBridge.shared.activeSession {
+                session.audioActivated(with: activated)
+            } else if selfManagedAudio {
+                guard session.activateAudioWithoutCallKit() else {
+                    wsMedia = previous
+                    session.closeWithoutAudio()
+                    throw MediaError.audioActivationFailed
+                }
+            }
+            do {
+                try await session.connect(request: request)
+            } catch {
+                if wsMedia === session { wsMedia = previous }
+                session.closeWithoutAudio()
+                throw error
+            }
+            guard gen == self.generation else {
+                if wsMedia === session { wsMedia = previous }
+                session.closeWithoutAudio()
+                throw CancellationError()
+            }
+            previous?.retireAfterHandover()
+        } else {
+            // Staged rollback attach: handshake first, NO audio and NO
+            // `wsMedia` replacement until the exclusive promotion. A failure
+            // never disturbs the transport still carrying audio.
+            do {
+                try await session.connect(request: request)
+            } catch {
+                session.closeWithoutAudio()
+                throw error
+            }
+            guard gen == self.generation else {
+                session.closeWithoutAudio()
+                throw CancellationError()
+            }
+            wsMedia = session
+            stagedPreviousRelay = previous
         }
-        previous?.retireAfterHandover()
         session.setMicMuted(muted)
         if speaker { try? session.setSpeakerphone(true) }
         return session
@@ -1248,7 +1296,10 @@ final class CallCoordinator: NSObject {
                 isMuted: { [weak self] in self?.muted ?? false },
                 isConference: { [weak self] in self?.conference != nil },
                 retireRelay: { [weak self] in self?.retireRelayAfterAdoption() },
-                attachRelay: { [weak self] in await self?.reattachWSMedia(callId: callId) ?? false },
+                stageRelay: { [weak self] in await self?.stageWSMedia(callId: callId) ?? false },
+                promoteStagedRelay: { [weak self] peer in
+                    self?.promoteStagedWSMedia(retiringDirect: peer)
+                },
                 fetchTransport: { [weak self] in
                     guard let self else { return nil }
                     return (try? await self.api.fetchCall(id: callId))?.mediaTransport
@@ -1272,36 +1323,61 @@ final class CallCoordinator: NSObject {
     }
 
     /// Stops the WSS transport after the gateway atomically adopted the
-    /// direct peer: the graph must release capture/playback immediately and
-    /// the superseded socket retires without deactivating the CallKit session.
+    /// direct peer. Resets the coordinator's media state and cancels any
+    /// grace timer so the EXPECTED old-socket EOF cannot end the promoted call.
     private func retireRelayAfterAdoption() {
         let old = wsMedia
         wsMedia = nil
         old?.retireAfterHandover()
+        mediaRecoveryTask?.cancel()
+        mediaRecoveryTask = nil
+        latestMedia = .connected
+        publishPhase()
     }
 
-    /// Route-controller rollback: atomically replace the direct host with a
-    /// fresh WSS attach. Returns true ONLY once the new socket is connected,
-    /// so the adopted peer is never retired on a failed rollback.
+    /// Staged rollback used by the route controller: attaches a fresh WSS
+    /// host WITHOUT taking audio ownership. Returns true once `ready`.
     @discardableResult
-    private func reattachWSMedia(callId: String) async -> Bool {
+    private func stageWSMedia(callId: String) async -> Bool {
         let gen = generation
         do {
             let ice = try await api.iceConfiguration(callId: callId)
             guard gen == generation else { return false }
-            let session = try await attachWSSession(
-                callId: callId, uuid: UUID(), gen: gen, ice: ice, selfManagedAudio: false)
-            guard gen == generation else {
-                session.close()
-                return false
-            }
-            latestMedia = .connected
-            publishPhase()
+            _ = try await attachWSSession(
+                callId: callId, uuid: UUID(), gen: gen, ice: ice,
+                selfManagedAudio: false, ownAudioImmediately: false)
+            guard gen == generation else { return false }
             return true
         } catch {
-            AppLog.call.notice("route rollback WSS attach failed: \(error)")
+            AppLog.call.notice("staged relay attach failed: \(error)")
             return false
         }
+    }
+
+    /// Exclusive promotion after the staged relay is the server-side host:
+    /// starts the staged relay graph (always — even when no local direct peer
+    /// was adopted, e.g. unknown-outcome recovery) and retires the peer when
+    /// one exists. Only after this may the route be reported as relay.
+    private func promoteStagedWSMedia(retiringDirect peer: DirectProbeControlling?) {
+        mediaRecoveryTask?.cancel()
+        mediaRecoveryTask = nil
+        latestMedia = .connected
+        let superseded = stagedPreviousRelay
+        stagedPreviousRelay = nil
+        guard let session = wsMedia else { return }
+        if let activated = AudioSessionBridge.shared.activeSession {
+            session.audioActivated(with: activated)
+        } else {
+            session.activateAudio()
+        }
+        session.startPingSampling()
+        superseded?.retireAfterHandover()
+        peer?.closeTransport()
+        publishPhase()
+    }
+
+    private func reattachWSMedia(callId: String) async -> Bool {
+        await stageWSMedia(callId: callId)
     }
 
     /// User changes the route mode mid-call (in-call compact menu).
@@ -1556,6 +1632,8 @@ final class CallCoordinator: NSObject {
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        stagedPreviousRelay?.closeWithoutAudio()
+        stagedPreviousRelay = nil
         route?.teardown()
         route = nil
         monitorStarted = false

@@ -37,6 +37,23 @@ enum LaunchArguments {
     /// Screenshot-only: renders the contact import/merge preview from a purely
     /// synthetic fixture. Never reads or writes the real address book.
     static let contactImportFixture = "-callrelayContactImportFixture"
+    /// Screenshot-only: deterministic demo active call + synthetic route
+    /// state so the in-call Auto/Direct/Relay menu renders without a gateway.
+    static let routePreview = "-callrelayRoutePreview"
+    /// Screenshot-only: deterministic Settings route picker (no active call).
+    static let routeSettingsPreview = "-callrelayRouteSettingsPreview"
+    /// Screenshot-only: renders 0..4 signal-bar states in one strip.
+    static let signalBarsPreview = "-callrelaySignalBarsPreview"
+
+    static var isRoutePreview: Bool {
+        ProcessInfo.processInfo.arguments.contains(routePreview)
+    }
+    static var isRouteSettingsPreview: Bool {
+        ProcessInfo.processInfo.arguments.contains(routeSettingsPreview)
+    }
+    static var isSignalBarsPreview: Bool {
+        ProcessInfo.processInfo.arguments.contains(signalBarsPreview)
+    }
 
     static var isUITestReset: Bool {
         ProcessInfo.processInfo.arguments.contains(uiTestReset)

@@ -262,7 +262,7 @@ struct SettingsView: View {
             if let error = model.lastError {
                 Text(error).font(.caption).foregroundStyle(.orange)
             }
-            if !model.isDemo && model.isPaired {
+            if (!model.isDemo && model.isPaired) || LaunchArguments.isRouteSettingsPreview {
                 RouteModeSettingRow()
             }
         }

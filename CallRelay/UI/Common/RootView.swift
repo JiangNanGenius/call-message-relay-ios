@@ -4,6 +4,14 @@ struct RootView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
+        if LaunchArguments.isSignalBarsPreview {
+            SignalBarsPreviewFixture()
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         // A plain VStack (not an overlay/inset) places the banner above the
         // whole tab hierarchy, so each NavigationStack's title and toolbar are
         // laid out below it instead of being covered or scrolled away.
