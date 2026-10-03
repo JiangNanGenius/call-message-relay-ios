@@ -63,6 +63,25 @@ final class CloudProvisioningTests: XCTestCase {
                                                          includesICloudContainer: container))
     }
 
+    func testAppStoreWildcardServiceGrantPasses() {
+        // The App Store/TestFlight profile generated in the portal emits
+        // icloud-services as the STRING "*", not ["CloudKit"]; the gate must
+        // accept the Apple wildcard while still requiring the exact container.
+        let data = profileData(entitlements: [
+            "com.apple.developer.icloud-container-identifiers": [container],
+            "com.apple.developer.icloud-services": "*"
+        ])
+        XCTAssertTrue(CKCloudSyncTransport.profileData(data, includesICloudContainer: container))
+    }
+
+    func testWildcardServiceStillRequiresExactContainer() {
+        let data = profileData(entitlements: [
+            "com.apple.developer.icloud-container-identifiers": ["iCloud.com.other.app"],
+            "com.apple.developer.icloud-services": "*"
+        ])
+        XCTAssertFalse(CKCloudSyncTransport.profileData(data, includesICloudContainer: container))
+    }
+
     // MARK: ObjC exception boundary (effective entitlements missing)
 
     func testObjCExceptionGuardCatchesWithoutCrashing() {

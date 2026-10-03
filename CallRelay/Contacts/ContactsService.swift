@@ -302,6 +302,52 @@ final class ContactsService: ObservableObject {
         registerChangeObserver()
     }
 
+    /// Explicit owner action: re-read the SYSTEM Contacts database and
+    /// reconcile the in-app list with it. Read-only by design — external
+    /// cleanups, merges and removals are reflected by replacing the cached
+    /// snapshot; the app never deletes or destructively rewrites system
+    /// contacts here. Returns a pure diff report for confirmation UI; a fetch
+    /// failure preserves the previous list and reports `.failed` instead of a
+    /// false "everything was removed" result.
+    /// Under iOS limited access only the owner-visible subset is evaluated.
+    enum SystemRefreshOutcome: Equatable {
+        case changed(SystemContactRefreshReport)
+        case unchanged(SystemContactRefreshReport)
+        /// Access changed between authorizing and fetching.
+        case denied
+        /// Enumeration failed (TCC/IO); existing contacts were kept.
+        case failed
+    }
+
+    @discardableResult
+    func refreshFromSystem() async -> SystemRefreshOutcome {
+        refreshStatus()
+        guard access.canRead else { return .denied }
+        let previous = contacts
+        isLoading = true
+        let fresh: [ContactItem]? = await Task.detached { [store, keysToFetch] () -> [ContactItem]? in
+            let request = CNContactFetchRequest(keysToFetch: keysToFetch)
+            request.unifyResults = true
+            request.sortOrder = CNContactSortOrder.userDefault
+            var items: [ContactItem] = []
+            do {
+                try store.enumerateContacts(with: request) { cn, _ in
+                    items.append(Self.makeItem(from: cn))
+                }
+            } catch {
+                return nil
+            }
+            return items
+        }.value
+        isLoading = false
+        guard let fresh else { return .failed }
+        let report = SystemContactRefresh.evaluate(before: previous, after: fresh)
+        contacts = fresh
+        rebuildIndex(from: fresh)
+        registerChangeObserver()
+        return report.hasChanges ? .changed(report) : .unchanged(report)
+    }
+
     // MARK: Fetch
 
     func load(matching query: String? = nil) async {

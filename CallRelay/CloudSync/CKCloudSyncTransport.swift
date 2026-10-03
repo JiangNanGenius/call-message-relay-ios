@@ -177,12 +177,15 @@ final class CKCloudSyncTransport: CloudSyncTransport, @unchecked Sendable {
 
     /// Parse `embedded.mobileprovision` (a CMS-signed plist) and require BOTH
     /// the exact configured container in
-    /// `com.apple.developer.icloud-container-identifiers` AND the `CloudKit`
-    /// entry in `com.apple.developer.icloud-services`. A profile can carry
-    /// broader permissions than the effective code signature, which is why
-    /// this gate is deliberately strict and why CloudKit is only touched
-    /// afterwards. Works with no profile (returns false), so unsigned builds
-    /// never touch CloudKit. Uses only public iOS APIs (no SecTask/SecCode).
+    /// `com.apple.developer.icloud-container-identifiers` AND an iCloud service
+    /// grant for CloudKit in `com.apple.developer.icloud-services`. The service
+    /// grant is either the explicit `CloudKit` entry or Apple's wildcard `"*"`,
+    /// which is exactly what the App Store Connect / Developer portal emits on
+    /// generated App Store/TestFlight provisioning profiles. A profile can
+    /// carry broader permissions than the effective code signature, which is
+    /// why the exact CONTAINER is still required even when services is `"*"`.
+    /// Works with no profile (returns false), so unsigned builds never touch
+    /// CloudKit. Uses only public iOS APIs (no SecTask/SecCode).
     static func entitlementsIncludeICloudContainer(_ identifier: String) -> Bool {
         guard let profileURL = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision")
             ?? Optional(Bundle.main.bundleURL.appendingPathComponent("embedded.mobileprovision")),
@@ -195,15 +198,31 @@ final class CKCloudSyncTransport: CloudSyncTransport, @unchecked Sendable {
     }
 
     /// Pure gate over raw profile bytes (unit-testable). Requires the EXACT
-    /// container AND the CloudKit service; a broad profile for a different
-    /// container or without CloudKit fails.
+    /// container AND a CloudKit service grant: either the explicit `CloudKit`
+    /// service entry or Apple's wildcard `"*"` string that the portal/ASC
+    /// generates for App Store/TestFlight iCloud profiles. A broad profile for
+    /// a different container or one without any iCloud service grant fails.
     static func profileData(_ data: Data, includesICloudContainer identifier: String) -> Bool {
         guard let entitlements = profileEntitlements(data) else { return false }
         guard let containers = entitlements["com.apple.developer.icloud-container-identifiers"] as? [String],
               containers.contains(identifier) else { return false }
-        guard let services = entitlements["com.apple.developer.icloud-services"] as? [String],
-              services.contains("CloudKit") else { return false }
-        return true
+        return icloudServicesGrantCloudKit(entitlements["com.apple.developer.icloud-services"])
+    }
+
+    /// Interprets the `com.apple.developer.icloud-services` profile value.
+    /// Real provisioning profiles use either:
+    /// - `[String]` containing `CloudKit` (manual/explicit Xcode profiles), or
+    /// - the string `"*"` (the wildcard Apple emits in generated App
+    ///   Store/TestFlight profiles, including the dedicated CallRelay profile).
+    /// Any other shape (missing, empty, unrelated entries) is rejected.
+    static func icloudServicesGrantCloudKit(_ value: Any?) -> Bool {
+        if let wildcard = value as? String {
+            return wildcard == "*"
+        }
+        if let services = value as? [String] {
+            return services.contains("CloudKit")
+        }
+        return false
     }
 
     /// Extract the Entitlements dictionary from a CMS-wrapped profile. The

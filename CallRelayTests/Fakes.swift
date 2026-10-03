@@ -222,6 +222,11 @@ final class FakeGatewayAPI: GatewayAPI {
     private var sendContinuation: CheckedContinuation<MessageRecord, Error>?
     var autoResumeSend = true
 
+    // Voicemail surface
+    var voicemailsStub: [VoicemailRecord] = []
+    var voicemailDeleteResult: Result<Void, Error> = .success(())
+    private(set) var voicemailDeletes: [String] = []
+
     struct SentSMS { let to: String; let body: String; let key: String }
 
     var onDialEntered: (() -> Void)?
@@ -258,6 +263,11 @@ final class FakeGatewayAPI: GatewayAPI {
         return LineStatus.demoReady()
     }
     func listCalls(limit: Int) async throws -> [CallRecord] { [] }
+    func listVoicemails() async throws -> [VoicemailRecord] { voicemailsStub }
+    func deleteVoicemail(id: String) async throws {
+        voicemailDeletes.append(id)
+        try voicemailDeleteResult.get()
+    }
     /// Reconciliation stub: tests arm the gateway's active set explicitly.
     var activeCallsStub: [CallRecord] = []
     var activeCallsError: Error?

@@ -210,6 +210,7 @@ final class VoicemailPlaybackController: ObservableObject {
 struct VoicemailView: View {
     @EnvironmentObject private var model: AppModel
     @StateObject private var playback = VoicemailPlaybackController()
+    @State private var pendingDelete: VoicemailRecord?
 
     var body: some View {
         List {
@@ -243,8 +244,19 @@ struct VoicemailView: View {
                     Spacer()
                 }
                 .contentShape(Rectangle())
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        pendingDelete = voicemail
+                    } label: {
+                        Label("删除", systemImage: "trash")
+                    }
+                    .accessibilityIdentifier("delete-voicemail")
+                }
             }
             if let message = playback.errorMessage {
+                Text(message).font(.caption).foregroundStyle(.red)
+            }
+            if let message = model.voicemailDeleteError {
                 Text(message).font(.caption).foregroundStyle(.red)
             }
         }
@@ -256,8 +268,32 @@ struct VoicemailView: View {
         .onChange(of: model.activeCall != nil) { _, _ in
             playback.handleCallStateChange()
         }
+        .onChange(of: model.lastDeletedVoicemailId) { _, deletedId in
+            // Local delete or another device's `voicemail.deleted`: never
+            // keep playing a clip that no longer exists.
+            if let deletedId, playback.playingId == deletedId {
+                playback.stop()
+            }
+        }
         .refreshable { await model.refreshVoicemails() }
         .onDisappear { playback.stop() }
+        .confirmationDialog(
+            "删除这条语音留言？",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("删除留言", role: .destructive) {
+                guard let voicemail = pendingDelete else { return }
+                pendingDelete = nil
+                Task { await model.deleteVoicemail(voicemail.id) }
+            }
+            Button("取消", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text("将从网关删除录音文件，此操作不可撤销。")
+        }
     }
 
     /// CallKit can own the shared `AVAudioSession` before `model.activeCall`

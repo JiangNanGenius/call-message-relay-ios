@@ -125,6 +125,9 @@ protocol GatewayAPI: Sendable {
     func splitConference(id: String, callId: String, idempotencyKey: String) async throws
     func listVoicemails() async throws -> [VoicemailRecord]
     func voicemailAudio(id: String) async throws -> Data
+    /// Authorized DELETE. A 404 (already deleted on another device) is
+    /// normalized to success by the implementation so deletes converge.
+    func deleteVoicemail(id: String) async throws
     func enroll(_ request: EnrollmentRequest) async throws -> EnrollmentResponse
 }
 
@@ -390,6 +393,13 @@ struct ConferenceRecord: Decodable, Equatable, Identifiable, Sendable {
     let legs: [CallRecord]
 }
 
+/// `voicemail.deleted` event payload; the gateway publishes one per successful
+/// authorized DELETE so other paired devices remove the row immediately.
+struct VoicemailDeleteEvent: Decodable, Equatable, Sendable {
+    let id: String
+    let lineId: String?
+}
+
 /// Unified-gateway-only surface. Defaults keep the demo/v1 transports
 /// compiling; the HTTP transport implements them for apiVersion v2.
 extension GatewayAPI {
@@ -470,6 +480,10 @@ extension GatewayAPI {
     func listVoicemails() async throws -> [VoicemailRecord] { [] }
 
     func voicemailAudio(id: String) async throws -> Data {
+        throw APIError.notReady("当前配对不支持语音留言。")
+    }
+
+    func deleteVoicemail(id: String) async throws {
         throw APIError.notReady("当前配对不支持语音留言。")
     }
 

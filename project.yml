@@ -11,7 +11,10 @@ options:
 settings:
   base:
     MARKETING_VERSION: "0.3.5"
-    CURRENT_PROJECT_VERSION: "9"
+    # Internal TestFlight build 11 (v0.3.5 build 9 stays the immutable public
+    # Feather release/tag; build 10 archive was canceled in Organizer after a
+    # signature-entitlement gap was found, so 11 is the next clean number).
+    CURRENT_PROJECT_VERSION: "11"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     DEVELOPMENT_TEAM: ""
@@ -74,7 +77,26 @@ targets:
       properties:
         # iOS uses the bare `aps-environment` entitlement. The prefixed
         # com.apple.developer.aps-environment key is the macOS spelling.
+        # Archive-time value: development (automatic signing matches a dev
+        # profile); Xcode Organizer cloud-managed distribution re-signs with
+        # production push for TestFlight.
         aps-environment: development
+        # CloudKit (CloudSync engine): the CODE SIGNATURE must carry these —
+        # portal/profile capabilities do NOT inject into the effective
+        # signature by themselves (build 10 blocker). Values mirror the
+        # dedicated App ID/profile exactly (UUID 2fe41a7c-…): the exact
+        # dedicated container and the explicit CloudKit service ARRAY (the
+        # profile's icloud-services="*" wildcard also satisfies the runtime
+        # gate, but the signature declares the precise service).
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.jiangnangenius.callrelay
+        com.apple.developer.icloud-services:
+          - CloudKit
+        # Single string (the entitlement is NSString, not an array; the
+        # profile's own environment LIST is [Production, Development]).
+        com.apple.developer.icloud-container-environment: Production
+        com.apple.developer.ubiquity-container-identifiers:
+          - iCloud.com.jiangnangenius.callrelay
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jiangnangenius.callrelay

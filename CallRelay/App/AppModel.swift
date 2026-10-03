@@ -57,6 +57,12 @@ final class AppModel: ObservableObject {
     /// nil shows all authorized lines; otherwise filters SMS history.
     @Published var selectedLineFilter: String?
     @Published var voicemails: [VoicemailRecord] = []
+    /// User-facing error for the last failed voicemail delete; nil otherwise.
+    @Published var voicemailDeleteError: String?
+    /// Id of the most recently deleted voicemail (local or via a
+    /// `voicemail.deleted` event from another device). Voicemail UI observes
+    /// this to stop playback of the removed clip; nil until the first delete.
+    @Published private(set) var lastDeletedVoicemailId: String?
 
     enum AppTab: String { case keypad, contacts, messages, recents, settings }
 
@@ -1088,6 +1094,23 @@ final class AppModel: ObservableObject {
         authorizedLines.filter(\.canDialNow)
     }
 
+    /// Applies a `voicemail.deleted` envelope to the cached list in place.
+    /// Returns the removed id (or nil when the event is another voicemail type
+    /// or carries no usable id), so the caller can stop its playback.
+    /// Pure function of its arguments; safe from any actor context.
+    nonisolated static func applyVoicemailDeleted(_ event: GatewayEvent, to voicemails: inout [VoicemailRecord]) -> String? {
+        guard event.rawType == "voicemail.deleted", let data = event.data,
+              let envelope = try? JSONDecoder().decode(VoicemailDeleteEvent.self, from: data),
+              !envelope.id.isEmpty else { return nil }
+        guard voicemails.contains(where: { $0.id == envelope.id }) else {
+            // Nothing cached: treat as "no local change needed" but still
+            // report the id so playback is stopped.
+            return envelope.id
+        }
+        voicemails.removeAll { $0.id == envelope.id }
+        return envelope.id
+    }
+
     func line(id: String?) -> AuthorizedLine? {
         guard let id else { return nil }
         return authorizedLines.first { $0.id == id }
@@ -1211,8 +1234,15 @@ final class AppModel: ObservableObject {
         case .gatewayRestarting:
             lastError = "网关正在重启，稍后自动恢复。"
         default:
-            if event.type.rawValue.hasPrefix("voicemail.") {
-                Task { await refreshVoicemails() }
+            if event.rawType.hasPrefix("voicemail.") {
+                if let id = Self.applyVoicemailDeleted(event, to: &voicemails) {
+                    // Another device's delete was applied locally without a
+                    // network fetch; the UI stops playback of that clip.
+                    // Other voicemail events still refresh the list.
+                    lastDeletedVoicemailId = id
+                } else {
+                    Task { await refreshVoicemails() }
+                }
             }
         }
     }
@@ -1544,6 +1574,11 @@ final class AppModel: ObservableObject {
         handle(event: event)
     }
 
+    /// Seeds the cached voicemail list in tests without a network fetch.
+    func testingSetVoicemails(_ records: [VoicemailRecord]) {
+        voicemails = records
+    }
+
     /// Simulates a session teardown/re-bind generation bump without clearing
     /// the published UI state, so stale-response guards can be tested.
     func testingBumpSessionGeneration() {
@@ -1563,6 +1598,30 @@ final class AppModel: ObservableObject {
     func voicemailData(_ id: String) async -> Data? {
         guard let api else { return nil }
         return try? await api.voicemailAudio(id: id)
+    }
+
+    /// Authorized delete via the gateway, then optimistic refresh. Returns
+    /// false (with `voicemailDeleteError` set) when the network call fails;
+    /// the list is reloaded on success so external deletes are reflected too.
+    @discardableResult
+    func deleteVoicemail(_ id: String) async -> Bool {
+        guard let api else {
+            voicemailDeleteError = "尚未连接网关。"
+            return false
+        }
+        do {
+            try await api.deleteVoicemail(id: id)
+            voicemailDeleteError = nil
+            voicemails.removeAll { $0.id == id }
+            // Local delete also stops this device's playback of the clip via
+            // the same observation path a remote `voicemail.deleted` uses.
+            lastDeletedVoicemailId = id
+            await refreshVoicemails()
+            return true
+        } catch {
+            voicemailDeleteError = "删除留言失败，请下拉刷新后重试。"
+            return false
+        }
     }
 
     private func isTrustedContact(_ peer: String) -> Bool {

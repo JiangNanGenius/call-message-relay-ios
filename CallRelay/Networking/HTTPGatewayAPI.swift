@@ -542,6 +542,17 @@ final class HTTPGatewayAPI: GatewayAPI {
         return data
     }
 
+    func deleteVoicemail(id: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持语音留言。") }
+        var request = try makeRequest(path: "voicemails/\(id)", method: "DELETE", queryItems: [])
+        let (data, response) = try await performWithTokenRefresh(request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.network(URLError(.badServerResponse)) }
+        // 404 converges: another device may have deleted it; the end state
+        // ("it is gone") is identical, so treat it as success.
+        if http.statusCode == 404 { return }
+        guard (200..<300).contains(http.statusCode) else { throw try error(from: http, data: data) }
+    }
+
     // MARK: Unauthenticated pairing endpoints
 
     func completePairing(_ request: PairingCompleteRequest) async throws -> DeviceCredentials {

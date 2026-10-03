@@ -30,6 +30,8 @@ private struct ContactExportContent: View {
     @State private var shareURL: URL?
     @State private var exporting = false
     @State private var exportNote: String?
+    @State private var refreshingSystem = false
+    @State private var systemRefreshNote: String?
 
     var body: some View {
         Form {
@@ -131,21 +133,34 @@ private struct ContactExportContent: View {
 
     @ViewBuilder private var reimportSection: some View {
         Section("导入联系人") {
+            Button {
+                Task { await refreshFromSystem() }
+            } label: {
+                HStack {
+                    if refreshingSystem { ProgressView() }
+                    Label("重新导入本机通讯录", systemImage: "arrow.clockwise")
+                }
+            }
+            .disabled(refreshingSystem)
+            .accessibilityIdentifier("refresh-system-contacts")
+            if let systemRefreshNote {
+                Text(systemRefreshNote).font(.caption).foregroundStyle(.secondary)
+            }
             NavigationLink {
                 ContactImportView(service: service)
             } label: {
-                Label("选择 vCard 并预览合并", systemImage: "square.and.arrow.down")
+                Label("从 vCard 导入", systemImage: "square.and.arrow.down")
             }
             .accessibilityIdentifier("open-import")
             if let shareURL {
                 NavigationLink {
                     ContactImportView(service: service, sourceURL: shareURL)
                 } label: {
-                    Label("将刚导出的 vCard 合并回系统通讯录", systemImage: "arrow.triangle.merge")
+                    Label("合并刚导出的 vCard", systemImage: "arrow.triangle.merge")
                 }
                 .accessibilityIdentifier("merge-exported-vcard")
             }
-            Text("支持 App 导出的 .vcf 与标准 vCard 3.0；先预览新增/合并/冲突，再确认写入。App 不会删除任何联系人。")
+            Text("只读系统通讯录，不删除、不改写。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -196,6 +211,24 @@ private struct ContactExportContent: View {
         // preselected; coworkers/shared-number warnings start unchecked.
         selectedAuto = Set(found.filter { $0.reason == .nameAndContact }.map(\.id))
         selectedShared = []
+    }
+
+    private func refreshFromSystem() async {
+        refreshingSystem = true
+        systemRefreshNote = nil
+        let outcome = await service.refreshFromSystem()
+        refreshingSystem = false
+        switch outcome {
+        case .changed(let report):
+            systemRefreshNote = report.summary
+            await reload()
+        case .unchanged(let report):
+            systemRefreshNote = report.summary
+        case .denied:
+            systemRefreshNote = "通讯录访问未授权。"
+        case .failed:
+            systemRefreshNote = "读取系统通讯录失败，已保留当前列表，请重试。"
+        }
     }
 
     private func export() async {

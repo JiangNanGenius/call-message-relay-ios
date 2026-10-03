@@ -425,6 +425,32 @@ final class UnifiedHTTPTransportTests: XCTestCase {
         XCTAssertEqual(server.lastAuthorization, "Bearer access")
     }
 
+    func testDeleteVoicemailUsesExactDeleteAndTreats404AsSuccess() async throws {
+        server.respond(with: 200, body: #"{"id":"vm-1","lineId":"line-a","deleted":true}"#)
+        let client = try makeClient()
+        try await client.deleteVoicemail(id: "vm-1")
+        XCTAssertEqual(server.lastMethod, "DELETE")
+        XCTAssertEqual(server.lastPath, "/api/v2/voicemails/vm-1")
+        XCTAssertEqual(server.lastAuthorization, "Bearer access")
+
+        // A repeat delete racing another device returns 404: the end state is
+        // identical, so the client converges rather than surfacing an error.
+        server.respond(with: 404, body: #"{"code":"CB-V2-404","message":"留言不存在"}"#)
+        try await client.deleteVoicemail(id: "vm-1")
+    }
+
+    func testDeleteVoicemailPropagatesServerFailure() async throws {
+        server.respond(with: 500, body: #"{"code":"CB-V2-500","message":"boom"}"#)
+        let client = try makeClient()
+        do {
+            try await client.deleteVoicemail(id: "vm-1")
+            XCTFail("expected failure to be thrown")
+        } catch {
+            // success: surfaced to the model for an error row
+        }
+        XCTAssertEqual(server.lastMethod, "DELETE")
+    }
+
     // MARK: Token expiry, refresh and revocation
 
     private func scriptedClient(
