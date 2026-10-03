@@ -45,6 +45,10 @@ final class AppModel: ObservableObject {
     /// Concise notice when the system incoming-call UI is unavailable (the
     /// in-app ring and answer still work). nil when CallKit accepted.
     @Published var callKitIssue: String?
+    /// Result of an explicit incoming-call check (deeplink/manual) that found
+    /// nothing to ring; nil while no such notice is pending. `ringing` results
+    /// surface the normal call UI instead of a notice.
+    @Published var incomingCheckNotice: String?
     /// Set only on a definitive credential loss (revoked key/device or a
     /// rejected refresh), never on a transient network failure.
     @Published var authRecoveryRequired = false
@@ -175,6 +179,9 @@ final class AppModel: ObservableObject {
     }
 
     var isPaired: Bool { bindingStore.current() != nil && tokenStore.tokens() != nil }
+
+    /// True when the live driver can present a checked incoming call right now.
+    var canRunLiveIncomingCheck: Bool { api != nil && driver != nil }
 
     /// True when the current binding is a legacy v1 per-line pairing. The
     /// unified line list and number selector cannot exist for it; the UI must
@@ -341,6 +348,10 @@ final class AppModel: ObservableObject {
     // MARK: Lifecycle
 
     func bootstrap() {
+        // The optional incoming-call check (App Intent / deeplink) prefers this
+        // live model so the real driver owns presentation, answer routing and
+        // session state. The checker is inert until explicitly invoked.
+        IncomingCallChecker.shared.model = self
         // Screenshot fixtures for the batched visual review: deterministic,
         // offline, launch-argument gated (never reachable in normal use).
         if LaunchArguments.isRoutePreview || LaunchArguments.isRouteSettingsPreview
@@ -1903,6 +1914,12 @@ final class AppModel: ObservableObject {
         guard call.direction == .inbound,
               call.state == .incomingRinging,
               !call.isFinished else { return }
+        // A fallback ring presented before this model was live (App Intent /
+        // deeplink with no running scene) is handed back here: end that system
+        // call and let the real driver report the same gateway call once.
+        if let claimed = IncomingCallChecker.shared.claimFallbackRing(call.id) {
+            Task { await claimed.manager.reportEnded(uuid: claimed.uuid, reason: .answeredElsewhere) }
+        }
         // A call this session already saw end (or the user rejected) can never
         // ring again, no matter how recent the replayed event claims to be.
         guard !terminalCallIds.contains(call.id),
@@ -1943,6 +1960,108 @@ final class AppModel: ObservableObject {
             await applyScreening(handle: incoming.peer ?? "未知来电", gatewayId: incoming.id, generation: gen)
             if gen == self.sessionGeneration { self.reportingIncomingIds.remove(incoming.id) }
         }
+    }
+
+    // MARK: Explicit incoming-call check (App Intent / deeplink / manual)
+
+    /// Makes sure a live session exists before a checked call is presented.
+    /// When bootstrap has not run yet (background App Intent launch) it starts
+    /// the live wiring from the stored pairing; when a probe is already in
+    /// flight it only waits. Bounded: never blocks an intent indefinitely.
+    func ensureLiveForIncomingCheck(timeout: TimeInterval = 6) async {
+        guard !isDemo else { return }
+        if api == nil || driver == nil {
+            switch linePhase {
+            case .connecting:
+                break // identity verification / bootstrap already in flight
+            default:
+                if bindingStore.current() != nil, tokenStore.tokens() != nil {
+                    retryConnection()
+                }
+            }
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        while (api == nil || driver == nil) && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            if Task.isCancelled { break }
+        }
+    }
+
+    /// Fetches the authoritative ringing set and hands it to the native path.
+    /// Authentication uses this app's own stored pairing; nothing from the
+    /// deeplink/notification is trusted.
+    func performIncomingCheck() async -> IncomingCheckOutcome {
+        guard !isDemo else { return .unavailable }
+        guard isPaired else { return .notPaired }
+        guard let api, driver != nil else { return .offline }
+        do {
+            let active = try await api.activeCalls()
+            return surfaceRingingCalls(active)
+        } catch let error as APIError {
+            switch error {
+            case .unauthorized, .noCredentials:
+                return .notPaired
+            default:
+                return .offline
+            }
+        } catch {
+            return .offline
+        }
+    }
+
+    /// Presents only actually-ringing inbound calls through the existing
+    /// event path (CallKit/LCK, per-call dedup, never auto-answer). Returns how
+    /// many were newly surfaced.
+    func surfaceRingingCalls(_ calls: [CallRecord]) -> IncomingCheckOutcome {
+        let ringing = IncomingCallFilter.ringing(
+            from: calls, expectedGatewayID: bindingStore.current()?.gatewayId
+        )
+        var surfaced = 0
+        for call in ringing {
+            let alreadyKnown = reportingIncomingIds.contains(call.id)
+                || activeGatewayCallIds.contains(call.id)
+                || terminalCallIds.contains(call.id)
+                || reservedCallIds.contains(call.id)
+            handleIncoming(call, eventCreatedAt: nil, authoritative: true)
+            if !alreadyKnown { surfaced += 1 }
+        }
+        return surfaced > 0 ? .ringing(surfaced) : .noRingingCall
+    }
+
+    /// Entry point for `callrelay://incoming` and the Settings manual check.
+    /// A ringing outcome shows the call UI; anything else becomes a concise
+    /// notice so the user is never left guessing.
+    func checkIncomingNow(source: IncomingCheckSource) {
+        Task { [weak self] in
+            guard let self else { return }
+            let outcome = await IncomingCallChecker.shared.check(source: source)
+            if case .ringing = outcome { return }
+            self.incomingCheckNotice = outcome.message
+        }
+    }
+
+    func handleIncomingCheckDeepLink() {
+        checkIncomingNow(source: .deepLink)
+    }
+
+    func dismissIncomingCheckNotice() { incomingCheckNotice = nil }
+
+    // MARK: Optional Bark bridge (gateway settings)
+
+    func barkSettings() async throws -> BarkBridgeSettings {
+        guard let api else { throw APIError.notReady("尚未连接网关。") }
+        return try await api.barkSettings()
+    }
+
+    @discardableResult
+    func saveBarkSettings(_ update: BarkBridgeSettingsUpdate) async throws -> BarkBridgeSettings {
+        guard let api else { throw APIError.notReady("尚未连接网关。") }
+        return try await api.updateBarkSettings(update)
+    }
+
+    func sendBarkTestNotification() async throws {
+        guard let api else { throw APIError.notReady("尚未连接网关。") }
+        try await api.sendBarkTestNotification()
     }
 
     /// Converges local call state with the gateway after a stream gap or

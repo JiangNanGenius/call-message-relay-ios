@@ -74,6 +74,13 @@ targets:
         NSUserActivityTypes:
           - INStartCallIntent
           - INStartAudioCallIntent
+        # Token-free incoming-call check link used by the optional Bark
+        # notification and the manual fallback. Opening it only asks the app
+        # to re-check the paired gateway; no credential travels in the URL.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.jiangnangenius.callrelay
+            CFBundleURLSchemes:
+              - callrelay
         UIRequiredDeviceCapabilities:
           - arm64
         UIBackgroundModes:

@@ -14,6 +14,9 @@ struct CallRelayApp: App {
                 .task {
                     appDelegate.model = model
                     model.bootstrap()
+                    if appDelegate.takePendingIncomingCheck() {
+                        model.handleIncomingCheckDeepLink()
+                    }
                     if let pending = appDelegate.takePendingPeer() {
                         model.handleExternalDial(pending)
                     }
@@ -25,6 +28,7 @@ struct CallRelayApp: App {
 final class AppDelegate: NSObject, UIApplicationDelegate {
     weak var model: AppModel?
     private var pendingPeer: String?
+    private var pendingIncomingCheck = false
 
     /// Cold-start relaunch from a system Phone/Recents row (INStartCallIntent).
     /// SwiftUI's `onContinueUserActivity` covers foreground; this covers the
@@ -49,11 +53,28 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return value
     }
 
+    /// Cold-start `callrelay://incoming` from an optional Bark notification.
+    /// The check itself runs only after the app model exists; the URL carries
+    /// no credential, so nothing here is trusted beyond "please check".
+    func takePendingIncomingCheck() -> Bool {
+        let value = pendingIncomingCheck
+        pendingIncomingCheck = false
+        return value
+    }
+
     /// Cold-start `tel:` handoff (default calling app configuration). Routed
     /// through the same gateway dial path — never a cellular fallback.
     func application(
         _ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]
     ) -> Bool {
+        if IncomingCheckDeepLink.matches(url) {
+            if let model {
+                model.handleIncomingCheckDeepLink()
+            } else {
+                pendingIncomingCheck = true
+            }
+            return true
+        }
         guard let peer = CallIntentRouter.peer(from: url) else { return false }
         if let model {
             model.handleExternalDial(peer)

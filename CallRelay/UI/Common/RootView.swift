@@ -53,6 +53,13 @@ struct RootView: View {
         }
         // tel: requests, e.g. when configured as a default calling app.
         .onOpenURL { url in
+            // Token-free incoming-check link from the optional Bark
+            // notification (or a manual shortcut): re-authenticate with the
+            // stored pairing and surface actually-ringing calls.
+            if IncomingCheckDeepLink.matches(url) {
+                model.handleIncomingCheckDeepLink()
+                return
+            }
             guard let peer = CallIntentRouter.peer(from: url) else { return }
             model.handleExternalDial(peer)
         }
@@ -76,6 +83,19 @@ struct RootView: View {
             Button("知道了", role: .cancel) { model.dismissExternalCallRequest() }
         } message: { request in
             Text(request.message ?? "")
+        }
+        // Honest result of an explicit incoming-call check that found nothing
+        // to ring; a real ringing call opens the normal call UI instead.
+        .alert(
+            "检查来电",
+            isPresented: Binding(
+                get: { model.incomingCheckNotice != nil },
+                set: { if !$0 { model.dismissIncomingCheckNotice() } }
+            )
+        ) {
+            Button("知道了", role: .cancel) { model.dismissIncomingCheckNotice() }
+        } message: {
+            Text(model.incomingCheckNotice ?? "")
         }
     }
 }

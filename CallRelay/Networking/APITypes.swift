@@ -148,6 +148,15 @@ protocol GatewayAPI: Sendable {
     /// normalized to success by the implementation so deletes converge.
     func deleteVoicemail(id: String) async throws
     func enroll(_ request: EnrollmentRequest) async throws -> EnrollmentResponse
+
+    // MARK: Optional Bark bridge (v2); the app works without ever calling these
+    /// The device's redacted opt-in settings. Never contains the device key.
+    func barkSettings() async throws -> BarkBridgeSettings
+    /// Saves opt-in settings; the response is the same redacted view.
+    @discardableResult
+    func updateBarkSettings(_ update: BarkBridgeSettingsUpdate) async throws -> BarkBridgeSettings
+    /// Sends one rate-limited test notification through the stored server.
+    func sendBarkTestNotification() async throws
 }
 
 /// Newest-first page of one thread plus the gateway's X-CellBridge-Has-More
@@ -532,5 +541,19 @@ extension GatewayAPI {
 
     func enroll(_ request: EnrollmentRequest) async throws -> EnrollmentResponse {
         throw APIError.notReady("当前配对不是统一网关。")
+    }
+
+    // Optional Bark bridge: demo/v1 bindings simply keep the feature off.
+    func barkSettings() async throws -> BarkBridgeSettings {
+        throw APIError.notReady("当前配对不是统一网关，无法使用可选 Bark 通知。")
+    }
+
+    @discardableResult
+    func updateBarkSettings(_ update: BarkBridgeSettingsUpdate) async throws -> BarkBridgeSettings {
+        throw APIError.notReady("当前配对不是统一网关，无法使用可选 Bark 通知。")
+    }
+
+    func sendBarkTestNotification() async throws {
+        throw APIError.notReady("当前配对不是统一网关，无法使用可选 Bark 通知。")
     }
 }

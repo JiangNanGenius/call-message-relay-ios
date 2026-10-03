@@ -437,6 +437,34 @@ final class HTTPGatewayAPI: GatewayAPI {
         )
     }
 
+    // MARK: Optional Bark bridge (v2)
+
+    func barkSettings() async throws -> BarkBridgeSettings {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
+        let deviceId = try barkDeviceId()
+        return try await authorizedGet("devices/\(deviceId)/bark")
+    }
+
+    @discardableResult
+    func updateBarkSettings(_ update: BarkBridgeSettingsUpdate) async throws -> BarkBridgeSettings {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
+        let deviceId = try barkDeviceId()
+        return try await authorizedPut("devices/\(deviceId)/bark", body: update)
+    }
+
+    func sendBarkTestNotification() async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
+        let deviceId = try barkDeviceId()
+        try await authorizedVoidAction(
+            "devices/\(deviceId)/bark/test", idempotencyKey: UUID().uuidString
+        )
+    }
+
+    private func barkDeviceId() throws -> String {
+        guard let deviceId = tokens.tokens()?.deviceId else { throw APIError.noCredentials }
+        return deviceId
+    }
+
     // MARK: SMS
 
     func listThreads() async throws -> [MessageThread] {
@@ -657,9 +685,11 @@ final class HTTPGatewayAPI: GatewayAPI {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = payload
         }
-        let (_, response) = try await performWithTokenRefresh(request)
+        let (data, response) = try await performWithTokenRefresh(request)
         guard let http = response as? HTTPURLResponse else { throw APIError.network(URLError(.badServerResponse)) }
-        guard (200..<300).contains(http.statusCode) else { throw try error(from: http, data: nil) }
+        // Pass the body so a structured gateway error (e.g. CB-BARK-DISABLED)
+        // keeps its code/message instead of degrading to a bare status.
+        guard (200..<300).contains(http.statusCode) else { throw try error(from: http, data: data) }
     }
 
     private func authorizedGet<Output: Decodable>(

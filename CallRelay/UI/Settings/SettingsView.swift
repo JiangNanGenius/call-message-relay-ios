@@ -31,6 +31,11 @@ struct SettingsView: View {
                     } label: {
                         Label("通讯录导入与整理", systemImage: "person.crop.circle.badge.checkmark")
                     }
+                    NavigationLink {
+                        BarkBridgeSettingsView()
+                    } label: {
+                        Label("来电通知（可选 Bark）", systemImage: "bell.badge")
+                    }
                 }
 
                 Section("iCloud 同步（可选）") {
