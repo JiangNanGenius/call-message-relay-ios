@@ -11,11 +11,21 @@
    "bundleIdentifier": "com.jiangnangenius.callrelay",
    "developerName": "JiangNanGenius",
    "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
-   "localizedDescription": "0.3.7（build 14）纯原生版：修复 0.3.6(13) 真机反馈的中继通话接听后无声与直连/路由切换卡死，新增 设置→关于→诊断 的有界脱敏日志与一键导出。未签名 IPA，需自行签名安装；构建 14 的真机通话与锁屏推送验收尚未完成，不声称真实通话已通过。",
+   "localizedDescription": "0.3.8（build 15）纯原生版：配合网关音频修复（采集周期对齐 20 ms 语音帧，修复通话断续/中继几乎无声）；诊断新增双向音频电平、节拍与 PushKit 生命周期日志；解除配对不再丢失 VoIP 令牌。未签名 IPA，需自行签名安装；真机通话音质与后台响铃验收尚未完成，不声称已通过。",
    "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
    "tintColor": "135CDC",
    "beta": true,
    "versions": [
+    {
+     "version": "0.3.8",
+     "buildVersion": "15",
+     "date": "2026-10-03T17:59:01Z",
+     "minOSVersion": "17.0",
+     "size": 13065732,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.8/CallRelay-Feather-Native-0.3.8-15-unsigned.ipa",
+     "localizedDescription": "0.3.8（build 15）纯原生版：配合网关音频修复（采集周期对齐 20 ms 语音帧，修复通话断续/中继几乎无声）；诊断新增双向音频电平、节拍与 PushKit 生命周期日志；解除配对不再丢失 VoIP 令牌。未签名 IPA，需自行签名安装；真机通话音质与后台响铃验收尚未完成，不声称已通过。",
+     "sha256": "38e1129d14117d07060e65d00ca9753ee00d8d3c4bb8dba7296526c251e22ec4"
+    },
     {
      "version": "0.3.7",
      "buildVersion": "14",
@@ -117,10 +127,10 @@
      "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
     }
    ],
-   "version": "0.3.7",
-   "versionDate": "2026-10-03T15:50:11Z",
-   "size": 13058767,
-   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.7/CallRelay-Feather-Native-0.3.7-14-unsigned.ipa",
+   "version": "0.3.8",
+   "versionDate": "2026-10-03T17:59:01Z",
+   "size": 13065732,
+   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.8/CallRelay-Feather-Native-0.3.8-15-unsigned.ipa",
    "appPermissions": {
     "entitlements": [
      "aps-environment"
