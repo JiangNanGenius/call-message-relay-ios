@@ -83,6 +83,10 @@ struct ActiveCallView: View {
                 .font(.headline)
                 .foregroundStyle(statusColor)
 
+            if !model.isDemo, call?.phase.isLive == true {
+                InCallRouteMenu()
+            }
+
             if conference != nil {
                 Text("多方会议 · \(conference?.legs.count ?? 0) 方")
                     .font(.caption)

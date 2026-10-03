@@ -11,6 +11,14 @@ final class AppModel: ObservableObject {
     }
     @Published var activeCall: ActiveCallViewState?
     @Published var quality: MediaQuality?
+    /// Live Auto/Direct/Relay routing snapshot for the active call.
+    @Published var routeState: CallRouteState?
+    /// One-shot notice from a failed forced route selection.
+    @Published var routeNotice: String?
+    /// When true the route notice offers a one-tap switch to auto.
+    @Published var routeNoticeOffersAuto = false
+    /// Persisted default route mode for the bound gateway (Settings picker).
+    @Published var preferredRouteMode: MediaRouteMode = .auto
     @Published var recents: [CallRecord] = []
     @Published var gatewayName: String = ""
     @Published var pairingError: String?
@@ -663,6 +671,7 @@ final class AppModel: ObservableObject {
         }
 
         gatewayName = binding.gatewayName ?? binding.gatewayId
+        preferredRouteMode = MediaRoutePreferenceStore.shared.mode(for: binding.gatewayId)
         linePhase = .connecting
         let launchGeneration = sessionGeneration
         reconciling = false
@@ -695,6 +704,7 @@ final class AppModel: ObservableObject {
         let http = HTTPGatewayAPI(origin: origin, tokens: tokens)
         api = http
         gatewayName = binding.gatewayName ?? binding.gatewayId
+        preferredRouteMode = MediaRoutePreferenceStore.shared.mode(for: binding.gatewayId)
         currentGatewayScope = GatewayScope.identifier(gatewayID: binding.gatewayId)
         pushPolicy = PushReceptionPolicy(expectedGatewayId: binding.gatewayId)
 
@@ -759,7 +769,8 @@ final class AppModel: ObservableObject {
         callKit = manager
         let live = LiveCallDriver(
             api: http, transport: binding.transport,
-            callKit: manager, mediaProvider: WebRTCMediaProvider(), registry: identityRegistry
+            callKit: manager, mediaProvider: WebRTCMediaProvider(), registry: identityRegistry,
+            gatewayID: binding.gatewayId
         )
         driver = live
         live.setDefaultLineId(binding.defaultLineId)
@@ -863,6 +874,20 @@ final class AppModel: ObservableObject {
                 self.quality = quality
             }
         }
+        driver.onRouteState = { [weak self] state in
+            Task { @MainActor in
+                guard let self, boundGeneration == self.sessionGeneration else { return }
+                self.routeState = state
+                self.preferredRouteMode = state.mode
+            }
+        }
+        driver.onRouteNotice = { [weak self] message, offersAuto in
+            Task { @MainActor in
+                guard let self, boundGeneration == self.sessionGeneration else { return }
+                self.routeNotice = message
+                self.routeNoticeOffersAuto = offersAuto
+            }
+        }
         driver.onEnded = { [weak self] gatewayId in
             Task { @MainActor in
                 guard let self, boundGeneration == self.sessionGeneration else { return }
@@ -872,6 +897,8 @@ final class AppModel: ObservableObject {
                 self.terminalCallIds.insert(gatewayId)
                 self.activeCall = nil
                 self.quality = nil
+                self.routeState = nil
+                self.routeNotice = nil
                 await self.refreshRecents()
             }
         }
@@ -1205,6 +1232,29 @@ final class AppModel: ObservableObject {
     func setMuted(_ muted: Bool) { driver?.setMuted(muted) }
     func setSpeaker(_ enabled: Bool) { driver?.setSpeaker(enabled) }
     func playDTMF(_ digit: String) { driver?.playDTMF(digit) }
+
+    // MARK: Media route (Auto / Direct / Relay)
+
+    /// Persists the preferred default for the bound gateway and applies it
+    /// to the active call when one exists.
+    func setPreferredRouteMode(_ mode: MediaRouteMode) {
+        preferredRouteMode = mode
+        if let gatewayID = bindingStore.current()?.gatewayId {
+            MediaRoutePreferenceStore.shared.setMode(mode, for: gatewayID)
+        }
+        driver?.selectRouteMode(mode)
+    }
+
+    func dismissRouteNotice() {
+        routeNotice = nil
+        routeNoticeOffersAuto = false
+    }
+
+    /// One-tap recovery from a forced-direct failure: switch to auto.
+    func switchRouteToAuto() {
+        setPreferredRouteMode(.auto)
+        dismissRouteNotice()
+    }
 
     // MARK: Events / sync
 

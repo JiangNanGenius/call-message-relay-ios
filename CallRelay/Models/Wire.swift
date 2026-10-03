@@ -247,11 +247,43 @@ struct CallRecord: Decodable, Equatable, Identifiable, Sendable {
     let recordingId: String?
     let recordingState: String?
     let recordingDurationMs: Int64?
+    /// v2-only truthful transport reporting ("ice"/"ws"); nil otherwise.
+    let mediaTransport: String?
 
     enum CodingKeys: String, CodingKey {
         case id, direction, peer, state, startedAt, connectedAt, endedAt, endReason
         case gatewayID = "gatewayID", lineID = "lineID"
-        case recordingId, recordingState, recordingDurationMs
+        case recordingId, recordingState, recordingDurationMs, mediaTransport
+    }
+
+    init(id: String,
+         gatewayID: String?,
+         lineID: String?,
+         direction: CallDirection,
+         peer: String?,
+         state: CallState,
+         startedAt: Int64,
+         connectedAt: Int64?,
+         endedAt: Int64?,
+         endReason: String?,
+         recordingId: String?,
+         recordingState: String?,
+         recordingDurationMs: Int64?,
+         mediaTransport: String? = nil) {
+        self.id = id
+        self.gatewayID = gatewayID
+        self.lineID = lineID
+        self.direction = direction
+        self.peer = peer
+        self.state = state
+        self.startedAt = startedAt
+        self.connectedAt = connectedAt
+        self.endedAt = endedAt
+        self.endReason = endReason
+        self.recordingId = recordingId
+        self.recordingState = recordingState
+        self.recordingDurationMs = recordingDurationMs
+        self.mediaTransport = mediaTransport
     }
 
     var startedDate: Date { Date(unixMilliseconds: startedAt) }
@@ -290,6 +322,7 @@ extension CallRecord {
         recordingId = try? c.decodeIfPresent(String.self, forKey: .recordingId)
         recordingState = try? c.decodeIfPresent(String.self, forKey: .recordingState)
         recordingDurationMs = try? c.decodeIfPresent(Int64.self, forKey: .recordingDurationMs)
+        mediaTransport = try? c.decodeIfPresent(String.self, forKey: .mediaTransport)
     }
 }
 

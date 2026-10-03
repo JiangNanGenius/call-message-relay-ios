@@ -184,6 +184,24 @@ final class FakeGatewayAPI: GatewayAPI {
     private var numberArmed = false
     var mergeError: Error?
 
+    // MARK: Direct route (probe/commit/rollback)
+    var attachProbeResult: Result<WebRTCAnswer, Error> = .success(
+        WebRTCAnswer(sdp: "v=0\r\n", type: "answer", iceMode: "all"))
+    private(set) var attachProbeCalls: [String] = []
+    var commitError: Error?
+    private(set) var commitCalls: [String] = []
+    private var commitContinuation: CheckedContinuation<Void, Error>?
+    private var commitArmed = false
+    var discardProbeCalls: [String] = []
+    var measureRequestCallCount = 0
+
+    func armCommitWait() { commitArmed = true }
+    var onCommit: (() -> Void)?
+    func resumeCommit(with result: Result<Void, Error>) {
+        commitContinuation?.resume(with: result)
+        commitContinuation = nil
+    }
+
     func armAuthorizedLinesWait() { linesArmed = true }
     func resumeAuthorizedLines(with result: Result<[AuthorizedLine], Error>) {
         if let waiter = linesWaiter {
@@ -483,6 +501,28 @@ final class FakeGatewayAPI: GatewayAPI {
 
     func markMessageRead(id: String, idempotencyKey: String) async throws {
         readMarked.append(id)
+    }
+
+    func attachMediaProbe(callId: String, sdp: String) async throws -> WebRTCAnswer {
+        attachProbeCalls.append(callId)
+        return try attachProbeResult.get()
+    }
+    func commitMediaProbe(callId: String) async throws {
+        commitCalls.append(callId)
+        onCommit?()
+        if commitArmed {
+            commitArmed = false
+            try await withCheckedThrowingContinuation { commitContinuation = $0 }
+            return
+        }
+        if let commitError { throw commitError }
+    }
+    func discardMediaProbe(callId: String) async throws {
+        discardProbeCalls.append(callId)
+    }
+    func mediaMeasureWebSocketRequest(callId: String) async throws -> URLRequest {
+        measureRequestCallCount += 1
+        return URLRequest(url: URL(string: "wss://example.test/calls/\(callId)/media/measure")!)
     }
 }
 

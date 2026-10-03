@@ -103,11 +103,14 @@ struct V2CallView: Decodable {
     let recordingId: String?
     let recordingState: String?
     let recordingDurationMs: Int64?
+    /// Truthful transport reporting: "ice" (direct) or "ws" (relay); absent
+    /// before any client media attaches, or on older gateways.
+    let mediaTransport: String?
 
     enum CodingKeys: String, CodingKey {
         case id, gatewayId, lineId, lineName, direction, peer, state
         case startedAt, connectedAt, endedAt, endReason
-        case recordingId, recordingState, recordingDurationMs
+        case recordingId, recordingState, recordingDurationMs, mediaTransport
     }
 
     init(from decoder: Decoder) throws {
@@ -126,6 +129,7 @@ struct V2CallView: Decodable {
         recordingId = try? c.decodeIfPresent(String.self, forKey: .recordingId)
         recordingState = try? c.decodeIfPresent(String.self, forKey: .recordingState)
         recordingDurationMs = try? c.decodeIfPresent(Int64.self, forKey: .recordingDurationMs)
+        mediaTransport = try? c.decodeIfPresent(String.self, forKey: .mediaTransport)
     }
 
     var callRecord: CallRecord {
@@ -142,7 +146,8 @@ struct V2CallView: Decodable {
             endReason: endReason,
             recordingId: recordingId,
             recordingState: recordingState,
-            recordingDurationMs: recordingDurationMs
+            recordingDurationMs: recordingDurationMs,
+            mediaTransport: mediaTransport
         )
     }
 }

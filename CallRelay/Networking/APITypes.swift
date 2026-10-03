@@ -91,6 +91,9 @@ protocol GatewayAPI: Sendable {
     func mediaWebSocketRequest(callId: String) async throws -> URLRequest
     /// v2: same, for the hosted conference's client audio channel.
     func conferenceMediaWebSocketRequest(conferenceId: String) async throws -> URLRequest
+    /// v2: side-effect-free measurement socket (ping/pong only) used to
+    /// sample relay RTT while media runs over direct ICE.
+    func mediaMeasureWebSocketRequest(callId: String) async throws -> URLRequest
     /// v2: attaches a DETACHED echo probe for candidate-quality measurement.
     /// The probe never disturbs the live media path; the answer is a normal
     /// SDP answer for the isolated probe peer connection.
@@ -511,6 +514,10 @@ extension GatewayAPI {
 
     func conferenceMediaWebSocketRequest(conferenceId: String) async throws -> URLRequest {
         throw APIError.notReady("当前配对不支持 WebSocket 音频。")
+    }
+
+    func mediaMeasureWebSocketRequest(callId: String) async throws -> URLRequest {
+        throw APIError.notReady("当前配对不支持线路质量测量。")
     }
 
     func listVoicemails() async throws -> [VoicemailRecord] { [] }

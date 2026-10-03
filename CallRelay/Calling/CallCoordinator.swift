@@ -8,7 +8,7 @@ import CallKit
 enum CallPhaseResolver {
     static func resolve(gateway: CallRecord?, media: MediaState) -> ActiveCallPhase {
         if media == .failed {
-            return .failed(message: "音频通道建立失败，请检查网络或 TURN 配置。")
+            return .failed(message: String(localized: "音频通道建立失败，请检查网络后重试。"))
         }
         guard let gateway else { return .outgoingDialing }
         if gateway.endedAt != nil || gateway.state == .idle {
@@ -88,6 +88,14 @@ final class CallCoordinator: NSObject {
     private var media: CallMediaSession?
     private var wsMedia: WebSocketCallMedia?
     private var wsConferenceMedia: WebSocketCallMedia?
+    /// Auto/Direct/Relay routing for the active non-conference call.
+    private var route: CallRouteController?
+    private let routeModeDefault: MediaRouteMode
+    private let routeGatewayID: String?
+    /// ICE/direct advertised by the gateway for the active call.
+    private var directAdvertised = false
+    var onRouteState: ((CallRouteState) -> Void)?
+    var onRouteNotice: ((String, Bool) -> Void)?
     private var activeGatewayId: String?
     private var latestGateway: CallRecord?
     private var latestMedia: MediaState = .idle
@@ -121,7 +129,8 @@ final class CallCoordinator: NSObject {
         mediaProvider: MediaSessionProviding,
         registry: CallIdentityRegistry,
         transport: String,
-        mediaRecoveryWindow: TimeInterval = 20
+        mediaRecoveryWindow: TimeInterval = 20,
+        gatewayID: String? = nil
     ) {
         self.api = api
         self.callKit = callKit
@@ -129,6 +138,8 @@ final class CallCoordinator: NSObject {
         self.registry = registry
         self.transport = transport
         self.mediaRecoveryWindow = mediaRecoveryWindow
+        self.routeModeDefault = MediaRoutePreferenceStore.shared.mode(for: gatewayID)
+        self.routeGatewayID = gatewayID
         super.init()
         callKit.director = self
         AudioSessionBridge.shared.onActivate = { [weak self] session in
@@ -421,6 +432,8 @@ final class CallCoordinator: NSObject {
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        route?.teardown()
+        route = nil
         if var entry = tracked[callId] {
             entry.held = false
             tracked[callId] = entry
@@ -543,6 +556,8 @@ final class CallCoordinator: NSObject {
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        route?.teardown()
+        route = nil
         latestMedia = .idle
         if var entry = tracked[callId] {
             entry.held = true
@@ -633,6 +648,13 @@ final class CallCoordinator: NSObject {
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        route?.setConferenceLocked(true)
+        onRouteState?(CallRouteState(mode: routeModeDefault, active: .none,
+                                      switching: false, probing: false,
+                                      directDegraded: false, conferenceLocked: true,
+                                      rttSeconds: nil, notice: nil, offersAutoFallback: false))
+        route?.teardown()
+        route = nil
         delegate?.callGroupChanged()
     }
 
@@ -841,6 +863,8 @@ final class CallCoordinator: NSObject {
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        route?.teardown()
+        route = nil
         latestMedia = .idle
 
         let live = remaining.filter { !$0.isFinished }
@@ -958,6 +982,8 @@ final class CallCoordinator: NSObject {
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        route?.teardown()
+        route = nil
         latestMedia = .idle
         for leg in remaining {
             var entry = tracked[leg.id] ?? TrackedCall(record: leg, held: false, muted: false)
@@ -1031,7 +1057,8 @@ final class CallCoordinator: NSObject {
         // fails truthfully.
         if ice.mediaTransports?.contains("ws") == true {
             try await establishWSMedia(
-                callId: callId, uuid: uuid, generation: gen, selfManagedAudio: selfManagedAudio)
+                callId: callId, uuid: uuid, generation: gen, ice: ice,
+                selfManagedAudio: selfManagedAudio)
             return
         }
 
@@ -1112,14 +1139,32 @@ final class CallCoordinator: NSObject {
     /// audio before the socket opens (replay it); a direct in-app answer
     /// self-activates; failures end the call truthfully.
     private func establishWSMedia(
-        callId: String, uuid: UUID, generation gen: UInt64, selfManagedAudio: Bool
+        callId: String, uuid: UUID, generation gen: UInt64,
+        ice: ICEConfiguration, selfManagedAudio: Bool
     ) async throws {
+        directAdvertised = ice.mediaTransports?.contains("ice") == true
+        // Forced direct requires a direct-capable gateway; surface the
+        // impossibility BEFORE the call settles, while WSS safely carries it.
+        if routeModeDefault == .direct, !directAdvertised, route == nil {
+            onRouteNotice?(
+                String(localized: "当前网关不支持直连，无法按你的选择使用直连；可改用自动模式。"), true)
+        }
+        try await attachWSSession(
+            callId: callId, uuid: uuid, gen: gen, ice: ice, selfManagedAudio: selfManagedAudio)
+    }
+
+    /// Builds/connects one WSS session and wires its callbacks. Used for the
+    /// initial attach AND for ICE -> WSS rollback after a direct session.
+    @discardableResult
+    private func attachWSSession(
+        callId: String, uuid: UUID, gen: UInt64, ice: ICEConfiguration,
+        selfManagedAudio: Bool
+    ) async throws -> WebSocketCallMedia {
         let request = try await api.mediaWebSocketRequest(callId: callId)
-        guard gen == self.generation else { throw CancellationError() }
-        let ice = try await api.iceConfiguration(callId: callId)
         guard gen == self.generation else { throw CancellationError() }
 
         let session = WebSocketCallMedia()
+        let previous = wsMedia
         wsMedia = session
         if let activated = AudioSessionBridge.shared.activeSession {
             session.audioActivated(with: activated)
@@ -1129,9 +1174,20 @@ final class CallCoordinator: NSObject {
                 throw MediaError.audioActivationFailed
             }
         }
-        session.onState = { [weak self] state in
+        session.onState = { [weak self, weak session] state in
             Task { @MainActor in
-                guard let self, gen == self.generation else { return }
+                guard let self, gen == self.generation, self.wsMedia === session else { return }
+                // An expected socket EOF caused by a successful route commit
+                // or a WSS re-attach must never end the call.
+                if let route = self.route, route.consumeRelayState(state) {
+                    if state == .closed || state == .failed {
+                        // Server closed the superseded host: retire the socket
+                        // locally without deactivating the system session.
+                        self.wsMedia = nil
+                        session?.retireAfterHandover()
+                    }
+                    return
+                }
                 self.latestMedia = state
                 switch state {
                 case .connected:
@@ -1139,8 +1195,8 @@ final class CallCoordinator: NSObject {
                     self.mediaRecoveryTask = nil
                     self.publishPhase()
                     self.startMonitorIfNeeded(callId: callId, uuid: uuid, gen: gen)
-                    session.startPingSampling()
-                    self.maybeStartDirectProbe(callId: callId, uuid: uuid, ice: ice, gen: gen)
+                    session?.startPingSampling()
+                    self.routeRelayDidConnect(ice: ice, callId: callId)
                 case .disconnected:
                     // Socket drop: bounded grace, then fail truthfully — the
                     // same recovery semantics as an ICE disconnect.
@@ -1167,89 +1223,95 @@ final class CallCoordinator: NSObject {
             session.close()
             throw CancellationError()
         }
+        previous?.retireAfterHandover()
         session.setMicMuted(muted)
         if speaker { try? session.setSpeakerphone(true) }
+        return session
     }
 
-    // MARK: Direct-path probe & quality-based routing
+    // MARK: Auto / Direct / Relay routing
 
-    private var routeAdvisor = MediaRouteAdvisor()
-    private var routeProbe: MediaProbeController?
-    private var routeTask: Task<Void, Never>?
-    private var lastICE: ICEConfiguration?
-
-    /// Starts the detached direct-path probe when a candidate could plausibly
-    /// exist (configured ICE servers or a shared LAN) and drives the
-    /// conservative, quality-based advisor. Promotion/fallback are one-shot,
-    /// generation-fenced, and never touch the healthy path while measuring.
-    private func maybeStartDirectProbe(callId: String, uuid: UUID, ice: ICEConfiguration, gen: UInt64) {
-        lastICE = ice
-        guard ice.mediaTransports?.contains("ice") == true else { return }
-        let reachable = !ice.iceServers.isEmpty || isLikelyLAN()
-        guard reachable else { return }
-        let probe = MediaProbeController()
-        routeProbe = probe
-        routeTask?.cancel()
-        routeTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let offer = try await probe.makeOffer(ice: ice)
-                guard gen == self.generation, !Task.isCancelled else { probe.cancel(); return }
-                let answer = try await self.api.attachMediaProbe(callId: callId, sdp: offer)
-                guard gen == self.generation, !Task.isCancelled else { probe.cancel(); return }
-                try await probe.applyAnswer(answer.sdp)
-                guard gen == self.generation, !Task.isCancelled else { probe.cancel(); return }
-                await self.routeEvaluationLoop(callId: callId, uuid: uuid, ice: ice, gen: gen, probe: probe)
-            } catch {
-                probe.cancel()
-                if self.routeProbe === probe { self.routeProbe = nil }
-            }
+    /// Creates the per-call route controller once direct is advertised and
+    /// the relay is healthy.
+    private func routeRelayDidConnect(ice: ICEConfiguration, callId: String) {
+        guard directAdvertised, route == nil, conference == nil else {
+            route?.relayDidConnect(wsMedia: wsMedia)
+            return
         }
-    }
-
-    /// Evaluates comparable quality every few seconds. This release measures
-    /// only: the advisor decides, but promotion is never enforced (see the
-    /// .promote branch) so the guaranteed WSS path can never regress.
-    private func routeEvaluationLoop(callId: String, uuid: UUID, ice: ICEConfiguration,
-                                     gen: UInt64, probe: MediaProbeController) async {
-        while !Task.isCancelled, gen == generation {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            guard gen == generation, !Task.isCancelled else { return }
-            let baselineHealthy = latestMedia == .connected
-            let callDuration = tracked[callId]?.record.map {
-                Date().timeIntervalSince($0.startedDate)
-            } ?? 0
-            let metrics = MediaRouteAdvisor.Metrics(
-                candidateRTT: probe.samples,
-                baselineRTT: wsMedia?.pingSamples ?? [],
-                candidateStable: probe.connected,
-                candidateLost: !probe.connected && probe.samples.isEmpty == false
+        let controller = CallRouteController(
+            callId: callId,
+            initialMode: routeModeDefault,
+            api: api,
+            ice: ice,
+            callbacks: .init(
+                activatedAudioSession: { AudioSessionBridge.shared.activeSession },
+                isMuted: { [weak self] in self?.muted ?? false },
+                isConference: { [weak self] in self?.conference != nil },
+                retireRelay: { [weak self] in self?.retireRelayAfterAdoption() },
+                attachRelay: { [weak self] in await self?.reattachWSMedia(callId: callId) ?? false },
+                fetchTransport: { [weak self] in
+                    guard let self else { return nil }
+                    return (try? await self.api.fetchCall(id: callId))?.mediaTransport
+                },
+                relaySamples: { [weak self] in
+                    self?.wsMedia?.freshPingSamples(within: 30) ?? []
+                },
+                onState: { [weak self] state in
+                    Task { @MainActor in
+                        self?.onRouteState?(state)
+                        self?.delegate?.callGroupChanged()
+                    }
+                },
+                onNotice: { [weak self] message, offersAuto in
+                    Task { @MainActor in self?.onRouteNotice?(message, offersAuto) }
+                }
             )
-            let decision = routeAdvisor.decide(metrics, callDuration: callDuration, baselineHealthy: baselineHealthy)
-            switch decision {
-            case .keepBaseline:
-                break
-            case .promote:
-                // DELIBERATELY NOT ENFORCED IN THIS RELEASE: the measured
-                // candidate stays probe-only. Staged client audio ownership
-                // (rendering the adopted remote track and enabling its mic
-                // under the CallKit session) is validated on real hardware
-                // first; until then the guaranteed WSS path always carries
-                // the call and promotion can never regress it.
-                AppLog.call.notice("direct candidate measurably better; promotion deferred to a validated release")
-                return
-            case .fallbackToBaseline:
-                return
+        )
+        route = controller
+        controller.relayDidConnect(wsMedia: wsMedia)
+    }
+
+    /// Stops the WSS transport after the gateway atomically adopted the
+    /// direct peer: the graph must release capture/playback immediately and
+    /// the superseded socket retires without deactivating the CallKit session.
+    private func retireRelayAfterAdoption() {
+        let old = wsMedia
+        wsMedia = nil
+        old?.retireAfterHandover()
+    }
+
+    /// Route-controller rollback: atomically replace the direct host with a
+    /// fresh WSS attach. Returns true ONLY once the new socket is connected,
+    /// so the adopted peer is never retired on a failed rollback.
+    @discardableResult
+    private func reattachWSMedia(callId: String) async -> Bool {
+        let gen = generation
+        do {
+            let ice = try await api.iceConfiguration(callId: callId)
+            guard gen == generation else { return false }
+            let session = try await attachWSSession(
+                callId: callId, uuid: UUID(), gen: gen, ice: ice, selfManagedAudio: false)
+            guard gen == generation else {
+                session.close()
+                return false
             }
+            latestMedia = .connected
+            publishPhase()
+            return true
+        } catch {
+            AppLog.call.notice("route rollback WSS attach failed: \(error)")
+            return false
         }
     }
 
-    private func isLikelyLAN() -> Bool {
-        // Direct candidates are only plausible when the device is on a local
-        // network path to the gateway (Wi-Fi); on cellular there are no
-        // configured servers to discover a route through.
-        NetworkMonitor.shared.currentPathUsesWiFi
+    /// User changes the route mode mid-call (in-call compact menu).
+    func selectRouteMode(_ mode: MediaRouteMode) async {
+        MediaRoutePreferenceStore.shared.setMode(mode, for: routeGatewayID)
+        guard let route else { return }
+        await route.setMode(mode)
     }
+
+    var currentRouteState: CallRouteState? { route?.routeState }
 
     /// After an ICE `disconnected` on an established call, wait a bounded
     /// window for the same peer connection to recover. A later `connected`
@@ -1490,14 +1552,12 @@ final class CallCoordinator: NSObject {
         mediaTask?.cancel()
         mediaRecoveryTask?.cancel()
         mediaRecoveryTask = nil
-        routeTask?.cancel()
-        routeTask = nil
-        routeProbe?.cancel()
-        routeProbe = nil
         media?.close()
         media = nil
         wsMedia?.close()
         wsMedia = nil
+        route?.teardown()
+        route = nil
         monitorStarted = false
         return generation
     }
@@ -1581,6 +1641,7 @@ extension CallCoordinator: CallDirecting {
                 self.muted = muted
                 self.media?.setMicMuted(muted)
                 self.wsMedia?.setMicMuted(muted)
+                self.route?.setMuted(muted)
             }
         }
     }

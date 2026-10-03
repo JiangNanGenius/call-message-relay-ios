@@ -8,6 +8,10 @@ protocol CallDriver: AnyObject {
     /// Fires with the current call, or nil when there is no active call.
     var onUpdate: ((ActiveCallViewState?) -> Void)? { get set }
     var onQuality: ((MediaQuality) -> Void)? { get set }
+    /// Live routing snapshot for the compact in-call route menu.
+    var onRouteState: ((CallRouteState) -> Void)? { get set }
+    /// A failed route selection: message + whether to offer "switch to auto".
+    var onRouteNotice: ((String, Bool) -> Void)? { get set }
     /// Fires when the active call ended, carrying the gateway call id.
     var onEnded: ((String) -> Void)? { get set }
 
@@ -46,12 +50,28 @@ protocol CallDriver: AnyObject {
     func holdConferenceLeg(callId: String, held: Bool)
     func playConferenceDTMF(_ digit: String, callId: String?)
     func splitConference(callId: String)
+    /// Changes the Auto/Direct/Relay mode for the active call.
+    func selectRouteMode(_ mode: MediaRouteMode)
+    /// The bound gateway's persisted default route mode.
+    var routeModeDefault: MediaRouteMode { get }
 }
 
 extension CallDriver {
     var activeCallRecord: CallRecord? { nil }
     var heldCallRecords: [CallRecord] { [] }
     var conferenceRecord: ConferenceRecord? { nil }
+    var onRouteState: ((CallRouteState) -> Void)? {
+        get { nil }
+        set { /* demo: routing unavailable */ }
+    }
+    var onRouteNotice: ((String, Bool) -> Void)? {
+        get { nil }
+        set { /* demo: routing unavailable */ }
+    }
+    /// Changes the Auto/Direct/Relay mode for the active call.
+    func selectRouteMode(_ mode: MediaRouteMode) {}
+    /// The currently selected route mode for the bound gateway.
+    var routeModeDefault: MediaRouteMode { .auto }
     func setDefaultLineId(_ lineId: String?) {}
     func holdActive() {}
     func resume(callId: String) {}

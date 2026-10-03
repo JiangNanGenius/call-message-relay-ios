@@ -18,6 +18,19 @@ final class WebSocketCallMedia: NSObject {
     var onState: ((MediaState) -> Void)?
     var onQuality: ((MediaQuality) -> Void)?
 
+    /// Audio graph seam, so a start failure is injectable deterministically
+    /// (a simulator host may or may not start AVAudioEngine — tests must not
+    /// accept either result).
+    protocol WSAudioGraphing: AnyObject {
+        var onMicFrame: (([Int16]) -> Void)? { get set }
+        var isRunning: Bool { get }
+        @discardableResult
+        func startIfNeeded() -> Bool
+        func stop()
+        func setMicMuted(_ muted: Bool)
+        func pushPlayback(_ frame: [Int16])
+    }
+
     /// Test seam over URLSessionWebSocketTask.
     protocol MediaSocket: AnyObject {
         func resume()
@@ -30,7 +43,7 @@ final class WebSocketCallMedia: NSObject {
     /// the production wiring while keeping a handle for invalidation.
     typealias SocketFactory = (URLRequest, URLSession) -> MediaSocket
 
-    private final class URLSessionSocket: MediaSocket {
+    final class URLSessionMediaSocket: MediaSocket {
         let task: URLSessionWebSocketTask
         init(_ task: URLSessionWebSocketTask) { self.task = task }
         func resume() { task.resume() }
@@ -63,22 +76,34 @@ final class WebSocketCallMedia: NSObject {
     private var sendDrainTask: Task<Void, Never>?
     private let sendQueueMax = 8
     private let sendTimeout: TimeInterval = 10
-
     // MARK: Ping sampling
-    private(set) var pingSamples: [TimeInterval] = []
+
+    /// Freshness-aware samples: RTT plus when the pong arrived. The route
+    /// advisor compares only samples inside its own freshness window.
+    struct PingSample: Equatable { let rtt: TimeInterval; let at: Date }
+    private(set) var pingSampleLog: [PingSample] = []
+    /// RTT values (seconds) of the 120 most recent pongs.
+    var pingSamples: [TimeInterval] { pingSampleLog.map(\.rtt) }
+    /// RTT samples fresher than `window`, oldest first.
+    func freshPingSamples(within window: TimeInterval, now: Date = Date()) -> [TimeInterval] {
+        pingSampleLog.filter { now.timeIntervalSince($0.at) <= window }.map(\.rtt)
+    }
     private var pingTimer: Timer?
     private var pingSequence: UInt64 = 0
     private var pendingPings: [UInt64: Date] = [:]
 
-    private let audioIO = WSAudioGraph()
+    private let audioIO: WSAudioGraphing
 
     private let handshakeTimeout: TimeInterval
 
-    init(socketFactory: SocketFactory? = nil, handshakeTimeout: TimeInterval = 15) {
+    init(socketFactory: SocketFactory? = nil,
+         audioGraph: WSAudioGraphing? = nil,
+         handshakeTimeout: TimeInterval = 15) {
         self.handshakeTimeout = handshakeTimeout
         self.makeSocket = socketFactory ?? { request, session in
-            URLSessionSocket(session.webSocketTask(with: request))
+            URLSessionMediaSocket(session.webSocketTask(with: request))
         }
+        self.audioIO = audioGraph ?? WSAudioGraph()
         super.init()
         audioIO.onMicFrame = { [weak self] frame in
             guard let self, self.connected else { return }
@@ -99,7 +124,32 @@ final class WebSocketCallMedia: NSObject {
     func audioActivatedForTest(_ session: AVAudioSession) {
         audioActivated(with: session)
     }
+
+    func sendPingForTest() { sendPing() }
+
+    func connectedForTest() -> Bool { connected }
     #endif
+
+    /// Retires THIS socket after the gateway atomically replaced it (a route
+    /// commit or a WSS re-attach): stops ping/drain/tasks without deactivating
+    /// the system-owned audio session and without publishing a failure state.
+    func retireAfterHandover() {
+        receiveGeneration &+= 1
+        connected = false
+        pingTimer?.invalidate()
+        pingTimer = nil
+        pendingPings.removeAll()
+        sendWaiter?.resume(returning: false)
+        sendWaiter = nil
+        sendDrainTask?.cancel()
+        sendDrainTask = nil
+        sendQueue.removeAll()
+        socket?.cancel()
+        socket = nil
+        session?.invalidateAndCancel()
+        session = nil
+        audioIO.stop()
+    }
 
     // MARK: Connection
 
@@ -228,8 +278,8 @@ final class WebSocketCallMedia: NSObject {
                 socketDidFail()
             } else if control.type == "pong", let tag = control.t,
                       let sent = pendingPings.removeValue(forKey: tag) {
-                pingSamples.append(Date().timeIntervalSince(sent))
-                if pingSamples.count > 120 { pingSamples.removeFirst(pingSamples.count - 120) }
+                pingSampleLog.append(PingSample(rtt: Date().timeIntervalSince(sent), at: Date()))
+                if pingSampleLog.count > 120 { pingSampleLog.removeFirst(pingSampleLog.count - 120) }
             }
         @unknown default:
             break
@@ -416,14 +466,14 @@ final class WebSocketCallMedia: NSObject {
     }
 }
 
-private struct WSMediaControl: Decodable {
+struct WSMediaControl: Decodable {
     let type: String
     /// Echoed ping tag (pong only).
     let t: UInt64?
 }
 
 extension WebSocketCallMedia.MediaSocket {
-    fileprivate func receiveValue() async throws -> URLSessionWebSocketTask.Message {
+    func receiveValue() async throws -> URLSessionWebSocketTask.Message {
         try await withCheckedThrowingContinuation { continuation in
             receive { result in
                 continuation.resume(with: result)

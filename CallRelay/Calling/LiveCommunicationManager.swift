@@ -19,18 +19,10 @@ final class LiveCommunicationManager: NSObject, CallKitControlling {
     private(set) var lastIncomingReportError: String?
 
     weak var director: CallDirecting?
-    /// Bumped on manager reset: late async completions from a previous
-    /// system-call generation can never fulfill an action.
-    private var managerGeneration: UInt64 = 0
-    /// Actions this adapter has claimed (fulfilled or failed), held STRONG:
-    /// a live reference pins the object so its ObjectIdentifier can never be
-    /// reused by an unrelated later action, and entries whose system state
-    /// has finalized (.complete/.failed) are purged on every claim so the
-    /// bookkeeping stays bounded.
-    private var completed: [ObjectIdentifier: ConversationAction] = [:]
-    /// Actions the system already timed out, also held strong (same reuse
-    /// and bounding guarantees).
-    private var timedOut: [ObjectIdentifier: ConversationAction] = [:]
+    /// Exact-once completion policy (claim/timeout/reset fencing). Isolated
+    /// into an LCK-independent core so the policy is unit-testable on the
+    /// simulator, which ships no LiveCommunicationKit slice.
+    private let actionCore = LiveCommunicationActionCore<ObjectIdentifier>()
 
     override init() {
         var configuration = ConversationManager.Configuration(
@@ -190,39 +182,33 @@ extension LiveCommunicationManager: ConversationManagerDelegate {
     func conversationManagerDidBegin(_ manager: ConversationManager) { }
 
     func conversationManagerDidReset(_ manager: ConversationManager) {
-        managerGeneration += 1
+        actionCore.reset()
         knownUUIDs.removeAll()
-        completed.removeAll()
-        timedOut.removeAll()
         Task { @MainActor in self.director?.handleProviderReset() }
     }
 
-    /// Claims the one-shot right to complete an action; nil when this action
-    /// was already claimed, so fulfill/fail run at most once each. Purges
-    /// finalized entries first to keep the strong-ref map bounded.
+    /// Claims the one-shot right to complete an action; returns the
+    /// generation captured at delivery (nil when already claimed).
     private func begin(_ action: ConversationAction) -> UInt64? {
-        let gen = managerGeneration
-        let key = ObjectIdentifier(action)
-        purgeFinalized()
-        guard completed[key] == nil else { return nil }
-        completed[key] = action
-        return gen
+        let token = LiveCommunicationActionCore<ObjectIdentifier>.Token(
+            id: ObjectIdentifier(action),
+            conversation: action.conversationUUID,
+            pin: action)
+        guard actionCore.claim(token) else { return nil }
+        return actionCore.generation
     }
 
-    private func purgeFinalized() {
-        let finalized: (ConversationAction) -> Bool = {
-            if case .complete = $0.state { return true }
-            if case .failed = $0.state { return true }
-            return false
-        }
-        completed = completed.filter { !finalized($0.value) }
-        timedOut = timedOut.filter { !finalized($0.value) }
-    }
-
-    /// True while a claimed action may still complete: the manager was not
-    /// reset underneath us and the system has not timed the action out.
     private func completable(_ action: ConversationAction, gen: UInt64) -> Bool {
-        gen == managerGeneration && timedOut[ObjectIdentifier(action)] == nil
+        let token = LiveCommunicationActionCore<ObjectIdentifier>.Token(
+            id: ObjectIdentifier(action),
+            conversation: action.conversationUUID,
+            pin: action)
+        return actionCore.completable(token, deliveredIn: gen)
+    }
+
+    private func finalize(_ action: ConversationAction) {
+        actionCore.markFinalized(LiveCommunicationActionCore<ObjectIdentifier>.Token(
+            id: ObjectIdentifier(action), conversation: action.conversationUUID))
     }
 
     func conversationManager(_ manager: ConversationManager, perform action: ConversationAction) {
@@ -232,10 +218,12 @@ extension LiveCommunicationManager: ConversationManagerDelegate {
             guard let handle = action.handles.first else {
                 AppLog.callKit.notice("start conversation without handle")
                 action.fail()
+                finalize(action)
                 return
             }
             guard let director else {
                 action.fail()
+                finalize(action)
                 return
             }
             knownUUIDs.insert(action.conversationUUID)
@@ -244,6 +232,7 @@ extension LiveCommunicationManager: ConversationManagerDelegate {
                 director.startOutgoing(peer: handle.value, uuid: action.conversationUUID)
                 guard self.completable(action, gen: gen) else { return }
                 action.fulfill(dateStarted: Date())
+                self.finalize(action)
             }
         case let action as JoinConversationAction:
             // Answer: fulfill reflects the gateway answer, not media
@@ -252,6 +241,7 @@ extension LiveCommunicationManager: ConversationManagerDelegate {
             guard let director else {
                 // Never report "answered" when there is no director to answer.
                 action.fail()
+                finalize(action)
                 return
             }
             Task { @MainActor in
@@ -259,10 +249,12 @@ extension LiveCommunicationManager: ConversationManagerDelegate {
                     try await director.answerIncoming(uuid: action.conversationUUID)
                     guard self.completable(action, gen: gen) else { return }
                     action.fulfill(dateConnected: Date())
+                    self.finalize(action)
                 } catch {
                     AppLog.callKit.notice("gateway answer failed; conversation will end")
                     guard self.completable(action, gen: gen) else { return }
                     action.fail()
+                    self.finalize(action)
                     if let conversation = self.conversation(for: action.conversationUUID) {
                         self.manager.reportConversationEvent(.conversationEnded(Date(), .failed), for: conversation)
                     }
@@ -271,46 +263,71 @@ extension LiveCommunicationManager: ConversationManagerDelegate {
             }
         case let action as EndConversationAction:
             guard let gen = begin(action) else { return }
-            guard let director else { action.fail(); return }
+            guard let director else {
+                action.fail()
+                finalize(action)
+                return
+            }
             knownUUIDs.remove(action.conversationUUID)
             Task { @MainActor in
                 director.endCall(uuid: action.conversationUUID, reason: .userHungUp)
                 guard self.completable(action, gen: gen) else { return }
                 action.fulfill(dateEnded: Date())
+                self.finalize(action)
             }
         case let action as PauseConversationAction:
             guard let gen = begin(action) else { return }
-            guard let director else { action.fail(); return }
+            guard let director else {
+                action.fail()
+                finalize(action)
+                return
+            }
             Task { @MainActor in
                 do {
                     try await director.setHeld(uuid: action.conversationUUID, held: action.isPaused)
                     guard self.completable(action, gen: gen) else { return }
                     action.fulfill()
+                    self.finalize(action)
                 } catch {
                     AppLog.callKit.notice("gateway hold/resume rejected")
                     guard self.completable(action, gen: gen) else { return }
                     action.fail()
+                    self.finalize(action)
                 }
             }
         case let action as MuteConversationAction:
             guard let gen = begin(action) else { return }
-            guard let director else { action.fail(); return }
+            guard let director else {
+                action.fail()
+                finalize(action)
+                return
+            }
             Task { @MainActor in
                 director.setMuted(uuid: action.conversationUUID, muted: action.isMuted)
                 guard self.completable(action, gen: gen) else { return }
                 action.fulfill()
+                self.finalize(action)
             }
         case let action as PlayToneAction:
             guard let gen = begin(action) else { return }
-            guard let director else { action.fail(); return }
+            guard let director else {
+                action.fail()
+                finalize(action)
+                return
+            }
             Task { @MainActor in
                 director.playDTMF(uuid: action.conversationUUID, digit: action.digits)
                 guard self.completable(action, gen: gen) else { return }
                 action.fulfill()
+                self.finalize(action)
             }
         case let action as MergeConversationAction:
             guard let gen = begin(action) else { return }
-            guard let director else { action.fail(); return }
+            guard let director else {
+                action.fail()
+                finalize(action)
+                return
+            }
             Task { @MainActor in
                 do {
                     try await director.setGroup(
@@ -318,38 +335,50 @@ extension LiveCommunicationManager: ConversationManagerDelegate {
                         groupUUID: action.conversationUUIDToMergeWith)
                     guard self.completable(action, gen: gen) else { return }
                     action.fulfill()
+                    self.finalize(action)
                 } catch {
                     AppLog.callKit.notice("gateway merge rejected")
                     guard self.completable(action, gen: gen) else { return }
                     action.fail()
+                    self.finalize(action)
                 }
             }
         case let action as UnmergeConversationAction:
             guard let gen = begin(action) else { return }
-            guard let director else { action.fail(); return }
+            guard let director else {
+                action.fail()
+                finalize(action)
+                return
+            }
             Task { @MainActor in
                 do {
                     try await director.setGroup(uuid: action.conversationUUID, groupUUID: nil)
                     guard self.completable(action, gen: gen) else { return }
                     action.fulfill()
+                    self.finalize(action)
                 } catch {
                     AppLog.callKit.notice("gateway split rejected")
                     guard self.completable(action, gen: gen) else { return }
                     action.fail()
+                    self.finalize(action)
                 }
             }
         default:
             // Unsupported action: fail so the system is never left waiting.
             AppLog.callKit.notice("unsupported conversation action")
-            if begin(action) != nil { action.fail() }
+            if begin(action) != nil {
+                action.fail()
+                finalize(action)
+            }
         }
     }
 
     func conversationManager(_ manager: ConversationManager, timedOutPerforming action: ConversationAction) {
         // The system already moved on: a late async result must never
-        // complete the action after the timeout. Held strong for the same
-        // address-reuse and bounding guarantees as `completed`.
-        timedOut[ObjectIdentifier(action)] = action
+        // complete the action after the timeout. The action is pinned so its
+        // ObjectIdentifier can never be reused by an unrelated later action.
+        actionCore.markTimedOut(LiveCommunicationActionCore<ObjectIdentifier>.Token(
+            id: ObjectIdentifier(action), conversation: action.conversationUUID, pin: action))
         AppLog.callKit.notice("conversation action timed out")
     }
 

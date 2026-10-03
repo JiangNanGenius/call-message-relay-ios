@@ -330,6 +330,13 @@ final class HTTPGatewayAPI: GatewayAPI {
         return try await authorizedWebSocketRequest(path: "conferences/\(conferenceId)/media")
     }
 
+    /// Measurement-only WSS socket: pings the relay path while media runs
+    /// over direct ICE, without attaching to or replacing the host session.
+    func mediaMeasureWebSocketRequest(callId: String) async throws -> URLRequest {
+        guard isV2 else { throw APIError.notReady("当前配对不支持线路质量测量。") }
+        return try await authorizedWebSocketRequest(path: "calls/\(callId)/media/measure")
+    }
+
     func attachMediaProbe(callId: String, sdp: String) async throws -> WebRTCAnswer {
         guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
         let body = V2WebRTCOfferRequest(sdp: sdp, type: "offer")

@@ -15,10 +15,15 @@ final class LiveCallDriver: NSObject, CallDriver {
     var onCallKitIssue: ((String?) -> Void)?
     /// Concise user-facing notice when an in-app answer failed.
     var onAnswerFailed: ((String) -> Void)?
+    /// Live Auto/Direct/Relay routing snapshot (compact in-call menu).
+    var onRouteState: ((CallRouteState) -> Void)?
+    /// A failed forced/auto route selection, plus an "offer auto" flag.
+    var onRouteNotice: ((String, Bool) -> Void)?
 
     private let callKit: CallKitControlling
     private let coordinator: CallCoordinator
     private let registry: CallIdentityRegistry
+    private let routeGatewayID: String?
     private var current: ActiveCallViewState?
     private var currentUUID: UUID?
     /// Gateway id of the call currently surfaced by ``current``.
@@ -51,20 +56,27 @@ final class LiveCallDriver: NSObject, CallDriver {
         transport: String,
         callKit: CallKitControlling,
         mediaProvider: MediaSessionProviding = WebRTCMediaProvider(),
-        registry: CallIdentityRegistry = CallIdentityRegistry()
+        registry: CallIdentityRegistry = CallIdentityRegistry(),
+        gatewayID: String? = nil
     ) {
         self.callKit = callKit
         self.registry = registry
+        self.routeGatewayID = gatewayID
         self.coordinator = CallCoordinator(
             api: api,
             callKit: callKit,
             mediaProvider: mediaProvider,
             registry: registry,
-            transport: transport
+            transport: transport,
+            gatewayID: gatewayID
         )
         super.init()
         coordinator.delegate = self
         coordinator.onQuality = { [weak self] quality in self?.onQuality?(quality) }
+        coordinator.onRouteState = { [weak self] state in self?.onRouteState?(state) }
+        coordinator.onRouteNotice = { [weak self] message, offerAuto in
+            self?.onRouteNotice?(message, offerAuto)
+        }
         // The driver is the CallKit director so provider actions can carry the
         // default line into the coordinator explicitly.
         callKit.director = self
@@ -455,6 +467,16 @@ final class LiveCallDriver: NSObject, CallDriver {
     func setDefaultLineId(_ lineId: String?) {
         defaultLineID = lineId
         coordinator.setDefaultLineId(lineId)
+    }
+
+    // MARK: Media route (Auto / Direct / Relay)
+
+    func selectRouteMode(_ mode: MediaRouteMode) {
+        Task { @MainActor in await coordinator.selectRouteMode(mode) }
+    }
+
+    var routeModeDefault: MediaRouteMode {
+        MediaRoutePreferenceStore.shared.mode(for: routeGatewayID)
     }
 
     func holdActive() { coordinator.holdActive() }

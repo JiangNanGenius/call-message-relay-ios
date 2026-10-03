@@ -19,7 +19,8 @@ settings:
     MARKETING_VERSION: "0.3.5"
     # Internal TestFlight build 12 (v0.3.5 build 9 stays the immutable public
     # Feather release/tag; 11 was the first CloudKit-signed build; 12 adds
-    # WSS media, direct-path probing, LCK, state fixes and localization).
+    # WSS media, LCK, state fixes, localization and enabled Auto/Direct/Relay
+    # routing with measured quality + safe handover).
     CURRENT_PROJECT_VERSION: "12"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
