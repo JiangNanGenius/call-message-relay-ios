@@ -58,6 +58,12 @@ jobs:
           # test device to Chinese and reboot so SpringBoard picks it up.
           xcrun simctl spawn "$SIMULATOR_ID" defaults write NSGlobalDomain AppleLanguages -array zh-Hans en
           xcrun simctl spawn "$SIMULATOR_ID" defaults write NSGlobalDomain AppleLocale -string zh_CN
+          # Deterministic contacts grant for the unit-test host app: the
+          # ContactFetchKeyContractTests integration test drives a REAL
+          # CNContactStore fetch, and a fresh runner would otherwise show
+          # the system permission prompt and hang the test run. Skipped is
+          # never counted as a pass for that test.
+          xcrun simctl privacy "$SIMULATOR_ID" grant contacts com.jiangnangenius.callrelay
           xcrun simctl shutdown "$SIMULATOR_ID"
           xcrun simctl boot "$SIMULATOR_ID"
           xcrun simctl bootstatus "$SIMULATOR_ID" -b

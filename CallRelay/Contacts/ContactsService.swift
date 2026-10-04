@@ -113,12 +113,16 @@ extension ContactItem {
         // must read as empty, never raise or silently fail the conversion.
         note = cn.isKeyAvailable(CNContactNoteKey) ? cn.note : ""
         // Display-layer only: the native, locale/script-aware full name.
+        // ONLY given/family may be read here: they are unconditionally read
+        // above, so they are guaranteed present in every conversion path.
+        // Any other display field (namePrefix, nickname, …) is NOT covered
+        // by that guarantee on partial/vCard conversions, and reading an
+        // unfetched CNContact key raises CNPropertyNotFetchedException —
+        // the build-19 device crash on granting Contacts authorization.
         if !cn.givenName.isEmpty || !cn.familyName.isEmpty {
             let display = CNMutableContact()
             display.givenName = cn.givenName
             display.familyName = cn.familyName
-            display.namePrefix = cn.namePrefix
-            display.nickname = cn.nickname
             formattedName = CNContactFormatter.string(from: display, style: .fullName)
         }
     }
@@ -237,7 +241,11 @@ final class ContactsService: ObservableObject {
 
     private let store: CNContactStore
     private let writer: ContactStoreWriting
-    private let keysToFetch: [CNKeyDescriptor]
+    /// Keys the shared `ContactItem(cn:)` conversion may read unconditionally.
+    /// Test-only visibility: the contract test asserts every unconditionally
+    /// read key is requested here (an unrequested read crashes on a real
+    /// restricted fetch — build 19's authorization-time device crash).
+    private(set) var keysToFetch: [CNKeyDescriptor]
     private var observer: NSObjectProtocol?
 
     init(store: CNContactStore = CNContactStore(), writer: ContactStoreWriting? = nil) {
