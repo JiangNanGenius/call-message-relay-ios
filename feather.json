@@ -11,21 +11,11 @@
    "bundleIdentifier": "com.jiangnangenius.callrelay",
    "developerName": "JiangNanGenius",
    "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
-   "localizedDescription": "CallRelay 0.3.11（build 18）纯原生版：短信收件人同时支持中文/字母姓名与号码片段联想（多语言键盘可输入文字），修复 0.3.10(17) 收件人只能输入数字导致姓名联想不可用的问题；拨号键盘仍为纯数字。未签名 IPA，需自行使用证书与描述文件签名后安装。",
+   "localizedDescription": "CallRelay 0.3.10（build 17）纯原生版：不含任何网页推送桥接。未签名 IPA，需自行使用证书与描述文件签名后安装。",
    "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
    "tintColor": "135CDC",
    "beta": true,
    "versions": [
-    {
-     "version": "0.3.11",
-     "buildVersion": "18",
-     "date": "2026-10-04T08:46:50Z",
-     "minOSVersion": "17.0",
-     "size": 13173451,
-     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.11/CallRelay-Feather-Native-0.3.11-18-unsigned.ipa",
-     "localizedDescription": "CallRelay 0.3.11（build 18）纯原生版：短信收件人同时支持中文/字母姓名与号码片段联想（多语言键盘可输入文字），修复 0.3.10(17) 收件人只能输入数字导致姓名联想不可用的问题；拨号键盘仍为纯数字。未签名 IPA，需自行使用证书与描述文件签名后安装。",
-     "sha256": "0bce64e838bccb12a8d04f6e08914ff722a3b00aeb5e6ea9aadea5f62c35a798"
-    },
     {
      "version": "0.3.10",
      "buildVersion": "17",
@@ -157,10 +147,10 @@
      "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
     }
    ],
-   "version": "0.3.11",
-   "versionDate": "2026-10-04T08:46:50Z",
-   "size": 13173451,
-   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.11/CallRelay-Feather-Native-0.3.11-18-unsigned.ipa",
+   "version": "0.3.10",
+   "versionDate": "2026-10-04T06:44:51Z",
+   "size": 13173515,
+   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.10/CallRelay-Feather-Native-0.3.10-17-unsigned.ipa",
    "appPermissions": {
     "entitlements": [
      "aps-environment"
