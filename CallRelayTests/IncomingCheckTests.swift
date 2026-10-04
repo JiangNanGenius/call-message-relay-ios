@@ -1,15 +1,15 @@
-// This file belongs to the optional App Store Bark/Shortcuts edition.
-// It is compiled only with the BARK_BRIDGE build configuration so the
-// native Feather artifact has no Bark UI, route or AppIntent registration.
-#if BARK_BRIDGE
+// This file belongs to the optional App Store PWA edition.
+// It is compiled only with the PWA_BRIDGE build configuration so the
+// native Feather artifact has no web-push UI or deeplink.
+#if PWA_BRIDGE
 import XCTest
 import CallKit
 @testable import CallRelay
 
 /// Incoming-call check path: the token-free deeplink, the ringing-call filter,
-/// the checker service behind the “Check incoming call” App Intent, and the
-/// live-model presentation path. The check must never auto-answer and must
-/// never show a system call without a live, answer-capable owner.
+/// the checker service behind the Settings manual check / PWA handoff, and
+/// the live-model presentation path. The check must never auto-answer and
+/// must never show a system call without a live, answer-capable owner.
 @MainActor
 final class IncomingCheckTests: XCTestCase {
     override func tearDown() async throws {
@@ -58,7 +58,7 @@ final class IncomingCheckTests: XCTestCase {
 
     func testCheckerWithoutModelFailsExplicitlyWithoutFakeRing() async {
         let checker = IncomingCallChecker(modelWait: 0.05)
-        let outcome = await checker.check(source: .appIntent)
+        let outcome = await checker.check(source: .manual)
         XCTAssertEqual(outcome, .appNotRunning)
         XCTAssertFalse(outcome.message.isEmpty)
         XCTAssertEqual(outcome.surfacedCallCount, 0)
@@ -70,7 +70,7 @@ final class IncomingCheckTests: XCTestCase {
         let checker = IncomingCallChecker(modelWait: 0.05)
         checker.model = model
 
-        let outcome = await checker.check(source: .appIntent)
+        let outcome = await checker.check(source: .manual)
         XCTAssertEqual(outcome, .ringing(1))
         await waitUntil { driver.incomingReports.count == 1 }
         XCTAssertEqual(driver.incomingReports.map(\.id), ["ringing"])
@@ -137,11 +137,6 @@ final class IncomingCheckTests: XCTestCase {
         XCTAssertFalse(model.incomingCheckNotice?.isEmpty ?? true)
         model.dismissIncomingCheckNotice()
         XCTAssertNil(model.incomingCheckNotice)
-    }
-
-    func testIntentStaysInlineAndDoesNotAutoAnswer() {
-        XCTAssertFalse(CheckIncomingCallIntent.openAppWhenRun)
-        XCTAssertEqual(CallRelayAppShortcuts.appShortcuts.count, 1)
     }
 
     // MARK: Helpers

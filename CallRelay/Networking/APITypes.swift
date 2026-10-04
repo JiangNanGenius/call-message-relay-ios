@@ -149,16 +149,18 @@ protocol GatewayAPI: Sendable {
     func deleteVoicemail(id: String) async throws
     func enroll(_ request: EnrollmentRequest) async throws -> EnrollmentResponse
 
-    // MARK: Optional Bark bridge (v2); the app works without ever calling these
-    // Part of the Bark/Shortcuts edition only (BARK_BRIDGE).
-#if BARK_BRIDGE
-    /// The device's redacted opt-in settings. Never contains the device key.
-    func barkSettings() async throws -> BarkBridgeSettings
-    /// Saves opt-in settings; the response is the same redacted view.
+    // MARK: Optional web push bridge (v2); the app works without ever calling
+    // these. Part of the App Store PWA edition only (PWA_BRIDGE).
+#if PWA_BRIDGE
+    /// VAPID public key and feature availability for the self-hosted PWA.
+    func webPushVAPID() async throws -> WebPushVAPIDSettings
+    /// Redacted device status: subscription count + notify mode only.
+    func webPushStatus() async throws -> WebPushDeviceStatus
+    /// Mints the short-lived, single-use browser bind code.
+    func webPushBindToken() async throws -> WebPushBindToken
+    /// Changes this device's notification mode; returns the updated status.
     @discardableResult
-    func updateBarkSettings(_ update: BarkBridgeSettingsUpdate) async throws -> BarkBridgeSettings
-    /// Sends one rate-limited test notification through the stored server.
-    func sendBarkTestNotification() async throws
+    func updateNotifyMode(_ mode: WebPushNotifyMode) async throws -> WebPushDeviceStatus
 #endif
 }
 
@@ -546,19 +548,23 @@ extension GatewayAPI {
         throw APIError.notReady("当前配对不是统一网关。")
     }
 
-    // Optional Bark bridge: demo/v1 bindings simply keep the feature off.
-#if BARK_BRIDGE
-    func barkSettings() async throws -> BarkBridgeSettings {
-        throw APIError.notReady("当前配对不是统一网关，无法使用可选 Bark 通知。")
+    // Optional web push bridge: demo/v1 bindings simply keep the feature off.
+#if PWA_BRIDGE
+    func webPushVAPID() async throws -> WebPushVAPIDSettings {
+        throw APIError.notReady("当前配对不是统一网关，无法使用网页推送。")
+    }
+
+    func webPushStatus() async throws -> WebPushDeviceStatus {
+        throw APIError.notReady("当前配对不是统一网关，无法使用网页推送。")
+    }
+
+    func webPushBindToken() async throws -> WebPushBindToken {
+        throw APIError.notReady("当前配对不是统一网关，无法使用网页推送。")
     }
 
     @discardableResult
-    func updateBarkSettings(_ update: BarkBridgeSettingsUpdate) async throws -> BarkBridgeSettings {
-        throw APIError.notReady("当前配对不是统一网关，无法使用可选 Bark 通知。")
-    }
-
-    func sendBarkTestNotification() async throws {
-        throw APIError.notReady("当前配对不是统一网关，无法使用可选 Bark 通知。")
+    func updateNotifyMode(_ mode: WebPushNotifyMode) async throws -> WebPushDeviceStatus {
+        throw APIError.notReady("当前配对不是统一网关，无法使用网页推送。")
     }
 #endif
 }

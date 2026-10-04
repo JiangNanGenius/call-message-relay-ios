@@ -437,32 +437,37 @@ final class HTTPGatewayAPI: GatewayAPI {
         )
     }
 
-    // MARK: Optional Bark bridge (v2)
-    // Part of the Bark/Shortcuts edition only (BARK_BRIDGE).
+    // MARK: Optional web push bridge (v2)
+    // Part of the App Store PWA edition only (PWA_BRIDGE).
 
-#if BARK_BRIDGE
-    func barkSettings() async throws -> BarkBridgeSettings {
+#if PWA_BRIDGE
+    func webPushVAPID() async throws -> WebPushVAPIDSettings {
         guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
-        let deviceId = try barkDeviceId()
-        return try await authorizedGet("devices/\(deviceId)/bark")
+        return try await authorizedGet("webpush/vapid")
+    }
+
+    func webPushStatus() async throws -> WebPushDeviceStatus {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
+        let deviceId = try webPushDeviceId()
+        return try await authorizedGet("devices/\(deviceId)/webpush/status")
+    }
+
+    func webPushBindToken() async throws -> WebPushBindToken {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
+        let deviceId = try webPushDeviceId()
+        return try await authorizedPost("devices/\(deviceId)/webpush/bind-token")
     }
 
     @discardableResult
-    func updateBarkSettings(_ update: BarkBridgeSettingsUpdate) async throws -> BarkBridgeSettings {
+    func updateNotifyMode(_ mode: WebPushNotifyMode) async throws -> WebPushDeviceStatus {
         guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
-        let deviceId = try barkDeviceId()
-        return try await authorizedPut("devices/\(deviceId)/bark", body: update)
-    }
-
-    func sendBarkTestNotification() async throws {
-        guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
-        let deviceId = try barkDeviceId()
-        try await authorizedVoidAction(
-            "devices/\(deviceId)/bark/test", idempotencyKey: UUID().uuidString
+        let deviceId = try webPushDeviceId()
+        return try await authorizedPut(
+            "devices/\(deviceId)/webpush/notify-mode", body: ["mode": mode.rawValue]
         )
     }
 
-    private func barkDeviceId() throws -> String {
+    private func webPushDeviceId() throws -> String {
         guard let deviceId = tokens.tokens()?.deviceId else { throw APIError.noCredentials }
         return deviceId
     }
@@ -711,6 +716,13 @@ final class HTTPGatewayAPI: GatewayAPI {
         return try await sendAuthorized(
             method: "POST", path: path, queryItems: [], bodyData: payload,
             idempotencyKey: idempotencyKey, expectedStatus: successStatus
+        )
+    }
+
+    private func authorizedPost<Output: Decodable>(_ path: String) async throws -> Output {
+        try await sendAuthorized(
+            method: "POST", path: path, queryItems: [], bodyData: nil,
+            idempotencyKey: nil, expectedStatus: nil
         )
     }
 

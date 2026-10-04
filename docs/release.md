@@ -2,29 +2,33 @@
 
 每次更新同时发布两个**未签名**构建，共用同一营销版本与核心修复；Feather 安装源
 永远只指向纯原生版。本文件是公开、可复现的发布流程；当前版本的实测证据记录在
-工作区的 `evidence/h28k/build15-repair/`。
+工作区的 `evidence/h28k/pwa-notifications/`。
 
 | 变体 | Xcode 配置 | 桥接 | 渠道 |
 | --- | --- | --- | --- |
-| Feather 纯原生 | `Release`（默认） | 无 Bark/快捷指令桥接 | GitHub Release 未签名 IPA + Feather 源；私有签名 IPA 只交给所有者 |
-| App Store Bark/快捷指令 | `Release-Bark` | 可选 Bark + Check-incoming-call AppIntent、`callrelay://` | GitHub Release 未签名 IPA；App Store 仅在明确授权后提交 |
+| Feather 纯原生 | `Release`（默认） | 无网页推送桥接 | GitHub Release 未签名 IPA + Feather 源；私有签名 IPA 只交给所有者 |
+| App Store PWA | `Release-PWA` | 自托管 PWA Web Push 桥接：`callrelay://` 来电检查回链 | GitHub Release 未签名 IPA；App Store 仅在明确授权后提交 |
 
-桥接由编译条件 `BARK_BRIDGE` 与 `Info-Bark.plist` 隔离；默认构建不含 Bark UI、
-deeplink 或 AppIntent 元数据。
+桥接由编译条件 `PWA_BRIDGE` 与 `Info-PWA.plist` 隔离；默认构建不含网页推送 UI、
+deeplink 或桥接字符串。PWA 桥接不含 Bark、不含中央服务、不含第三方通知依赖：
+每个网关在自己已有的 HTTPS 域名上托管可安装 PWA（manifest + service worker），
+自持 VAPID 密钥并向自己的浏览器订阅发送标准 Web Push（RFC 8030 + VAPID +
+RFC 8291 加密，使用经过验证的公开库）。App 只生成短时单次绑定码；浏览器订阅
+密钥只保存在网关。
 
 ## 工具
 
 - `Scripts/package-release-variants.sh` — 构建两个变体（`CODE_SIGNING_ALLOWED=NO`）、
   按版本打包 IPA、逐个校验并生成 `SHA256SUMS.public.txt`。
   默认把编译缓存放在 `~/Library/Caches/CodexBuild/callrelay/release-variants/`
-  （可用 `DERIVED_DATA_ROOT` 覆盖）；`--app-native/--app-bark` 可对已有构建产物
+  （可用 `DERIVED_DATA_ROOT` 覆盖）；`--app-native/--app-pwa` 可对已有构建产物
   只做打包+校验。
 - `Scripts/verify-release-variant.sh` — 验证单个 `.app`/`.ipa`：native 必须无
-  `Metadata.appintents`、无 `CFBundleURLTypes`、无 `BarkBridge.strings`、二进制无桥接符号；
-  bark 必须具备以上内容；两者都必须未签名（无 `embedded.mobileprovision`、
-  无 `_CodeSignature`），版本号可选断言。
+  `CFBundleURLTypes`、无桥接字符串表、二进制无桥接符号；
+  pwa 必须具备 `callrelay://` 与 `WebPushBridge.strings`；两者都必须未签名
+  （无 `embedded.mobileprovision`、无 `_CodeSignature`），版本号可选断言。
 - `Scripts/update-feather-source.py` — 从实际原生 IPA 生成/更新 `feather.json`：
-  读取真实大小与 SHA-256，拒绝任何含 Bark 内容的 IPA，`--feed` 合并历史版本。
+  读取真实大小与 SHA-256，拒绝任何含桥接内容的 IPA，`--feed` 合并历史版本。
 - `.github/workflows/build.yml` — 原生单元/UI 测试、两个变体的无签名真机构建、
   变体身份校验，并运行 Feather 生成器做纯原生自检。
 
@@ -75,7 +79,26 @@ deeplink 或 AppIntent 元数据。
 - Feather 源只能指向纯原生未签名 IPA；App Store/TestFlight 上传需要单独的明确授权。
 - 已发布版本与其标签/资产视为不可变：下一个版本使用新的补丁版本号，不覆盖旧资产。
 
-## 当前版本 (0.3.8 build 15)
+## 当前版本 (0.3.9 build 16)
+
+- App Store 版的可选 Bark 通知桥整体替换为**自托管 PWA Web Push**：每个网关在
+  自己已有的 HTTPS 域名上托管可安装 PWA（iOS 16.4+ 添加到主屏幕），自持 VAPID
+  密钥、自己发送标准 Web Push；无中央服务、无第三方 Bark 依赖。App 侧只保留
+  绑定码生成与通知方式选择，浏览器绑定/订阅/测试都在网关自己的网页里完成。
+- 安全：绑定码短时单次、握手后由网关签发派生网页会话（与原生抽凭据隔离）；
+  浏览器订阅密钥只存网关、任何视图不回传；通知链接使用一次性短时令牌并放在
+  网址片段（服务器与代理日志不可见）；端点 SSRF 防护（仅公网 HTTPS + 特殊用途
+  地址段拒绝 + DNS 重绑定失败关闭）；解除配对/删除设备同时清除浏览器订阅与会话。
+- 通知方式默认仅系统推送；选“仅网页推送”需要先绑定浏览器（否则保存被拒绝），
+  退订最后一个订阅会自动回落系统推送，不会静默丢失通知路径。
+- 测试：原生 486 单元 + 15 UI 通过；PWA 503 单元通过；网关 `go test ./...` 绿
+  （订阅/令牌/SSRF/去重/撤销/模式守卫全覆盖）+ 本地 smoke 全流程与无头浏览器
+  逐步断言。证据见 `evidence/h28k/pwa-notifications/`。
+- 诚实边界：真机 iPhone 的 Safari 网页推送送达、通知单次点击行为（声明式
+  navigate 与 scheme 自动跳转）尚未真机验证；网页通话屏 → 原生 App 需要页面内
+  一次点按（自动跳转已尝试、被拦时有明确恢复按钮）。
+
+## 历史版本 (0.3.8 build 15)
 
 - 配合网关音频修复（H28K `callrelay-worker`：ALSA 采集周期 128 ms → 20 ms 语音帧，
   消除下行 6–7 帧突发导致的持续丢帧与静音，实测修复前管道读间隔中位数 0.01 ms +

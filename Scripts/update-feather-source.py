@@ -2,9 +2,9 @@
 """Generate the Feather source (feather.json) from an actual published IPA.
 
 The Feather source must always point at the pure-native edition: the IPA is
-checked for the absence of the Bark/Shortcuts bridge (no AppIntents metadata,
-no callrelay:// URL scheme, no BarkBridge.strings, no bridge symbols) before
-any version entry is written. File size and SHA-256 are read from the IPA
+checked for the absence of any bridge (no callrelay:// URL scheme, no
+WebPushBridge.strings, no Bark remnants, no bridge symbols) before any
+version entry is written. File size and SHA-256 are read from the IPA
 itself; the download URL is the GitHub release asset URL.
 
 With --feed an existing source is updated in place (history and screenshots
@@ -29,11 +29,11 @@ ICON = (
 DEFAULT_SOURCE_SUBTITLE = "Linux 网关的 iPhone 电话与短信客户端"
 DEFAULT_APP_SUBTITLE = "Linux 蜂窝电话网关的 iPhone 客户端"
 DEFAULT_DESCRIPTION = (
-    "CallRelay {version}（build {build}）纯原生版：不含 Bark/快捷指令桥接。"
+    "CallRelay {version}（build {build}）纯原生版：不含任何网页推送桥接。"
     "未签名 IPA，需自行使用证书与描述文件签名后安装。"
 )
 NATIVE_FORBIDDEN_BINARY = re.compile(
-    rb"(?i)bark|IncomingCallChecker|CheckIncomingCallIntent|callrelay://incoming"
+    rb"(?i)bark|webpush|web push|IncomingCallChecker|CheckIncomingCallIntent|callrelay://incoming"
 )
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -65,11 +65,13 @@ with zipfile.ZipFile(args.ipa) as archive:
         parser.error("IPA has no Payload/<app>.app")
     forbidden_paths = [
         n for n in names
-        if "Metadata.appintents" in n or n.endswith("BarkBridge.strings")
+        if "Metadata.appintents" in n
+        or n.endswith("BarkBridge.strings")
+        or n.endswith("WebPushBridge.strings")
     ]
     if forbidden_paths:
         parser.error(
-            "IPA is not the pure native edition (Bark bridge files present): "
+            "IPA is not the pure native edition (bridge files present): "
             + ", ".join(forbidden_paths[:3])
         )
     info = plistlib.loads(archive.read(app_prefix + "Info.plist"))

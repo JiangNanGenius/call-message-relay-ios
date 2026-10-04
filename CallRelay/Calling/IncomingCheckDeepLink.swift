@@ -1,11 +1,11 @@
-// This file belongs to the optional App Store Bark/Shortcuts edition.
-// It is compiled only with the BARK_BRIDGE build configuration so the
-// native Feather artifact has no Bark UI, route or AppIntent registration.
-#if BARK_BRIDGE
+// This file belongs to the optional App Store PWA edition.
+// It is compiled only with the PWA_BRIDGE build configuration so the
+// native Feather artifact has no web-push UI or deeplink.
+#if PWA_BRIDGE
 import Foundation
 
-/// The static, credential-free deeplink used by the optional Bark
-/// notification and by manual checks. Opening it authorizes nothing by
+/// The static, credential-free deeplink used by the self-hosted PWA
+/// notification handoff and by manual checks. Opening it authorizes nothing by
 /// itself: it only asks the app to re-authenticate against its paired gateway
 /// and present genuinely ringing calls through the normal native CallKit/LCK
 /// path. No token, key or call id ever travels in the link.

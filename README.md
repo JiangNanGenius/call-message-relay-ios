@@ -115,13 +115,13 @@ xcodegen generate         # 生成 CallRelay.xcodeproj
 https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/feather.json
 ```
 
-源只指向**纯原生版未签名 IPA**（不含 Bark/快捷指令桥接），由 Feather 使用你自己的
+源只指向**纯原生版未签名 IPA**（不含任何网页推送桥接），由 Feather 使用你自己的
 证书与描述文件签名后安装。下载地址、版本、大小与 SHA-256 均取自 GitHub Release 的
 实际产物，发布后逐一核对。后台 VoIP 来电仍需匹配 Bundle ID、Push Notifications
 描述文件和自建 APNs 服务；重新签名安装成功不代表后台推送或真实网关通话已经验收。
 
 每次更新同时发布两个未签名构建，版本号与核心修复一致：Feather 纯原生版与
-App Store Bark/快捷指令版；Feather 源始终只指向原生版。构建、校验与发布清单见
+App Store PWA 版；Feather 源始终只指向原生版。构建、校验与发布清单见
 [docs/release.md](docs/release.md)。
 
 | 界面（历史 0.1.0 预览） | 白天 | 夜间 |
@@ -166,4 +166,4 @@ Wi‑Fi/蜂窝切换和弱网（含 TURN 中继）。
 adibendahan/SimplyFilterSMS、SysAdminDoc/CallShield）的分类思路，未复制其规则或号码库。
 
 项目用于自行构建与安装；私有签名包只交给所有者，GitHub 只公开未签名构建。
-App Store Bark/快捷指令版仅在明确授权后提交，Feather 源始终为纯原生版。
+App Store PWA 版仅在明确授权后提交，Feather 源始终为纯原生版。

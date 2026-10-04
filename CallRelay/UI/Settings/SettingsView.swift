@@ -31,11 +31,11 @@ struct SettingsView: View {
                     } label: {
                         Label("通讯录导入与整理", systemImage: "person.crop.circle.badge.checkmark")
                     }
-#if BARK_BRIDGE
+#if PWA_BRIDGE
                     NavigationLink {
-                        BarkBridgeSettingsView()
+                        WebPushSettingsView()
                     } label: {
-                        Label(BarkL10n.text("来电通知（可选 Bark）"), systemImage: "bell.badge")
+                        Label(WebPushL10n.text("网页通知"), systemImage: "bell.badge")
                     }
 #endif
                 }

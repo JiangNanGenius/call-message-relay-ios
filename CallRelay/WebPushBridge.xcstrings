@@ -1,876 +1,486 @@
 {
   "sourceLanguage": "zh-Hans",
+  "version": "1.0",
   "strings": {
-    "Apple 官方通知自动化说明": {
+    "仅系统推送（App）": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apple's notification automation guide"
+            "value": "System push (app) only"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apple 官方通知自动化说明"
+            "value": "仅系统推送（App）"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apple 官方通知自動化說明"
+            "value": "僅系統推送（App）"
           }
         }
       }
     },
-    "Bark 服务器": {
+    "系统推送 + 网页推送": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bark Server"
+            "value": "System push + web push"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bark 服务器"
+            "value": "系统推送 + 网页推送"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bark 伺服器"
+            "value": "系統推送 + 網頁推送"
           }
         }
       }
     },
-    "Bark 设备密钥": {
+    "仅网页推送": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bark device key"
+            "value": "Web push only"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bark 设备密钥"
+            "value": "仅网页推送"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bark 裝置金鑰"
+            "value": "僅網頁推送"
           }
         }
       }
     },
-    "HTTP 只允许连接局域网或本机地址。": {
+    "只通过 App 的系统推送响铃；网页不接收来电通知。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP is only allowed to a LAN or local address."
+            "value": "Rings only through the app's system push; the browser receives nothing."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP 只允许连接局域网或本机地址。"
+            "value": "只通过 App 的系统推送响铃；网页不接收来电通知。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "HTTP 只允許連線區域網路或本機位址。"
+            "value": "只透過 App 的系統推送響鈴；網頁不接收來電通知。"
           }
         }
       }
     },
-    "iPhone 通知自动化（iOS 27）": {
+    "App 与已绑定的浏览器都会收到来电通知（适合 App 后台不响铃时兜底）。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone notification automation (iOS 27)"
+            "value": "Both the app and the bound browser notify — a fallback when the app doesn't ring in the background."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone 通知自动化（iOS 27）"
+            "value": "App 与已绑定的浏览器都会收到来电通知（适合 App 后台不响铃时兜底）。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone 通知自動化（iOS 27）"
+            "value": "App 與已綁定的瀏覽器都會收到來電通知（適合 App 後台不響鈴時兜底）。"
           }
         }
       }
     },
-    "下次保存时移除已保存的密钥": {
+    "只通过已绑定的浏览器接收来电通知，App 不再收到系统来电推送。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Remove the saved key on next save"
+            "value": "Only the bound browser notifies; the app no longer receives system call pushes."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "下次保存时移除已保存的密钥"
+            "value": "只通过已绑定的浏览器接收来电通知，App 不再收到系统来电推送。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "下次儲存時移除已儲存的金鑰"
+            "value": "只透過已綁定的瀏覽器接收來電通知，App 不再收到系統來電推送。"
           }
         }
       }
     },
-    "保存中…": {
+    "绑定码是 9 位字符。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Saving…"
+            "value": "The bind code is 9 characters."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "保存中…"
+            "value": "绑定码是 9 位字符。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "儲存中…"
+            "value": "綁定碼是 9 位字元。"
           }
         }
       }
     },
-    "保存失败，请稍后重试。": {
+    "绑定码只能包含数字和大写字母（不含 0、1、I、L、O）。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Save failed. Try again later."
+            "value": "The bind code contains only digits and uppercase letters (no 0, 1, I, L or O)."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "保存失败，请稍后重试。"
+            "value": "绑定码只能包含数字和大写字母（不含 0、1、I、L、O）。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "儲存失敗，請稍後重試。"
+            "value": "綁定碼只能包含數字和大寫字母（不含 0、1、I、L、O）。"
           }
         }
       }
     },
-    "发送测试通知": {
+    "绑定链接过长。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Send test notification"
+            "value": "The bind link is too long."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "发送测试通知"
+            "value": "绑定链接过长。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "傳送測試通知"
+            "value": "綁定連結過長。"
           }
         }
       }
     },
-    "发送测试通知，确认手机能收到。": {
+    "绑定链接不是有效网址。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Send a test notification to confirm your phone receives it."
+            "value": "The bind link is not a valid URL."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "发送测试通知，确认手机能收到。"
+            "value": "绑定链接不是有效网址。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "傳送測試通知，確認手機能收到。"
+            "value": "綁定連結不是有效網址。"
           }
         }
       }
     },
-    "可选通知桥": {
+    "绑定链接必须使用 https。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Optional notification bridge"
+            "value": "The bind link must use https."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "可选通知桥"
+            "value": "绑定链接必须使用 https。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "可選通知橋"
+            "value": "綁定連結必須使用 https。"
           }
         }
       }
     },
-    "启用 Bark 来电通知（可选）": {
+    "绑定链接不能包含账号或密码。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enable Bark call notifications (optional)"
+            "value": "The bind link must not contain a username or password."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "启用 Bark 来电通知（可选）"
+            "value": "绑定链接不能包含账号或密码。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "啟用 Bark 來電通知（可選）"
+            "value": "綁定連結不能包含帳號或密碼。"
           }
         }
       }
     },
-    "启用 Bark 通知需要填写服务器地址。": {
+    "绑定链接不能把绑定码放在网址参数里。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enter a server address to enable Bark notifications."
+            "value": "The bind code must not travel in the URL query string."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "启用 Bark 通知需要填写服务器地址。"
+            "value": "绑定链接不能把绑定码放在网址参数里。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "啟用 Bark 通知需要填寫伺服器位址。"
+            "value": "綁定連結不能把綁定碼放在網址參數裡。"
           }
         }
       }
     },
-    "启用 Bark 通知需要填写设备密钥。": {
+    "绑定链接缺少主机名。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enter a device key to enable Bark notifications."
+            "value": "The bind link has no host name."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "启用 Bark 通知需要填写设备密钥。"
+            "value": "绑定链接缺少主机名。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "啟用 Bark 通知需要填寫裝置金鑰。"
+            "value": "綁定連結缺少主機名。"
           }
         }
       }
     },
-    "在 Bark 中生成设备密钥。": {
+    "绑定链接缺少绑定码片段。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Generate a device key in Bark."
+            "value": "The bind link has no bind-code fragment."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在 Bark 中生成设备密钥。"
+            "value": "绑定链接缺少绑定码片段。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "在 Bark 中產生裝置金鑰。"
+            "value": "綁定連結缺少綁定碼片段。"
           }
         }
       }
     },
-    "在“快捷指令 → 自动化”中新建“收到通知”自动化：筛选 Bark 通知（可按 App、标题、正文过滤，例如标题包含 CallRelay 或正文包含来电），然后运行“检查来电”。": {
+    "绑定链接中的绑定码不一致。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "In Shortcuts → Automation, create a “When I receive a notification” automation: filter Bark notifications (by app, title or body, e.g. title contains CallRelay or body contains incoming call), then run “Check incoming call”."
+            "value": "The bind code in the link does not match."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在“快捷指令 → 自动化”中新建“收到通知”自动化：筛选 Bark 通知（可按 App、标题、正文过滤，例如标题包含 CallRelay 或正文包含来电），然后运行“检查来电”。"
+            "value": "绑定链接中的绑定码不一致。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "在「捷徑 → 自動化」中新增「收到通知」自動化：篩選 Bark 通知（可依 App、標題、內文過濾，例如標題包含 CallRelay 或內文包含來電），然後執行「檢查來電」。"
+            "value": "綁定連結中的綁定碼不一致。"
           }
         }
       }
     },
-    "填写服务器地址与密钥，保存并启用。": {
+    "重试": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fill in the server address and key, then save and enable."
+            "value": "Retry"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "填写服务器地址与密钥，保存并启用。"
+            "value": "重试"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "填寫伺服器位址與金鑰，儲存並啟用。"
+            "value": "重試"
           }
         }
       }
     },
-    "安全说明": {
+    "正在读取网关设置…": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Security notes"
+            "value": "Reading gateway settings…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "安全说明"
+            "value": "正在读取网关设置…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "安全說明"
+            "value": "正在讀取網關設定…"
           }
         }
       }
     },
-    "安装 Bark App，或按 Bark 项目文档自建服务器。": {
+    "网关未启用网页推送（需要运维开启 webpush.enabled）。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Install the Bark app, or self-host a server following the Bark project docs."
+            "value": "This gateway has web push disabled (the operator must enable webpush.enabled)."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "安装 Bark App，或按 Bark 项目文档自建服务器。"
+            "value": "网关未启用网页推送（需要运维开启 webpush.enabled）。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "安裝 Bark App，或依 Bark 專案文件自架伺服器。"
+            "value": "網關未啟用網頁推送（需要運維開啟 webpush.enabled）。"
           }
         }
       }
     },
-    "尚未配对网关，无法检查来电。": {
+    "已绑定浏览器": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No gateway is paired, so incoming calls cannot be checked."
+            "value": "Bound browsers"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "尚未配对网关，无法检查来电。"
+            "value": "已绑定浏览器"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "尚未配對閘道，無法檢查來電。"
+            "value": "已綁定瀏覽器"
           }
         }
       }
     },
-    "已保存 %@，留空保持不变": {
+    "检查中…": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ saved; leave blank to keep it"
+            "value": "Checking…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已保存 %@，留空保持不变"
+            "value": "检查中…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "已儲存 %@，留空保持不變"
-          }
-        }
-      }
-    },
-    "已保存并启用。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved and enabled."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已保存并启用。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已儲存並啟用。"
-          }
-        }
-      }
-    },
-    "已保存（当前关闭）。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved (currently off)."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已保存（当前关闭）。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已儲存（目前關閉）。"
-          }
-        }
-      }
-    },
-    "已发现正在响铃的来电，并显示在系统来电界面；请手动接听。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A ringing incoming call was found and shown in the system call UI; answer it manually."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已发现正在响铃的来电，并显示在系统来电界面；请手动接听。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已發現正在響鈴的來電，並顯示在系統來電介面；請手動接聽。"
-          }
-        }
-      }
-    },
-    "当前没有正在响铃的来电。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "There is no ringing incoming call right now."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "当前没有正在响铃的来电。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "目前沒有正在響鈴的來電。"
-          }
-        }
-      }
-    },
-    "我的 Bark 服务器在局域网或使用 HTTP": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "My Bark server is on the LAN or uses HTTP"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "我的 Bark 服务器在局域网或使用 HTTP"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "我的 Bark 伺服器在區域網路或使用 HTTP"
-          }
-        }
-      }
-    },
-    "无法读取网关设置，请稍后重试。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Could not load gateway settings. Try again later."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法读取网关设置，请稍后重试。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無法讀取閘道設定，請稍後重試。"
-          }
-        }
-      }
-    },
-    "无法连接网关，请检查网络后重试。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cannot reach the gateway. Check your network and try again."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法连接网关，请检查网络后重试。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "無法連線閘道，請檢查網路後重試。"
-          }
-        }
-      }
-    },
-    "旧版 iOS 与锁屏状态下的自动执行尚未验证；未设置自动化时，点按 Bark 通知会打开 App 并用本机配对检查是否有正在响铃的来电（手动回退路径）。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Automatic execution on older iOS versions and while locked has not been verified. Without an automation, tapping the Bark notification opens the app and checks for ringing calls using this phone's pairing (manual fallback)."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "旧版 iOS 与锁屏状态下的自动执行尚未验证；未设置自动化时，点按 Bark 通知会打开 App 并用本机配对检查是否有正在响铃的来电（手动回退路径）。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "舊版 iOS 與鎖屏狀態下的自動執行尚未驗證；未設定自動化時，點按 Bark 通知會開啟 App 並用本機配對檢查是否有正在響鈴的來電（手動回退路徑）。"
-          }
-        }
-      }
-    },
-    "服务器地址不是有效网址。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The server address is not a valid URL."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "服务器地址不是有效网址。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "伺服器位址不是有效網址。"
-          }
-        }
-      }
-    },
-    "服务器地址不能包含查询参数或片段。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The server address must not contain query parameters or a fragment."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "服务器地址不能包含查询参数或片段。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "伺服器位址不能包含查詢參數或片段。"
-          }
-        }
-      }
-    },
-    "服务器地址不能包含账号或密码。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The server address must not contain a username or password."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "服务器地址不能包含账号或密码。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "伺服器位址不能包含帳號或密碼。"
-          }
-        }
-      }
-    },
-    "服务器地址使用 HTTP 时必须开启“局域网自建服务器”。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "HTTP server addresses require “LAN self-hosted server” to be enabled."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "服务器地址使用 HTTP 时必须开启“局域网自建服务器”。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "伺服器位址使用 HTTP 時必須開啟「區域網路自架伺服器」。"
-          }
-        }
-      }
-    },
-    "服务器地址填写 Bark 自建服务的根地址，例如 http://192.168.1.10:8080；使用官方服务器可填 https://api.day.app。设备密钥只会上传给已配对网关。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter the root address of your self-hosted Bark server, e.g. http://192.168.1.10:8080; for the official server use https://api.day.app. The device key is only sent to your paired gateway."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "服务器地址填写 Bark 自建服务的根地址，例如 http://192.168.1.10:8080；使用官方服务器可填 https://api.day.app。设备密钥只会上传给已配对网关。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "伺服器位址請填寫 Bark 自架服務的根位址，例如 http://192.168.1.10:8080；使用官方伺服器可填 https://api.day.app。裝置金鑰只會上傳到已配對閘道。"
-          }
-        }
-      }
-    },
-    "服务器地址必须以 http:// 或 https:// 开头。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The server address must start with http:// or https://."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "服务器地址必须以 http:// 或 https:// 开头。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "伺服器位址必須以 http:// 或 https:// 開頭。"
-          }
-        }
-      }
-    },
-    "服务器地址缺少主机名。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The server address is missing a host name."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "服务器地址缺少主机名。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "伺服器位址缺少主機名稱。"
-          }
-        }
-      }
-    },
-    "来电通知（可选 Bark）": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Call Notifications (Optional Bark)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "来电通知（可选 Bark）"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "來電通知（可選 Bark）"
-          }
-        }
-      }
-    },
-    "来电通知（可选）": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Call Notifications (Optional)"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "来电通知（可选）"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "來電通知（可選）"
+            "value": "檢查中…"
           }
         }
       }
@@ -881,7 +491,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Check incoming call"
+            "value": "Check incoming calls"
           }
         },
         "zh-Hans": {
@@ -898,255 +508,209 @@
         }
       }
     },
-    "检查来电只显示系统来电界面，绝不会自动接听。": {
+    "网页推送": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Checking incoming calls only shows the system call UI and never answers automatically."
+            "value": "Web Push"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "检查来电只显示系统来电界面，绝不会自动接听。"
+            "value": "网页推送"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "檢查來電只顯示系統來電介面，絕不會自動接聽。"
+            "value": "網頁通知"
           }
         }
       }
     },
-    "正在检查来电，请稍候。": {
+    "绑定浏览器": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Checking for incoming calls, please wait."
+            "value": "Bind a browser"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在检查来电，请稍候。"
+            "value": "绑定浏览器"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在檢查來電，請稍候。"
+            "value": "綁定瀏覽器"
           }
         }
       }
     },
-    "正在读取网关设置…": {
+    "生成中…": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Loading gateway settings…"
+            "value": "Generating…"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在读取网关设置…"
+            "value": "生成中…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在讀取閘道設定…"
+            "value": "生成中…"
           }
         }
       }
     },
-    "测试通知发送失败，请稍后重试。": {
+    "生成绑定码": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Test notification failed. Try again later."
+            "value": "Generate bind code"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "测试通知发送失败，请稍后重试。"
+            "value": "生成绑定码"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "測試通知傳送失敗，請稍後重試。"
+            "value": "生成綁定碼"
           }
         }
       }
     },
-    "测试通知已发送，请查看 Bark。": {
+    "绑定链接二维码": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Test notification sent; check Bark."
+            "value": "Bind link QR code"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "测试通知已发送，请查看 Bark。"
+            "value": "绑定链接二维码"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "測試通知已傳送，請查看 Bark。"
+            "value": "綁定連結二維碼"
           }
         }
       }
     },
-    "网关只通知正在响铃的来电，并做去重与过期保护。": {
+    "复制绑定链接": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The gateway only notifies ringing incoming calls, with deduplication and stale protection."
+            "value": "Copy bind link"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "网关只通知正在响铃的来电，并做去重与过期保护。"
+            "value": "复制绑定链接"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "閘道只通知正在響鈴的來電，並做去重與過期保護。"
+            "value": "複製綁定連結"
           }
         }
       }
     },
-    "网关未允许局域网 Bark 服务器（需要运维开启 bark.allow_private）。": {
+    "已复制绑定链接。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The gateway does not allow LAN Bark servers (operator must turn on bark.allow_private)."
+            "value": "Bind link copied."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "网关未允许局域网 Bark 服务器（需要运维开启 bark.allow_private）。"
+            "value": "已复制绑定链接。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "閘道未允許區域網路 Bark 伺服器（需要維運開啟 bark.allow_private）。"
+            "value": "已複製綁定連結。"
           }
         }
       }
     },
-    "网关未启用可选的 Bark 通知桥（需要运维开启 bark.enabled）。": {
+    "绑定码约 10 分钟内有效，仅可使用一次；过期或使用后请重新生成。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The gateway has not enabled the optional Bark bridge (operator must turn on bark.enabled)."
+            "value": "The code is valid for about 10 minutes and works once; regenerate it after use or expiry."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "网关未启用可选的 Bark 通知桥（需要运维开启 bark.enabled）。"
+            "value": "绑定码约 10 分钟内有效，仅可使用一次；过期或使用后请重新生成。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "閘道未啟用可選的 Bark 通知橋（需要維運開啟 bark.enabled）。"
+            "value": "綁定碼約 10 分鐘內有效，僅可使用一次；過期或使用後請重新生成。"
           }
         }
       }
     },
-    "设备密钥只保存在网关，不写入通知或本地存储。": {
+    "在 iPhone/iPad 上先把网关网页“添加到主屏幕”（iOS 16.4+），打开该网页应用后输入上方绑定码；绑定码与链接只在此设备屏幕上显示，不会上传到其他服务。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The device key is stored only on the gateway; it is never written to a notification or local storage."
+            "value": "On iPhone/iPad, add this page to your Home Screen first (iOS 16.4+), open it from there, then enter the code above."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "设备密钥只保存在网关，不写入通知或本地存储。"
+            "value": "在 iPhone/iPad 上先把网关网页“添加到主屏幕”（iOS 16.4+），打开该网页应用后输入上方绑定码；绑定码与链接只在此设备屏幕上显示，不会上传到其他服务。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "裝置金鑰只儲存在閘道，不寫入通知或本機儲存。"
-          }
-        }
-      }
-    },
-    "设备密钥只能是可见 ASCII 字符，不能包含空格或换行。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The device key must be visible ASCII characters with no spaces or line breaks."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "设备密钥只能是可见 ASCII 字符，不能包含空格或换行。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "裝置金鑰只能是可見 ASCII 字元，不能包含空格或換行。"
-          }
-        }
-      }
-    },
-    "设备密钥过长。": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The device key is too long."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "设备密钥过长。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "裝置金鑰過長。"
+            "value": "在 iPhone/iPad 上先把本頁「加入主畫面」（iOS 16.4+），從主畫面打開後輸入上方綁定碼。"
           }
         }
       }
@@ -1174,94 +738,439 @@
         }
       }
     },
-    "该地址在局域网或本机；请开启“局域网自建服务器”。": {
+    "选择上方通知方式（默认仅系统推送；需要网页兜底时选“系统 + 网页”）。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This address is on the LAN or this device; turn on “LAN self-hosted server”."
+            "value": "Pick a notify mode above (default: system push only)."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "该地址在局域网或本机；请开启“局域网自建服务器”。"
+            "value": "选择上方通知方式（默认仅系统推送；需要网页兜底时选“系统 + 网页”）。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "該位址在區域網路或本機；請開啟「區域網路自架伺服器」。"
+            "value": "選擇上方通知方式（預設僅系統推送）。"
           }
         }
       }
     },
-    "通知中的链接不含任何令牌；打开后仅用本机配对重新查询。": {
+    "点“生成绑定码”，在已添加到主屏幕的网关网页中输入绑定码并允许通知。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The notification link contains no token; opening it only re-queries using this phone's pairing."
+            "value": "Tap “Generate bind code”, enter it in this web app on your Home Screen, then allow notifications."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "通知中的链接不含任何令牌；打开后仅用本机配对重新查询。"
+            "value": "点“生成绑定码”，在已添加到主屏幕的网关网页中输入绑定码并允许通知。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "通知中的連結不含任何權杖；開啟後僅用本機配對重新查詢。"
+            "value": "點「生成綁定碼」，在此網頁應用中輸入並允許通知。"
           }
         }
       }
     },
-    "通过已配对的网关检查是否有正在响铃的来电，并显示系统来电界面；不会自动接听。": {
+    "在该网页中发送测试通知，确认此设备能收到。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Check with the paired gateway whether an incoming call is ringing and show the system call UI; never answers automatically."
+            "value": "Send a test here to confirm this device receives it."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "通过已配对的网关检查是否有正在响铃的来电，并显示系统来电界面；不会自动接听。"
+            "value": "在该网页中发送测试通知，确认此设备能收到。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "透過已配對的閘道檢查是否有正在響鈴的來電，並顯示系統來電介面；不會自動接聽。"
+            "value": "在此發送測試，確認此裝置能收到。"
           }
         }
       }
     },
-    "默认关闭。关闭时来电完全走原生推送与系统来电界面，不会连接任何 Bark 服务器；打开 App 的配对、推送与通话路径都不依赖 Bark。": {
+    "来电时点击通知会在网页中显示来电；点“在 CallRelay 中打开”回到本 App 的来电界面（不会自动接听）。": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Off by default. While off, calls use only native push and the system call UI and no Bark server is contacted; pairing, push and calling never depend on Bark."
+            "value": "Tap a notification to see the call here, then “Open in CallRelay” to answer in the app."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "默认关闭。关闭时来电完全走原生推送与系统来电界面，不会连接任何 Bark 服务器；打开 App 的配对、推送与通话路径都不依赖 Bark。"
+            "value": "来电时点击通知会在网页中显示来电；点“在 CallRelay 中打开”回到本 App 的来电界面（不会自动接听）。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "預設關閉。關閉時來電完全走原生推播與系統來電介面，不會連線任何 Bark 伺服器；App 的配對、推播與通話路徑都不依賴 Bark。"
+            "value": "點按通知在此查看來電，再點「在 CallRelay 中打開」回 App 接聽。"
+          }
+        }
+      }
+    },
+    "安全说明": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Security notes"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安全说明"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安全說明"
+          }
+        }
+      }
+    },
+    "网页推送由你的网关自托管服务，不经过任何第三方通知服务。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Web push is served by your own CallRelay gateway."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网页推送由你的网关自托管服务，不经过任何第三方通知服务。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "網頁推送由你的 CallRelay 網關提供。"
+          }
+        }
+      }
+    },
+    "浏览器订阅密钥只保存在网关，App 与通知中都不包含订阅密钥。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscription keys stay on the gateway — never in this app or in notifications."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览器订阅密钥只保存在网关，App 与通知中都不包含订阅密钥。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "訂閱密鑰只保存在網關，App 與通知都不包含。"
+          }
+        }
+      }
+    },
+    "通知链接使用一次性、短时有效的令牌并放在网址片段中，服务器与代理日志不会记录。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notification links use a one-time token that server logs never record."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知链接使用一次性、短时有效的令牌并放在网址片段中，服务器与代理日志不会记录。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知連結使用一次性令牌，伺服器日誌不會記錄。"
+          }
+        }
+      }
+    },
+    "解除配对或删除设备会同时移除浏览器订阅与网页会话。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpairing removes the browser subscriptions too."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解除配对或删除设备会同时移除浏览器订阅与网页会话。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "解除配對會同時移除瀏覽器訂閱。"
+          }
+        }
+      }
+    },
+    "来电只在响铃时通知；检查来电只显示系统来电界面，绝不会自动接听。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calls notify only while ringing; checks never answer automatically."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来电只在响铃时通知；检查来电只显示系统来电界面，绝不会自动接听。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "來電只在響鈴時通知；檢查絕不自動接聽。"
+          }
+        }
+      }
+    },
+    "无法读取网关设置，请稍后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't read gateway settings. Try again later."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取网关设置，请稍后重试。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法讀取網關設定，請稍後重試。"
+          }
+        }
+      }
+    },
+    "通知方式已保存。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notify mode saved."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知方式已保存。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知方式已保存。"
+          }
+        }
+      }
+    },
+    "保存失败，请稍后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save failed. Try again later."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存失败，请稍后重试。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存失敗，請稍後重試。"
+          }
+        }
+      }
+    },
+    "生成失败，请稍后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generation failed. Try again later."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "生成失败，请稍后重试。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "生成失敗，請稍後重試。"
+          }
+        }
+      }
+    },
+    "通知方式": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notify mode"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知方式"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通知方式"
+          }
+        }
+      }
+    },
+    "已发现正在响铃的来电，并显示在系统来电界面；请手动接听。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Found a ringing call and surfaced it in the system call UI; please answer manually."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已发现正在响铃的来电，并显示在系统来电界面；请手动接听。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已發現正在響鈴的來電，並顯示在系統來電介面；請手動接聽。"
+          }
+        }
+      }
+    },
+    "当前没有正在响铃的来电。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No call is ringing right now."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前没有正在响铃的来电。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前沒有正在響鈴的來電。"
+          }
+        }
+      }
+    },
+    "尚未配对网关，无法检查来电。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No gateway is paired, so incoming calls can't be checked."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未配对网关，无法检查来电。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未配對網關，無法檢查來電。"
+          }
+        }
+      }
+    },
+    "无法连接网关，请检查网络后重试。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't reach the gateway. Check the network and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法连接网关，请检查网络后重试。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法連接網關，請檢查網路後重試。"
           }
         }
       }
@@ -1272,7 +1181,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The app is not running, so an answerable system call cannot be shown; open the app and try again."
+            "value": "The app isn't running, so no answerable system call can be shown. Open the app and try again."
           }
         },
         "zh-Hans": {
@@ -1284,11 +1193,56 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "App 未在執行，無法顯示可接聽的系統來電；請開啟 App 後重試。"
+            "value": "App 未在運行，無法顯示可接聽的系統來電；請打開 App 後重試。"
+          }
+        }
+      }
+    },
+    "正在检查来电，请稍候。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking incoming calls…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查来电，请稍候。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在檢查來電，請稍候。"
+          }
+        }
+      }
+    },
+    "网页通知": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Web Push"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来电通知（网页推送）"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "網頁通知"
           }
         }
       }
     }
-  },
-  "version": "1.0"
+  }
 }

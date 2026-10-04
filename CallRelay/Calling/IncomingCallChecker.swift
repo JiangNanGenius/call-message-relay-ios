@@ -1,7 +1,7 @@
-// This file belongs to the optional App Store Bark/Shortcuts edition.
-// It is compiled only with the BARK_BRIDGE build configuration so the
-// native Feather artifact has no Bark UI, route or AppIntent registration.
-#if BARK_BRIDGE
+// This file belongs to the optional App Store PWA edition.
+// It is compiled only with the PWA_BRIDGE build configuration so the
+// native Feather artifact has no web-push UI or deeplink.
+#if PWA_BRIDGE
 import Foundation
 import CallKit
 
@@ -35,23 +35,24 @@ enum IncomingCheckOutcome: Equatable, Sendable {
     var message: String {
         switch self {
         case .ringing:
-            return BarkL10n.text("已发现正在响铃的来电，并显示在系统来电界面；请手动接听。")
+            return WebPushL10n.text("已发现正在响铃的来电，并显示在系统来电界面；请手动接听。")
         case .noRingingCall:
-            return BarkL10n.text("当前没有正在响铃的来电。")
+            return WebPushL10n.text("当前没有正在响铃的来电。")
         case .notPaired:
-            return BarkL10n.text("尚未配对网关，无法检查来电。")
+            return WebPushL10n.text("尚未配对网关，无法检查来电。")
         case .offline:
-            return BarkL10n.text("无法连接网关，请检查网络后重试。")
+            return WebPushL10n.text("无法连接网关，请检查网络后重试。")
         case .appNotRunning:
-            return BarkL10n.text("App 未在运行，无法显示可接听的系统来电；请打开 App 后重试。")
+            return WebPushL10n.text("App 未在运行，无法显示可接听的系统来电；请打开 App 后重试。")
         case .busy:
-            return BarkL10n.text("正在检查来电，请稍候。")
+            return WebPushL10n.text("正在检查来电，请稍候。")
         }
     }
 }
 
-/// Shared service behind the “Check incoming call” App Intent, the
-/// `callrelay://incoming` deeplink and the Settings manual check.
+/// Shared service behind the `callrelay://incoming` deeplink and the
+/// Settings manual check (the notification tap from the bound PWA opens
+/// that deeplink in this edition).
 ///
 /// It authenticates with the app's own paired credential (never with data
 /// from a notification), asks the gateway for actually-ringing calls,

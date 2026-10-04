@@ -15,33 +15,33 @@ options:
   generateEmptyDirectories: false
 
 # Build flavors. Debug/Release are the Feather native edition and are the
-# DEFAULT: they compile no Bark bridge, no Check-incoming-call AppIntent and
-# no callrelay:// route. Debug-Bark/Release-Bark compile the same core plus
-# the optional Bark/Shortcuts bridge (BARK_BRIDGE). Every release publishes
-# both variants together under one marketing version; see
-# evidence/h28k/build13-repair/release-variants.md for the release checklist.
+# DEFAULT: they compile no web-push bridge and no callrelay:// route.
+# Debug-PWA/Release-PWA compile the same core plus the optional self-hosted
+# PWA web-push bridge (PWA_BRIDGE): the app mints browser bind codes for the
+# gateway's own PWA (no Bark, no central service, no third-party dependency).
+# Every release publishes both variants together under one marketing version;
+# see docs/release.md for the release checklist.
 configs:
   Debug: debug
   Release: release
-  Debug-Bark: debug
-  Release-Bark: release
+  Debug-PWA: debug
+  Release-PWA: release
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.8"
+    MARKETING_VERSION: "0.3.9"
     # v0.3.5 public build 9 stays immutable. Build 12 (0.3.5) was the
     # TestFlight CloudKit/WSS/LCK repair; build 13 ships the build-12 crash,
     # iCloud, push-environment and audio fixes in BOTH editions and adds the
-    # optional Bark/Shortcuts bridge to the App Store edition only. Build 14
-    # (0.3.7) repairs silent relay audio (CallKit activation now reaches the
-    # WSS session), stuck direct-route switching (cancellable, bounded
-    # pre-commit attempts; stale attempts cannot overwrite a newer selection)
-    # and adds the exportable redacted diagnostics log. Build 15 (0.3.8) pairs
-    # with the gateway audio repair (worker ALSA capture now paced at the 20 ms
-    # voice frame, fixing the choppy/silent downlink) and deepens diagnostics:
-    # per-direction audio level aggregates, feed-cadence and route evidence,
-    # and the PushKit receive→decision→report lifecycle.
-    CURRENT_PROJECT_VERSION: "15"
+    # optional bridge to the App Store edition only. Build 14 (0.3.7) repairs
+    # silent relay audio, stuck direct-route switching and adds the
+    # exportable redacted diagnostics log. Build 15 (0.3.8) pairs with the
+    # gateway audio repair and deepens PushKit/audio diagnostics. Build 16
+    # (0.3.9) replaces the App Store edition's Bark bridge with the
+    # self-hosted PWA Web Push path (gateway serves an installable PWA over
+    # its own HTTPS domain, owns its VAPID key and sends Web Push itself) and
+    # keeps the pure native edition untouched.
+    CURRENT_PROJECT_VERSION: "16"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.
@@ -53,12 +53,12 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
     GCC_TREAT_WARNINGS_AS_ERRORS: "NO"
   configs:
-    # The Bark/Shortcuts edition is opt-in by configuration only; the default
+    # The PWA edition is opt-in by configuration only; the default
     # Debug/Release builds can never accidentally include the bridge.
-    Debug-Bark:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG BARK_BRIDGE"
-    Release-Bark:
-      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) BARK_BRIDGE"
+    Debug-PWA:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG PWA_BRIDGE"
+    Release-PWA:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) PWA_BRIDGE"
 
 packages:
   WebRTC:
@@ -102,8 +102,8 @@ targets:
           - INStartCallIntent
           - INStartAudioCallIntent
         # NOTE: no CFBundleURLTypes here. The callrelay:// incoming-check route
-        # exists only in the Bark/Shortcuts edition and is contributed by
-        # CallRelay/Info-Bark.plist (used by the Debug-Bark/Release-Bark
+        # exists only in the PWA edition and is contributed by
+        # CallRelay/Info-PWA.plist (used by the Debug-PWA/Release-PWA
         # configurations); the native Feather artifact registers no such route.
         UIRequiredDeviceCapabilities:
           - arm64
@@ -153,18 +153,18 @@ targets:
         # never crash on CKContainer initialization.
         SWIFT_OBJC_BRIDGING_HEADER: CallRelay/CloudSync/CallRelay-Bridging-Header.h
       configs:
-        # Only the Bark/Shortcuts edition registers callrelay:// and the
-        # Check-incoming-call AppIntent surface; the native plist stays free of
-        # any bridge route. The Bark-only string catalog is likewise compiled
-        # only into the Bark edition; the native bundle carries no Bark text.
+        # Only the PWA edition registers the callrelay:// incoming-check
+        # route; the native plist stays free of any bridge route. The
+        # PWA-only string catalog is likewise compiled only into the PWA
+        # edition; the native bundle carries no web-push text.
         Debug:
-          EXCLUDED_SOURCE_FILE_NAMES: BarkBridge.xcstrings
+          EXCLUDED_SOURCE_FILE_NAMES: WebPushBridge.xcstrings
         Release:
-          EXCLUDED_SOURCE_FILE_NAMES: BarkBridge.xcstrings
-        Debug-Bark:
-          INFOPLIST_FILE: CallRelay/Info-Bark.plist
-        Release-Bark:
-          INFOPLIST_FILE: CallRelay/Info-Bark.plist
+          EXCLUDED_SOURCE_FILE_NAMES: WebPushBridge.xcstrings
+        Debug-PWA:
+          INFOPLIST_FILE: CallRelay/Info-PWA.plist
+        Release-PWA:
+          INFOPLIST_FILE: CallRelay/Info-PWA.plist
 
   CallRelayTests:
     type: bundle.unit-test

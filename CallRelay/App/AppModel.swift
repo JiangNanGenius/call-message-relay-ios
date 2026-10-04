@@ -45,7 +45,7 @@ final class AppModel: ObservableObject {
     /// Concise notice when the system incoming-call UI is unavailable (the
     /// in-app ring and answer still work). nil when CallKit accepted.
     @Published var callKitIssue: String?
-#if BARK_BRIDGE
+#if PWA_BRIDGE
     /// Result of an explicit incoming-call check (deeplink/manual) that found
     /// nothing to ring; nil while no such notice is pending. `ringing` results
     /// surface the normal call UI instead of a notice.
@@ -182,7 +182,7 @@ final class AppModel: ObservableObject {
 
     var isPaired: Bool { bindingStore.current() != nil && tokenStore.tokens() != nil }
 
-#if BARK_BRIDGE
+#if PWA_BRIDGE
     /// True when the live driver can present a checked incoming call right now.
     var canRunLiveIncomingCheck: Bool { api != nil && driver != nil }
 #endif
@@ -281,7 +281,7 @@ final class AppModel: ObservableObject {
             for preset in SpamPreset.allCases { resolvedFilter.enable(preset: preset) }
         }
         observeLifecycle()
-#if BARK_BRIDGE
+#if PWA_BRIDGE
         // Register this model as the only owner that may present a checked
         // incoming call; the optional checker never rings without a live
         // driver that can route answer/end actions.
@@ -1982,8 +1982,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-#if BARK_BRIDGE
-    // MARK: Explicit incoming-call check (App Intent / deeplink / manual)
+#if PWA_BRIDGE
+    // MARK: Explicit incoming-call check (deeplink / manual)
 
     /// Makes sure a live session exists before a checked call is presented.
     /// When bootstrap has not run yet (background App Intent launch) it starts
@@ -2067,22 +2067,30 @@ final class AppModel: ObservableObject {
 
     func dismissIncomingCheckNotice() { incomingCheckNotice = nil }
 
-    // MARK: Optional Bark bridge (gateway settings)
+    // MARK: Optional web push bridge (gateway settings)
 
-    func barkSettings() async throws -> BarkBridgeSettings {
+    /// VAPID/feature availability for the self-hosted PWA surface.
+    func webPushVAPID() async throws -> WebPushVAPIDSettings {
         guard let api else { throw APIError.notReady("尚未连接网关。") }
-        return try await api.barkSettings()
+        return try await api.webPushVAPID()
+    }
+
+    /// Redacted status: subscription count and notify mode only.
+    func webPushStatus() async throws -> WebPushDeviceStatus {
+        guard let api else { throw APIError.notReady("尚未连接网关。") }
+        return try await api.webPushStatus()
+    }
+
+    /// Mints the short-lived, single-use bind code shown on the setup screen.
+    func webPushBindToken() async throws -> WebPushBindToken {
+        guard let api else { throw APIError.notReady("尚未连接网关。") }
+        return try await api.webPushBindToken()
     }
 
     @discardableResult
-    func saveBarkSettings(_ update: BarkBridgeSettingsUpdate) async throws -> BarkBridgeSettings {
+    func updateNotifyMode(_ mode: WebPushNotifyMode) async throws -> WebPushDeviceStatus {
         guard let api else { throw APIError.notReady("尚未连接网关。") }
-        return try await api.updateBarkSettings(update)
-    }
-
-    func sendBarkTestNotification() async throws {
-        guard let api else { throw APIError.notReady("尚未连接网关。") }
-        try await api.sendBarkTestNotification()
+        return try await api.updateNotifyMode(mode)
     }
 #endif
 

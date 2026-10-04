@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		00ACFC2245972BB0A0124608 /* MessageInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0D81C8E4061FFAEA8009F6 /* MessageInbox.swift */; };
 		019340D00967E9B43EE96612 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 329E2138785C36E07F41EA54 /* EmptyStateView.swift */; };
-		020F26BF3842A1751802F1C6 /* BarkBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C129E3EC94921D2B17CEA5D9 /* BarkBridge.swift */; };
 		035E6F49191444927CEA2996 /* CallRouteController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 312015AE65BA24442F86204F /* CallRouteController.swift */; };
 		037DF172E47744D2BB214522 /* GatewayOrigin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9362B8524798A318337FFF11 /* GatewayOrigin.swift */; };
 		09175A11E64EB5A180108AFA /* RecentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D50F86E7133E4C0AB2FC874A /* RecentsView.swift */; };
@@ -18,13 +17,13 @@
 		0D181C120C65D6D7DF0A370E /* ContactVCardBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91037604E3E119B2328480FA /* ContactVCardBuilder.swift */; };
 		0DF3DF1888FC917331695632 /* ComposeMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24A262CF8CFE3BC7D5383283 /* ComposeMessageView.swift */; };
 		0EDAC10B2FC00BB56E68F8E6 /* NumberList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0578D59989C935F5182D0E /* NumberList.swift */; };
+		0FAA06F8ACB0C0E6B3F4016C /* WebPushSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C325915AF215D04C24E9C4 /* WebPushSettingsView.swift */; };
 		0FD224B00C4A00FED97F1716 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 8F7732742AEB5B9E644FAF2C /* InfoPlist.strings */; };
 		12271CC0FF586AB0C38F8054 /* CallGroupStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCC14582B4BA466AA1A7AEB5 /* CallGroupStore.swift */; };
 		162E7882876CF0B079622833 /* OutgoingLineMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = E73C07502BB800A12322596B /* OutgoingLineMenu.swift */; };
 		1743F6BEAE23DD04F039A827 /* WSAudioGraph.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5C48DE22380CFCEFC6E122 /* WSAudioGraph.swift */; };
 		1AA4AF6A1BC778F10756DA23 /* WebRTC-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 23DA30B41AAD7CD48A5D672E /* WebRTC-LICENSE.txt */; };
 		1C4FF6DEE4F8DAD8D639983C /* VoicemailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 776CC7F799D6B6D0D3AC31E9 /* VoicemailView.swift */; };
-		1D60D48FACDDA5C3FCE84124 /* BarkBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 494D8DBC562A6C43F76EDC5F /* BarkBridgeTests.swift */; };
 		1E57FEECB85FF0E17F200D61 /* CallIntentRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5CDFE06EDC7BD7C66C0FA17 /* CallIntentRouter.swift */; };
 		21AD690D98AAFCF526E4114A /* SystemContactRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 655353652620C7C87D2249F1 /* SystemContactRefresh.swift */; };
 		247E120275775EEB7C4ABB58 /* WebSocketCallMediaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002BC2784552BFF3A2ECAD3A /* WebSocketCallMediaTests.swift */; };
@@ -34,7 +33,7 @@
 		291E132B6EB6171E5376C8F4 /* WSMediaMeasure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D61291AD987C29064A67B6 /* WSMediaMeasure.swift */; };
 		2943039C45504ADBDCA8F9AF /* PushEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21F34F1F3DE6D2F70406BE58 /* PushEnvironmentTests.swift */; };
 		29A7B6694327D220E2346739 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC82F5A00516A4395A9D274 /* DiagnosticsView.swift */; };
-		2A3DC768AC199832F7D0B52A /* CheckIncomingCallIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83DD817B3F96040DC1813E86 /* CheckIncomingCallIntent.swift */; };
+		3081DCEB35BA0F6A528D0E79 /* WebPushBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935038E8F67DAB1871F82746 /* WebPushBridge.swift */; };
 		313D53DF0BA818844554FC5C /* Wire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65399AE40AE5F9E959667CDC /* Wire.swift */; };
 		331FE9809BD4F511D5CCA1B9 /* UITestNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA797429A1513B21399994F /* UITestNavigation.swift */; };
 		34037B09212B5495522E8614 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 5D25999B1DF31DDC1F356766 /* Localizable.xcstrings */; };
@@ -61,6 +60,7 @@
 		4F930407CD97FB4D07C8AD58 /* DemoCallDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A772A3DADD60E9829B43C7E /* DemoCallDriver.swift */; };
 		50D0CD611B1D3AD677EB1E7F /* Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2075222C9CB2E00DF3FD0F7 /* Diagnostics.swift */; };
 		515BDA7BE0A2140A1DE8C9FA /* CallDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5200A77B86E1F9545F6207E5 /* CallDriver.swift */; };
+		51C198AA465A9EF8189F1F6F /* WebPushBridge.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 8B4B7CD920055CAF9C3CD8FD /* WebPushBridge.xcstrings */; };
 		51D998A27BAAED7A4A777A00 /* AdaptiveLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 984EE27BD7E28474C46BF3C6 /* AdaptiveLayoutUITests.swift */; };
 		52BA789A458D280FD7079956 /* UnifiedGatewayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD363457A02585F2F385C685 /* UnifiedGatewayTests.swift */; };
 		52F1F86137E90954ADF3B18F /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C9018BD33E55D204A7371F2 /* RootView.swift */; };
@@ -69,12 +69,10 @@
 		5B08C2354AEF7FB3CF9FCA3F /* SpamFilterStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64D2A156D01FD72B6F4113FD /* SpamFilterStore.swift */; };
 		5D58E702A27616F0D2291A18 /* EventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DA399FE480E12698ADD587 /* EventStream.swift */; };
 		5D73008AC4BDDC03606AF778 /* SystemContactRefreshTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68131717E602752C98CFC610 /* SystemContactRefreshTests.swift */; };
-		5E6E8111F9E047AD8F603FBA /* BarkBridgeSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E5A706A286C198DBD3AF3C /* BarkBridgeSettingsView.swift */; };
-		5F1C80778AB12D0018D3EE29 /* BarkLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 699956D5A94012622192E059 /* BarkLocalization.swift */; };
 		5F25DBFB70ABD293F8042ED9 /* CloudSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E8B1C2C4B334AD05FA70F48 /* CloudSyncTests.swift */; };
 		60347596823C5321574B976E /* ContactMergeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63F18CADA2C6F05024CA03F9 /* ContactMergeUITests.swift */; };
 		62A2F9E39BEA047EA3C0FF73 /* CellularSignalBars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 371573FF9DD8843A5CDA1243 /* CellularSignalBars.swift */; };
-		6385A55796AED272D16DEB6E /* BarkBridge.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = DB96C99F6854ADA04C2BD04B /* BarkBridge.xcstrings */; };
+		649EA8C433A3A7FC5891D043 /* WebPushLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9E9B205A20B16ED0A91FC2C /* WebPushLocalization.swift */; };
 		66306408F391D1A8B672C502 /* MessagesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21E6407350D96D3CBB7BFDAC /* MessagesView.swift */; };
 		66C1C1FCD3D68C3CD2C3FBD7 /* IncomingAnswerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B51DAD22B8CB85A33E92D45 /* IncomingAnswerTests.swift */; };
 		6880E3659B01AC2D7FC7B74A /* IncomingCallChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FB59D9C1CC77DBEB83C217F /* IncomingCallChecker.swift */; };
@@ -123,6 +121,7 @@
 		B47D483AF10B690AEE0C9022 /* RecoveryGrantTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8565B8A812FB15C9ECC1DE7 /* RecoveryGrantTests.swift */; };
 		B7F683E14FEA51D710E0A3A7 /* HTTPGatewayAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BE7430C6BBEE3E2140F20DB /* HTTPGatewayAPI.swift */; };
 		B87E93BD732DD924242DEC8C /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FD73019CC490571ECD09FD /* OnboardingView.swift */; };
+		BD63617CCEB3616E82245FEC /* WebPushBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10A461BD9CA9FBA0DA3CAB8 /* WebPushBridgeTests.swift */; };
 		BE8FB8065B9B86BDC1E3C25E /* CloudSyncSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7645C567EC9502D507AF685B /* CloudSyncSettingsView.swift */; };
 		C0B48EBFDE896CDB9167C4F7 /* OutgoingLineSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BD3FDBD2F16E7C9812308CC /* OutgoingLineSelectionTests.swift */; };
 		C39E000B13B2175B6AF0ABA8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 277EF6E70492478D477ECC8D /* Assets.xcassets */; };
@@ -240,7 +239,6 @@
 		444DD6802AFC2753B1AD8155 /* IdentityBindingPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityBindingPolicy.swift; sourceTree = "<group>"; };
 		46EB85C9ECB68A468626F396 /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
 		48D61291AD987C29064A67B6 /* WSMediaMeasure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSMediaMeasure.swift; sourceTree = "<group>"; };
-		494D8DBC562A6C43F76EDC5F /* BarkBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarkBridgeTests.swift; sourceTree = "<group>"; };
 		497ACBA1F83FDC8A12937941 /* SpamFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpamFilterTests.swift; sourceTree = "<group>"; };
 		4FB59D9C1CC77DBEB83C217F /* IncomingCallChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncomingCallChecker.swift; sourceTree = "<group>"; };
 		5200A77B86E1F9545F6207E5 /* CallDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDriver.swift; sourceTree = "<group>"; };
@@ -264,12 +262,10 @@
 		65399AE40AE5F9E959667CDC /* Wire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Wire.swift; sourceTree = "<group>"; };
 		655353652620C7C87D2249F1 /* SystemContactRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemContactRefresh.swift; sourceTree = "<group>"; };
 		68131717E602752C98CFC610 /* SystemContactRefreshTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemContactRefreshTests.swift; sourceTree = "<group>"; };
-		699956D5A94012622192E059 /* BarkLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarkLocalization.swift; sourceTree = "<group>"; };
 		6B1F80F83B232F1C87894F28 /* SafetyAndPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyAndPolicyTests.swift; sourceTree = "<group>"; };
 		6BD1D6124FBCB269EB6F0FC7 /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
 		6FB4F36A44706DA364FB2943 /* ContactVCardExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactVCardExportTests.swift; sourceTree = "<group>"; };
 		70C81D49FBCE98878D4A2F07 /* WSSAudioHandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSSAudioHandoffTests.swift; sourceTree = "<group>"; };
-		7238771D6D65B9B4C9A34307 /* Info-Bark.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Info-Bark.plist"; sourceTree = "<group>"; };
 		7645C567EC9502D507AF685B /* CloudSyncSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncSettingsView.swift; sourceTree = "<group>"; };
 		776CC7F799D6B6D0D3AC31E9 /* VoicemailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicemailView.swift; sourceTree = "<group>"; };
 		790DB59B2E1C6BDD355E800C /* SpamPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpamPolicy.swift; sourceTree = "<group>"; };
@@ -278,17 +274,18 @@
 		7DD330048C9D59C931F72CE7 /* IncomingCallFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncomingCallFilter.swift; sourceTree = "<group>"; };
 		7E0C7F02D267C9DA96FF790A /* MediaRouteMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaRouteMode.swift; sourceTree = "<group>"; };
 		7F9E9861C66D806794BC5E9C /* ContactDeduper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactDeduper.swift; sourceTree = "<group>"; };
-		83DD817B3F96040DC1813E86 /* CheckIncomingCallIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckIncomingCallIntent.swift; sourceTree = "<group>"; };
 		8640760CC6328AECCE766C90 /* ContactsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsService.swift; sourceTree = "<group>"; };
 		87B24B1137456D9029D5D036 /* APITypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APITypes.swift; sourceTree = "<group>"; };
 		88DA399FE480E12698ADD587 /* EventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStream.swift; sourceTree = "<group>"; };
 		88E9487540D9BA19CF743832 /* CallRelay.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CallRelay.entitlements; sourceTree = "<group>"; };
 		8A98ED7284FE1534630974E5 /* DemoGatewayAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoGatewayAPI.swift; sourceTree = "<group>"; };
+		8B4B7CD920055CAF9C3CD8FD /* WebPushBridge.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = WebPushBridge.xcstrings; sourceTree = "<group>"; };
 		8CAF007C73F29396871E0A30 /* LinePickerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinePickerUITests.swift; sourceTree = "<group>"; };
 		8F7732742AEB5B9E644FAF2C /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		91037604E3E119B2328480FA /* ContactVCardBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactVCardBuilder.swift; sourceTree = "<group>"; };
 		91512C87E1178FBD7CC0BC05 /* PhoneNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneNormalizer.swift; sourceTree = "<group>"; };
 		91F1C73CB1F265028D221DB1 /* RetryPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryPolicyTests.swift; sourceTree = "<group>"; };
+		935038E8F67DAB1871F82746 /* WebPushBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPushBridge.swift; sourceTree = "<group>"; };
 		9362B8524798A318337FFF11 /* GatewayOrigin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayOrigin.swift; sourceTree = "<group>"; };
 		96FD73019CC490571ECD09FD /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		984EE27BD7E28474C46BF3C6 /* AdaptiveLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveLayoutUITests.swift; sourceTree = "<group>"; };
@@ -296,6 +293,7 @@
 		9BE7430C6BBEE3E2140F20DB /* HTTPGatewayAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPGatewayAPI.swift; sourceTree = "<group>"; };
 		9D781F6CF12AFC6D91536AD1 /* ThreadDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadDetailView.swift; sourceTree = "<group>"; };
 		9DAE0DE739F1CD0A614301B6 /* ContactImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactImportView.swift; sourceTree = "<group>"; };
+		9E72B339B23ED69E967FE788 /* Info-PWA.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Info-PWA.plist"; sourceTree = "<group>"; };
 		9F6F1A0C7446903C0C740247 /* LiveCommunicationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCommunicationManager.swift; sourceTree = "<group>"; };
 		A09FD39E73E3B9361A236FB6 /* CallRelayTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CallRelayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A201F54A8F28266CE1D63A30 /* V2TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V2TestSupport.swift; sourceTree = "<group>"; };
@@ -310,11 +308,11 @@
 		AB73232B076B466BC8CF3C2E /* LiveCommunicationActionCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCommunicationActionCoreTests.swift; sourceTree = "<group>"; };
 		AC3B54C00DA01EB928B0C2D1 /* CallCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallCoordinator.swift; sourceTree = "<group>"; };
 		AEC39E3077CDD6B94384297A /* InCallRouteMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InCallRouteMenu.swift; sourceTree = "<group>"; };
+		B4C325915AF215D04C24E9C4 /* WebPushSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPushSettingsView.swift; sourceTree = "<group>"; };
 		B4EE9CEB354B47C90282094C /* MediaProbeControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaProbeControllerTests.swift; sourceTree = "<group>"; };
 		B6C27AF8BBB153A1613996CB /* cn-historical-2020.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "cn-historical-2020.txt"; sourceTree = "<group>"; };
 		BAEB180505F8327D333EB162 /* VisualReviewUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualReviewUITests.swift; sourceTree = "<group>"; };
 		BE8CEC9770D37E66F3A120C0 /* ContactsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactsView.swift; sourceTree = "<group>"; };
-		C129E3EC94921D2B17CEA5D9 /* BarkBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarkBridge.swift; sourceTree = "<group>"; };
 		C26A96B333B9DBEF7EE408A4 /* IncomingCheckDeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IncomingCheckDeepLink.swift; sourceTree = "<group>"; };
 		C28C4E4E5A8D62B092922AFC /* V2Wire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V2Wire.swift; sourceTree = "<group>"; };
 		C2B34F75CD206B2EF834D234 /* OutboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutboxStore.swift; sourceTree = "<group>"; };
@@ -323,13 +321,13 @@
 		C4FB4DA9ECE2CF3B49ED0232 /* ContactStoreWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactStoreWriter.swift; sourceTree = "<group>"; };
 		C5F71F300619C156F50520F6 /* ContactMergePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactMergePlanner.swift; sourceTree = "<group>"; };
 		C6F5F2EB092E2B879856F3C0 /* NewConferenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewConferenceTests.swift; sourceTree = "<group>"; };
+		C9E9B205A20B16ED0A91FC2C /* WebPushLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPushLocalization.swift; sourceTree = "<group>"; };
 		CBA78DC07BCCADBDB5461650 /* PairingRuntimeRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingRuntimeRegressionTests.swift; sourceTree = "<group>"; };
 		D0635913B3FD20B2420AF284 /* CallRelayUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CallRelayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		D3E5A706A286C198DBD3AF3C /* BarkBridgeSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BarkBridgeSettingsView.swift; sourceTree = "<group>"; };
+		D10A461BD9CA9FBA0DA3CAB8 /* WebPushBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPushBridgeTests.swift; sourceTree = "<group>"; };
 		D50F86E7133E4C0AB2FC874A /* RecentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentsView.swift; sourceTree = "<group>"; };
 		D5FF86542FF077ADFA588B46 /* DialerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialerView.swift; sourceTree = "<group>"; };
 		D968488F481A10FEBA845385 /* CallRelay-NOTICE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "CallRelay-NOTICE.txt"; sourceTree = "<group>"; };
-		DB96C99F6854ADA04C2BD04B /* BarkBridge.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = BarkBridge.xcstrings; sourceTree = "<group>"; };
 		DC9C46BCF75DFE9B41A5BB1C /* SMSWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMSWireTests.swift; sourceTree = "<group>"; };
 		DEF5C45E75AC8A3B3ED95D63 /* Fakes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fakes.swift; sourceTree = "<group>"; };
 		DF1712358EAF8763B2FDF8D4 /* CallHandleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallHandleTests.swift; sourceTree = "<group>"; };
@@ -385,7 +383,6 @@
 				98812606BAAF35C7F58B7698 /* CallKitManager.swift */,
 				312015AE65BA24442F86204F /* CallRouteController.swift */,
 				570B277AE0721CACCDEF9076 /* CallState.swift */,
-				83DD817B3F96040DC1813E86 /* CheckIncomingCallIntent.swift */,
 				7B9526ACDE242FC88C513C4E /* ConferenceMedia.swift */,
 				3A772A3DADD60E9829B43C7E /* DemoCallDriver.swift */,
 				8A98ED7284FE1534630974E5 /* DemoGatewayAPI.swift */,
@@ -450,13 +447,13 @@
 		37FC1AE3BE462A80E7B903F7 /* CallRelay */ = {
 			isa = PBXGroup;
 			children = (
-				DB96C99F6854ADA04C2BD04B /* BarkBridge.xcstrings */,
 				88E9487540D9BA19CF743832 /* CallRelay.entitlements */,
-				7238771D6D65B9B4C9A34307 /* Info-Bark.plist */,
+				9E72B339B23ED69E967FE788 /* Info-PWA.plist */,
 				07695719B546FBE92B00BBFD /* Info.plist */,
 				3C221DAD9B41A5B52C6D731E /* InfoPlist.strings */,
 				8F7732742AEB5B9E644FAF2C /* InfoPlist.strings */,
 				5D25999B1DF31DDC1F356766 /* Localizable.xcstrings */,
+				8B4B7CD920055CAF9C3CD8FD /* WebPushBridge.xcstrings */,
 				F96DA1287062DE6F9ED40636 /* App */,
 				0BE0F5A77D9A5605950608F8 /* Calling */,
 				C8CFF2D106E6AA8F37C5E349 /* CloudSync */,
@@ -477,7 +474,6 @@
 			isa = PBXGroup;
 			children = (
 				E5E3BBBAEB469D6E419EF75B /* AudioDiagnosticsTests.swift */,
-				494D8DBC562A6C43F76EDC5F /* BarkBridgeTests.swift */,
 				DF1712358EAF8763B2FDF8D4 /* CallHandleTests.swift */,
 				30D4369B7315FE5C470E2A51 /* CallKitConfigurationTests.swift */,
 				5E2FA0BA6159B54457B7990A /* CallLifecycleTests.swift */,
@@ -520,6 +516,7 @@
 				A201F54A8F28266CE1D63A30 /* V2TestSupport.swift */,
 				A821835BA0323A1A20A01950 /* VoicemailDeleteTests.swift */,
 				55C457701ED5FCBFB8643F6F /* VoicemailPlaybackTests.swift */,
+				D10A461BD9CA9FBA0DA3CAB8 /* WebPushBridgeTests.swift */,
 				C39FC8D2D0EC5B4690080E60 /* WebRTCOfferPipelineTests.swift */,
 				002BC2784552BFF3A2ECAD3A /* WebSocketCallMediaTests.swift */,
 				5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */,
@@ -616,9 +613,9 @@
 			isa = PBXGroup;
 			children = (
 				E143357666B2A1132FBA2858 /* AppLog.swift */,
-				699956D5A94012622192E059 /* BarkLocalization.swift */,
 				E5252BE7A5377965154F12A7 /* DemoConstants.swift */,
 				E2075222C9CB2E00DF3FD0F7 /* Diagnostics.swift */,
+				C9E9B205A20B16ED0A91FC2C /* WebPushLocalization.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -660,13 +657,13 @@
 			isa = PBXGroup;
 			children = (
 				87B24B1137456D9029D5D036 /* APITypes.swift */,
-				C129E3EC94921D2B17CEA5D9 /* BarkBridge.swift */,
 				88DA399FE480E12698ADD587 /* EventStream.swift */,
 				9362B8524798A318337FFF11 /* GatewayOrigin.swift */,
 				9BE7430C6BBEE3E2140F20DB /* HTTPGatewayAPI.swift */,
 				EC0B93D3F916BD119C734732 /* NetworkMonitor.swift */,
 				F03311AAD0BE8B5012CE8DE3 /* RetryPolicy.swift */,
 				C28C4E4E5A8D62B092922AFC /* V2Wire.swift */,
+				935038E8F67DAB1871F82746 /* WebPushBridge.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -690,7 +687,6 @@
 		D3456132F5F22F9815B4C3DB /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				D3E5A706A286C198DBD3AF3C /* BarkBridgeSettingsView.swift */,
 				7645C567EC9502D507AF685B /* CloudSyncSettingsView.swift */,
 				FAC82F5A00516A4395A9D274 /* DiagnosticsView.swift */,
 				E70900E433D0A77B08A1CF00 /* LineDetailView.swift */,
@@ -698,6 +694,7 @@
 				E45F27461DB963B2F932BE7D /* NumberListsView.swift */,
 				A50EB70B3A4C35A8F5C23B00 /* SettingsView.swift */,
 				417794779035E7454D1F46F2 /* SpamRulesView.swift */,
+				B4C325915AF215D04C24E9C4 /* WebPushSettingsView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -872,7 +869,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				C39E000B13B2175B6AF0ABA8 /* Assets.xcassets in Resources */,
-				6385A55796AED272D16DEB6E /* BarkBridge.xcstrings in Resources */,
 				D9BAACD0DC42058BD981BD9F /* CallRelay-LICENSE.txt in Resources */,
 				3A58CB97BE75FC98367C5450 /* CallRelay-NOTICE.txt in Resources */,
 				E1B38787D3DB50397D5B3297 /* InfoPlist.strings in Resources */,
@@ -880,6 +876,7 @@
 				34037B09212B5495522E8614 /* Localizable.xcstrings in Resources */,
 				443BF6287C46CF15EB9099B0 /* SpamList-CN-Historical-NOTICE.txt in Resources */,
 				6C7A9180784789ADD73BFD26 /* ThirdPartyNotices.txt in Resources */,
+				51C198AA465A9EF8189F1F6F /* WebPushBridge.xcstrings in Resources */,
 				1AA4AF6A1BC778F10756DA23 /* WebRTC-LICENSE.txt in Resources */,
 				CC3F17739DC4EC71F85E56D6 /* cn-historical-2020.txt in Resources */,
 			);
@@ -893,7 +890,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				4AB8C12A4AEB90CCE72EC62B /* AudioDiagnosticsTests.swift in Sources */,
-				1D60D48FACDDA5C3FCE84124 /* BarkBridgeTests.swift in Sources */,
 				9D818860AD8A8EF85D114463 /* CallHandleTests.swift in Sources */,
 				EE1CC4AB444AAFF1529C24F6 /* CallKitConfigurationTests.swift in Sources */,
 				EA290D7AF96BD2F40DED138E /* CallLifecycleTests.swift in Sources */,
@@ -938,6 +934,7 @@
 				F627C7D82E267828162473C2 /* VoicemailPlaybackTests.swift in Sources */,
 				FE6B6F47D29D5F2D0C770A6E /* WSAudioGraphTests.swift in Sources */,
 				2604621D7090D6A6DBE80545 /* WSSAudioHandoffTests.swift in Sources */,
+				BD63617CCEB3616E82245FEC /* WebPushBridgeTests.swift in Sources */,
 				37172BAFE0D79FF923D0A34C /* WebRTCOfferPipelineTests.swift in Sources */,
 				247E120275775EEB7C4ABB58 /* WebSocketCallMediaTests.swift in Sources */,
 				A2D3645DDBDE78663F4D4713 /* WireCompatibilityTests.swift in Sources */,
@@ -966,9 +963,6 @@
 				E306C5F8B0E5C826E4A3315F /* ActiveCallView.swift in Sources */,
 				7C9AE4EED50C9409288340AF /* AppLog.swift in Sources */,
 				EBC43B315021028AD1AEF0D1 /* AppModel.swift in Sources */,
-				020F26BF3842A1751802F1C6 /* BarkBridge.swift in Sources */,
-				5E6E8111F9E047AD8F603FBA /* BarkBridgeSettingsView.swift in Sources */,
-				5F1C80778AB12D0018D3EE29 /* BarkLocalization.swift in Sources */,
 				B28B1D394FDD26A023937964 /* CKCloudSyncTransport.swift in Sources */,
 				6ECDECF4B89D09A686FB5EB9 /* CKExceptionGuard.m in Sources */,
 				ACDE05A5A6290C7CB159C92C /* CallCoordinator.swift in Sources */,
@@ -982,7 +976,6 @@
 				035E6F49191444927CEA2996 /* CallRouteController.swift in Sources */,
 				779556BB078733CD87ED70C3 /* CallState.swift in Sources */,
 				62A2F9E39BEA047EA3C0FF73 /* CellularSignalBars.swift in Sources */,
-				2A3DC768AC199832F7D0B52A /* CheckIncomingCallIntent.swift in Sources */,
 				E3460AEC7EF0249B0BF60963 /* CloudConvergence.swift in Sources */,
 				3C7DA5A42C3B8A4CB67ED8CA /* CloudSettings.swift in Sources */,
 				272523DF263DF1874DCAA24C /* CloudSyncEngine.swift in Sources */,
@@ -1053,6 +1046,9 @@
 				882FDAED406C5E51B39DBFDD /* WSCapturePipeline.swift in Sources */,
 				291E132B6EB6171E5376C8F4 /* WSMediaMeasure.swift in Sources */,
 				DE3E4BB3A6339B8F13EA1FE4 /* WSPlaybackScheduler.swift in Sources */,
+				3081DCEB35BA0F6A528D0E79 /* WebPushBridge.swift in Sources */,
+				649EA8C433A3A7FC5891D043 /* WebPushLocalization.swift in Sources */,
+				0FAA06F8ACB0C0E6B3F4016C /* WebPushSettingsView.swift in Sources */,
 				970C5B2C980818AB6EFB30DA /* WebRTCCallMedia.swift in Sources */,
 				9CD8D01237B249D969D24B6E /* WebSocketCallMedia.swift in Sources */,
 				313D53DF0BA818844554FC5C /* Wire.swift in Sources */,
@@ -1075,6 +1071,23 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		08E39DFFC77BA30578E87735 /* Release-PWA */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jiangnangenius.callrelay.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CallRelay.app/CallRelay";
+			};
+			name = "Release-PWA";
+		};
 		0D76738B6E58EF53AD5F4C77 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1091,6 +1104,23 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CallRelay.app/CallRelay";
 			};
 			name = Debug;
+		};
+		1134B6593276CFEF326CB700 /* Release-PWA */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.jiangnangenius.callrelay.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CallRelay;
+			};
+			name = "Release-PWA";
 		};
 		1848E8599EB4BDEFE545FCED /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -1129,7 +1159,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1145,7 +1175,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.8;
+				MARKETING_VERSION = 0.3.9;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1157,14 +1187,14 @@
 			};
 			name = Release;
 		};
-		5D2337E083E0B0C49C80B4B1 /* Debug-Bark */ = {
+		1BA8DEC9EB976582A1755AD6 /* Debug-PWA */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = CallRelay/CallRelay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				INFOPLIST_FILE = "CallRelay/Info-Bark.plist";
+				INFOPLIST_FILE = "CallRelay/Info-PWA.plist";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1175,9 +1205,75 @@
 				SWIFT_OBJC_BRIDGING_HEADER = "CallRelay/CloudSync/CallRelay-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
-			name = "Debug-Bark";
+			name = "Debug-PWA";
 		};
-		659B3BB1F9D5146F36F30F04 /* Debug-Bark */ = {
+		4600CEE40537D327B2F7E839 /* Release-PWA */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGNING_REQUIRED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 16;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_TREAT_WARNINGS_AS_ERRORS = NO;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.3.9;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) PWA_BRIDGE";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = "Release-PWA";
+		};
+		67C6B58671721BC62D3962E5 /* Debug-PWA */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -1192,44 +1288,7 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = CallRelay;
 			};
-			name = "Debug-Bark";
-		};
-		66658E09878185653DF5B5E6 /* Release-Bark */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				GENERATE_INFOPLIST_FILE = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.jiangnangenius.callrelay.uitests;
-				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = CallRelay;
-			};
-			name = "Release-Bark";
-		};
-		9EFB6BDAD97FFDF7EB17884E /* Release-Bark */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = CallRelay/CallRelay.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				INFOPLIST_FILE = "CallRelay/Info-Bark.plist";
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.jiangnangenius.callrelay;
-				SDKROOT = iphoneos;
-				SWIFT_OBJC_BRIDGING_HEADER = "CallRelay/CloudSync/CallRelay-Bridging-Header.h";
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = "Release-Bark";
+			name = "Debug-PWA";
 		};
 		A1780B581378B7B2C3943662 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -1255,7 +1314,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = CallRelay/CallRelay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				EXCLUDED_SOURCE_FILE_NAMES = BarkBridge.xcstrings;
+				EXCLUDED_SOURCE_FILE_NAMES = WebPushBridge.xcstrings;
 				INFOPLIST_FILE = CallRelay/Info.plist;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1303,7 +1362,7 @@
 			};
 			name = Release;
 		};
-		B37BFD1CFECC29249D653F28 /* Debug-Bark */ = {
+		C10BE977BE62A2DB9A1493D9 /* Debug-PWA */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -1318,7 +1377,7 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CallRelay.app/CallRelay";
 			};
-			name = "Debug-Bark";
+			name = "Debug-PWA";
 		};
 		D2C292677DECE564A95B3D74 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -1357,7 +1416,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1379,7 +1438,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.8;
+				MARKETING_VERSION = 0.3.9;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1399,7 +1458,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = CallRelay/CallRelay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				EXCLUDED_SOURCE_FILE_NAMES = BarkBridge.xcstrings;
+				EXCLUDED_SOURCE_FILE_NAMES = WebPushBridge.xcstrings;
 				INFOPLIST_FILE = CallRelay/Info.plist;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1413,7 +1472,7 @@
 			};
 			name = Debug;
 		};
-		F090B00AC6A506B1F5EE030E /* Debug-Bark */ = {
+		DC6D44C2979EB45D6543B76B /* Debug-PWA */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -1450,7 +1509,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1472,101 +1531,38 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.8;
+				MARKETING_VERSION = 0.3.9;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG BARK_BRIDGE";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG PWA_BRIDGE";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 			};
-			name = "Debug-Bark";
+			name = "Debug-PWA";
 		};
-		F5148D243F0AFDC77380A66A /* Release-Bark */ = {
+		EE2C3E714B3C54B87AC43C1A /* Release-PWA */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				GENERATE_INFOPLIST_FILE = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = CallRelay/CallRelay.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = "CallRelay/Info-PWA.plist";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.jiangnangenius.callrelay.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jiangnangenius.callrelay;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "CallRelay/CloudSync/CallRelay-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/CallRelay.app/CallRelay";
 			};
-			name = "Release-Bark";
-		};
-		FA0D470CB9FAE3EB8DADEBC8 /* Release-Bark */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGNING_ALLOWED = NO;
-				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_STYLE = Automatic;
-				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 15;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = "";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu11;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_TREAT_WARNINGS_AS_ERRORS = NO;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.8;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				MTL_FAST_MATH = YES;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) BARK_BRIDGE";
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OPTIMIZATION_LEVEL = "-O";
-				SWIFT_VERSION = 5.0;
-			};
-			name = "Release-Bark";
+			name = "Release-PWA";
 		};
 /* End XCBuildConfiguration section */
 
@@ -1575,9 +1571,9 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				D2C292677DECE564A95B3D74 /* Debug */,
-				F090B00AC6A506B1F5EE030E /* Debug-Bark */,
+				DC6D44C2979EB45D6543B76B /* Debug-PWA */,
 				1848E8599EB4BDEFE545FCED /* Release */,
-				FA0D470CB9FAE3EB8DADEBC8 /* Release-Bark */,
+				4600CEE40537D327B2F7E839 /* Release-PWA */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -1586,9 +1582,9 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A1780B581378B7B2C3943662 /* Debug */,
-				659B3BB1F9D5146F36F30F04 /* Debug-Bark */,
+				67C6B58671721BC62D3962E5 /* Debug-PWA */,
 				B1DB7E171E68368E04356491 /* Release */,
-				66658E09878185653DF5B5E6 /* Release-Bark */,
+				1134B6593276CFEF326CB700 /* Release-PWA */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -1597,9 +1593,9 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				0D76738B6E58EF53AD5F4C77 /* Debug */,
-				B37BFD1CFECC29249D653F28 /* Debug-Bark */,
+				C10BE977BE62A2DB9A1493D9 /* Debug-PWA */,
 				AB662996AE40B586D19E0E81 /* Release */,
-				F5148D243F0AFDC77380A66A /* Release-Bark */,
+				08E39DFFC77BA30578E87735 /* Release-PWA */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -1608,9 +1604,9 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				D4F6A807A87CF03C2C6F7CC3 /* Debug */,
-				5D2337E083E0B0C49C80B4B1 /* Debug-Bark */,
+				1BA8DEC9EB976582A1755AD6 /* Debug-PWA */,
 				A4D70FD1382B06B045D3B10F /* Release */,
-				9EFB6BDAD97FFDF7EB17884E /* Release-Bark */,
+				EE2C3E714B3C54B87AC43C1A /* Release-PWA */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

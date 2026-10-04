@@ -53,9 +53,9 @@ struct RootView: View {
         }
         // tel: requests, e.g. when configured as a default calling app.
         .onOpenURL { url in
-#if BARK_BRIDGE
-            // Token-free incoming-check link from the optional Bark
-            // notification (or a manual shortcut): re-authenticate with the
+#if PWA_BRIDGE
+            // Token-free incoming-check link from the self-hosted PWA
+            // handoff (or a manual check): re-authenticate with the
             // stored pairing and surface actually-ringing calls.
             if IncomingCheckDeepLink.matches(url) {
                 model.handleIncomingCheckDeepLink()
@@ -86,11 +86,11 @@ struct RootView: View {
         } message: { request in
             Text(request.message ?? "")
         }
-#if BARK_BRIDGE
+#if PWA_BRIDGE
         // Honest result of an explicit incoming-call check that found nothing
         // to ring; a real ringing call opens the normal call UI instead.
         .alert(
-            BarkL10n.text("检查来电"),
+            WebPushL10n.text("检查来电"),
             isPresented: Binding(
                 get: { model.incomingCheckNotice != nil },
                 set: { if !$0 { model.dismissIncomingCheckNotice() } }

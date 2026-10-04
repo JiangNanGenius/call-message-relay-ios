@@ -1,7 +1,7 @@
-// This file belongs to the optional App Store Bark/Shortcuts edition.
-// It is compiled only with the BARK_BRIDGE build configuration so the
-// native Feather artifact has no Bark UI, route or AppIntent registration.
-#if BARK_BRIDGE
+// This file belongs to the optional App Store PWA edition.
+// It is compiled only with the PWA_BRIDGE build configuration so the
+// native Feather artifact has no web-push UI or deeplink.
+#if PWA_BRIDGE
 import Foundation
 
 /// Pure selection of calls that may be surfaced as a live ring by the

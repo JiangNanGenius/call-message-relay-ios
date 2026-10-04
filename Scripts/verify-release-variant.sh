@@ -4,13 +4,13 @@
 #
 # Usage:
 #   Scripts/verify-release-variant.sh native <CallRelay.app|.ipa> [--version X] [--build N]
-#   Scripts/verify-release-variant.sh bark   <CallRelay.app|.ipa> [--version X] [--build N]
+#   Scripts/verify-release-variant.sh pwa    <CallRelay.app|.ipa> [--version X] [--build N]
 #
-# Native (Feather) must contain no Bark/Shortcuts bridge: no AppIntents
-# metadata, no callrelay:// URL scheme, no BarkBridge.strings, no Bark symbols.
-# Bark (App Store edition) must contain that bridge. Both public artifacts must
-# be unsigned: no embedded.mobileprovision, no _CodeSignature, no signing
-# identity/device data.
+# Native (Feather) must contain no bridge at all: no callrelay:// URL scheme,
+# no WebPushBridge.strings, no Bark remnants, no bridge symbols.
+# PWA (App Store edition) must register callrelay:// and carry the
+# WebPushBridge strings/catalog. Both public artifacts must be unsigned: no
+# embedded.mobileprovision, no _CodeSignature, no signing identity/device data.
 set -euo pipefail
 
 usage() {
@@ -21,8 +21,8 @@ usage() {
 [ $# -ge 2 ] || usage
 VARIANT="$1"; shift
 case "$VARIANT" in
-  native|bark) ;;
-  *) echo "ERROR: variant must be 'native' or 'bark'" >&2; usage ;;
+  native|pwa) ;;
+  *) echo "ERROR: variant must be 'native' or 'pwa'" >&2; usage ;;
 esac
 ARTIFACT="$1"; shift
 EXPECT_VERSION=""
@@ -87,33 +87,32 @@ if [ -n "$EXPECT_BUILD" ] && [ "$ACTUAL_BUILD" != "$EXPECT_BUILD" ]; then
   fail "build $ACTUAL_BUILD != expected $EXPECT_BUILD"
 fi
 
-BARK_PATTERN='bark|IncomingCallChecker|CheckIncomingCallIntent|callrelay://incoming'
+BRIDGE_PATTERN='webpush|IncomingCallChecker|callrelay://incoming|bark'
 if [ "$VARIANT" = "native" ]; then
   # --- native (Feather): bridge must be absent ---------------------------------
-  [ ! -d "$APP/Metadata.appintents" ] || fail "native app contains Metadata.appintents (Bark/Shortcuts bridge)"
+  [ ! -d "$APP/Metadata.appintents" ] || fail "native app contains Metadata.appintents (bridge present)"
   if /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$APP/Info.plist" >/dev/null 2>&1; then
     fail "native Info.plist declares CFBundleURLTypes (callrelay:// must not exist)"
   fi
-  if find "$APP" -name BarkBridge.strings -print -quit | grep -q .; then
-    fail "native bundle contains BarkBridge.strings"
+  if find "$APP" \( -name 'BarkBridge.strings' -o -name 'WebPushBridge.strings' \) -print -quit | grep -q .; then
+    fail "native bundle contains a bridge string table"
   fi
-  BIN_MATCHES="$(string_matches "$APP/CallRelay" "$BARK_PATTERN")"
-  [ "$BIN_MATCHES" = "0" ] || fail "native executable contains $BIN_MATCHES Bark bridge symbol(s)"
+  BIN_MATCHES="$(string_matches "$APP/CallRelay" "$BRIDGE_PATTERN")"
+  [ "$BIN_MATCHES" = "0" ] || fail "native executable contains $BIN_MATCHES bridge symbol(s)"
   while IFS= read -r f; do
-    n="$(string_matches "$f" 'Bark')"
-    [ "$n" = "0" ] || fail "native localization $f contains $n Bark string(s)"
+    n="$(string_matches "$f" 'WebPush|Bark')"
+    [ "$n" = "0" ] || fail "native localization $f contains $n bridge string(s)"
   done < <(find "$APP" -name '*.strings')
-  echo "PASS native: $ACTUAL_VERSION ($ACTUAL_BUILD), unsigned, no AppIntents/URL scheme/BarkBridge/strings/binary symbols"
+  echo "PASS native: $ACTUAL_VERSION ($ACTUAL_BUILD), unsigned, no URL scheme/bridge strings/binary symbols"
 else
-  # --- bark (App Store edition): bridge must be present -------------------------
-  [ -d "$APP/Metadata.appintents" ] || fail "bark app is missing Metadata.appintents"
+  # --- pwa (App Store edition): bridge must be present --------------------------
   if ! plist CFBundleURLTypes | grep -q callrelay; then
-    fail "bark Info.plist does not declare the callrelay URL scheme"
+    fail "pwa Info.plist does not declare the callrelay URL scheme"
   fi
   for lang in en zh-Hans zh-Hant; do
-    [ -f "$APP/$lang.lproj/BarkBridge.strings" ] || fail "bark bundle missing $lang.lproj/BarkBridge.strings"
+    [ -f "$APP/$lang.lproj/WebPushBridge.strings" ] || fail "pwa bundle missing $lang.lproj/WebPushBridge.strings"
   done
-  BIN_MATCHES="$(string_matches "$APP/CallRelay" "$BARK_PATTERN")"
-  [ "$BIN_MATCHES" -gt 0 ] || fail "bark executable contains no Bark bridge symbols"
-  echo "PASS bark: $ACTUAL_VERSION ($ACTUAL_BUILD), unsigned, AppIntents + callrelay:// + BarkBridge.strings present ($BIN_MATCHES binary symbol matches)"
+  BIN_MATCHES="$(string_matches "$APP/CallRelay" "$BRIDGE_PATTERN")"
+  [ "$BIN_MATCHES" -gt 0 ] || fail "pwa executable contains no bridge symbols"
+  echo "PASS pwa: $ACTUAL_VERSION ($ACTUAL_BUILD), unsigned, callrelay:// + WebPushBridge.strings present ($BIN_MATCHES binary symbol matches)"
 fi
