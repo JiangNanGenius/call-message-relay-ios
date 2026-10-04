@@ -104,6 +104,10 @@ final class WebSocketCallMedia: NSObject {
     func freshPingSamples(within window: TimeInterval, now: Date = Date()) -> [TimeInterval] {
         pingSampleLog.filter { now.timeIntervalSince($0.at) <= window }.map(\.rtt)
     }
+    /// Most recent ping round-trip with its arrival date (nil before the
+    /// first pong). Lets callers apply an explicit freshness deadline and
+    /// clear a stale displayed value instead of indefinitely holding it.
+    var lastPingSample: PingSample? { pingSampleLog.last }
     private var pingTimer: Timer?
     private var pingSequence: UInt64 = 0
     private var pendingPings: [UInt64: Date] = [:]
@@ -354,8 +358,14 @@ final class WebSocketCallMedia: NSObject {
             socketDidFail()
         } else if control.type == "pong", let tag = control.t,
                   let sent = pendingPings.removeValue(forKey: tag) {
-            pingSampleLog.append(PingSample(rtt: Date().timeIntervalSince(sent), at: Date()))
-            if pingSampleLog.count > 120 { pingSampleLog.removeFirst(pingSampleLog.count - 120) }
+            let rtt = Date().timeIntervalSince(sent)
+            // Measurement hygiene: only accept finite, non-negative pongs
+            // that answer a ping from the last 30 s — a clock anomaly or a
+            // stale replay must never enter the samples the UI/advisor use.
+            if rtt.isFinite, rtt >= 0, rtt <= 30 {
+                pingSampleLog.append(PingSample(rtt: rtt, at: Date()))
+                if pingSampleLog.count > 120 { pingSampleLog.removeFirst(pingSampleLog.count - 120) }
+            }
         }
     }
 
@@ -482,6 +492,9 @@ final class WebSocketCallMedia: NSObject {
                 .playAndRecord, mode: .voiceChat,
                 options: [.allowBluetooth, .allowBluetoothA2DP]
             )
+            // Match the CallKit/LCK path: request a 20 ms I/O cycle so the
+            // input tap delivers 20 ms frames instead of slow large buffers.
+            try session.setPreferredIOBufferDuration(0.02)
             try session.setActive(true)
             guard audioIO.startIfNeeded() else {
                 try? session.setActive(false, options: .notifyOthersOnDeactivation)

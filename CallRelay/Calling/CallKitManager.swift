@@ -376,9 +376,22 @@ final class AudioSessionBridge {
     }
 
     func didActivate(_ session: AVAudioSession) {
+        // The system (CallKit/LCK) activates with its own I/O buffer duration.
+        // A tap cadence as slow as 100 ms-1 s appeared in the field, but that
+        // was derived from tap counts, not a measured ioBufferDuration, and an
+        // AVAudioEngine tap can batch independently of the hardware cycle —
+        // so the slow-I/O cause is NOT proven. Request the standard 20 ms
+        // cycle as a bounded mitigation and log the ACTUAL ioBufferDuration
+        // below for the next physical run; a failed request is non-fatal.
+        do {
+            try session.setPreferredIOBufferDuration(0.02)
+        } catch {
+            AppLog.media.notice("preferred IO duration failed: \((error as NSError).code)")
+        }
         lock.lock(); activatedSession = session; lock.unlock()
         let summary = "session activated mode=\(session.mode.rawValue) "
             + "rate=\(Int(session.sampleRate)) "
+            + "io=\(Int((session.ioBufferDuration * 1000).rounded()))ms "
             + "out=\(Self.outputPortSummary(session))"
         Task { @MainActor in DiagnosticsStore.shared.log("audio", summary) }
         onActivate?(session)

@@ -134,6 +134,7 @@ final class CallRouteControllerTests: XCTestCase {
                     return self?.transportReported
                 },
                 relaySamples: { [weak self] in self?.relaySamples ?? [] },
+                relayLatestSample: { nil },
                 onState: { [weak self] in self?.states.append($0) },
                 onNotice: { [weak self] in self?.notices.append(($0, $1)) }
             )
@@ -720,5 +721,38 @@ final class CallRouteControllerTests: XCTestCase {
         XCTAssertEqual(h.api.commitCalls.count, 0, "a late attach resolution cannot commit")
         XCTAssertEqual(h.probes.first?.adoptCount ?? 0, 0)
         h.controller.teardown()
+    }
+}
+
+// MARK: - Honest measured latency in the published state
+
+final class CallRouteStateStatusTests: XCTestCase {
+    func testRelayRTTShownInEveryModeWhenMeasured() {
+        for mode in MediaRouteMode.allCases {
+            var state = CallRouteState(mode: mode, active: .relay)
+            state.rttSeconds = 0.042
+            XCTAssertEqual(state.statusLine, "中继 · 42ms",
+                           "measured relay RTT must show in mode \(mode)")
+            XCTAssertEqual(state.rttMilliseconds, 42)
+        }
+    }
+
+    func testRelayWithoutMeasurementShowsPlainLabelNotFabricatedValue() {
+        let state = CallRouteState(mode: .relay, active: .relay)
+        XCTAssertNil(state.rttSeconds)
+        XCTAssertEqual(state.statusLine, "中继", "unmeasured latency shows no ms value")
+        XCTAssertNil(state.rttMilliseconds)
+    }
+
+    func testProbingRelayKeepsRelayStatusNotCandidateRTT() {
+        // While a detached probe runs, the relay still carries audio: the
+        // status must never display a candidate's RTT as active-relay latency.
+        var unmeasured = CallRouteState(mode: .auto, active: .relay)
+        unmeasured.probing = true
+        XCTAssertEqual(unmeasured.statusLine, "中继")
+        var measured = CallRouteState(mode: .auto, active: .relay)
+        measured.probing = true
+        measured.rttSeconds = 0.028
+        XCTAssertEqual(measured.statusLine, "中继 · 28ms")
     }
 }

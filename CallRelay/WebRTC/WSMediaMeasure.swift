@@ -86,10 +86,13 @@ final class WSMediaMeasure {
                     if case .string(let text) = message,
                        let data = text.data(using: .utf8),
                        let control = try? JSONDecoder().decode(WSMediaControl.self, from: data),
-                       control.type == "pong", let tag = control.t,
-                       let sent = self.pendingPings.removeValue(forKey: tag) {
-                        self.log.append((Date().timeIntervalSince(sent), Date()))
-                        if self.log.count > 120 { self.log.removeFirst(self.log.count - 120) }
+                    control.type == "pong", let tag = control.t,
+                        let sent = self.pendingPings.removeValue(forKey: tag) {
+                        let rtt = Date().timeIntervalSince(sent)
+                        if rtt.isFinite, rtt >= 0, rtt <= 30 {
+                            self.log.append((rtt, Date()))
+                            if self.log.count > 120 { self.log.removeFirst(self.log.count - 120) }
+                        }
                     }
                 } catch {
                     guard gen == self.generation else { return }

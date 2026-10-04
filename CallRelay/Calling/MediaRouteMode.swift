@@ -99,9 +99,10 @@ struct CallRouteState: Equatable {
             return MediaRouteKind.direct.shortLabel
         case .relay:
             if switching { return String(localized: "中继 · 切换中…") }
-            if let ms = rttMilliseconds, mode == .auto {
-                return String(localized: "中继 · \(ms)ms")
-            }
+            // Measured relay transport RTT (WS ping), shown in EVERY mode —
+            // never a static or fabricated value; unmeasured falls through to
+            // the plain label (the detail row shows a dash there).
+            if let ms = rttMilliseconds { return String(localized: "中继 · \(ms)ms") }
             return MediaRouteKind.relay.shortLabel
         }
     }

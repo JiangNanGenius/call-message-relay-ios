@@ -45,6 +45,31 @@ final class PhoneNormalizerTests: XCTestCase {
         XCTAssertEqual(PhoneNormalizer.digits("(021) 5566-7788"), "02155667788")
         XCTAssertEqual(PhoneNormalizer.digits("+86 138 1234 5678"), "8613812345678")
     }
+
+    func testDialableStripsSeparatorsAndPreservesPlus() {
+        // Field failure reproduction: contact stored with country code and
+        // spaces; the PDU encoder rejected it verbatim.
+        XCTAssertEqual(PhoneNormalizer.dialable("+86 130 0313 2132"), "+8613003132132")
+        XCTAssertEqual(PhoneNormalizer.dialable("86 130 0313 2132"), "8613003132132")
+        XCTAssertEqual(PhoneNormalizer.dialable("(021) 5566-7788"), "02155667788")
+        XCTAssertEqual(PhoneNormalizer.dialable("  10086  "), "10086")
+    }
+
+    func testDialableRejectsDigitlessInput() {
+        XCTAssertNil(PhoneNormalizer.dialable("   "))
+        XCTAssertNil(PhoneNormalizer.dialable("+"))
+        XCTAssertNil(PhoneNormalizer.dialable("(-)"))
+    }
+
+    func testDialableRejectsExtensionsPausesAndNonASCII() {
+        // Never silently concatenate an extension/pause/letters into the
+        // recipient — that could misdirect the message.
+        XCTAssertNil(PhoneNormalizer.dialable("10086;123"))
+        XCTAssertNil(PhoneNormalizer.dialable("10086x123"))
+        XCTAssertNil(PhoneNormalizer.dialable("10086,123"))
+        XCTAssertNil(PhoneNormalizer.dialable("call fred"))
+        XCTAssertNil(PhoneNormalizer.dialable("+８６１３８")) // fullwidth digits
+    }
 }
 
 final class SpamPolicyTests: XCTestCase {

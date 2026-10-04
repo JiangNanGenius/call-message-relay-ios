@@ -1410,6 +1410,9 @@ final class CallCoordinator: NSObject {
                 relaySamples: { [weak self] in
                     self?.wsMedia?.freshPingSamples(within: 30) ?? []
                 },
+                relayLatestSample: { [weak self] in
+                    self?.wsMedia?.lastPingSample
+                },
                 onState: { [weak self] state in
                     Task { @MainActor in
                         self?.onRouteState?(state)

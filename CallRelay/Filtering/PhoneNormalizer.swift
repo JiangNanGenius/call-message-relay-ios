@@ -16,6 +16,39 @@ enum PhoneNormalizer {
         String(raw.unicodeScalars.filter { CharacterSet.decimalDigits.contains($0) })
     }
 
+    /// Dialable destination for SMS/voice submission: preserves a single
+    /// leading `+` (international TON) and strips ONLY recognized cosmetic
+    /// separators (spaces/tabs, hyphens, parentheses, dots). Contacts store
+    /// numbers like "+86 130 0313 2132", which the modem PDU encoder rejects
+    /// verbatim (field evidence: `invalid SMS PDU: invalid destination
+    /// "86 130 0313 2132"`).
+    ///
+    /// Returns nil when no digit survives OR when anything else remains —
+    /// extensions (";123"/"x123"), dial pauses (","), letters and non-ASCII
+    /// digits are rejected rather than silently concatenated into the number,
+    /// which could misdirect the message. The digits themselves are never
+    /// rewritten (no trunk/country-code guessing).
+    static func dialable(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let international = trimmed.hasPrefix("+")
+        let body = international ? trimmed.dropFirst() : Substring(trimmed)
+        var result = ""
+        for character in body {
+            switch character {
+            case " ", "\t", "-", "(", ")", ".":
+                continue // recognized cosmetic separator
+            default:
+                result.append(character)
+            }
+        }
+        guard !result.isEmpty,
+              result.unicodeScalars.allSatisfy({ $0.value >= 48 && $0.value <= 57 }) else {
+            return nil
+        }
+        return international ? "+" + result : result
+    }
+
     /// All canonical spellings under which a number should be looked up.
     /// Always includes the plain digit string; mainland numbers additionally
     /// include their +86/0086 and (for landlines) area-code variants.

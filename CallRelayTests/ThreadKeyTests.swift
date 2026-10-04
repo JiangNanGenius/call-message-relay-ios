@@ -39,11 +39,13 @@ final class ThreadKeyTests: XCTestCase {
         let api = FakeGatewayAPI()
         let inbox = MessageInbox(api: api)
         inbox.lineIdProvider = { "line1" }
-        let accepted = makeMessage(id: "srv-1", thread: "line1:555-0100", direction: .outbound)
+        let accepted = makeMessage(id: "srv-1", thread: "line1:5550100", direction: .outbound)
         api.sendResult = .success(accepted)
 
+        // A formatted recipient is normalized to its dialable form before
+        // the outbox key is built, so the thread cannot split on formatting.
         let entry = inbox.send(to: "555-0100", body: "你好", isLineReady: true)
-        XCTAssertEqual(entry?.threadKey, "line1:555-0100")
+        XCTAssertEqual(entry?.threadKey, "line1:5550100")
         XCTAssertEqual(entry?.lineID, "line1")
         await waitUntil { !api.sentMessages.isEmpty }
     }

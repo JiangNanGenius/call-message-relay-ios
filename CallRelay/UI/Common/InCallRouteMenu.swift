@@ -28,6 +28,16 @@ struct InCallRouteMenu: View {
                                  : mode == .direct ? "antenna.radiowaves.left.and.right" : "globe"))
                     }
                 }
+                // Honest measured TRANSPORT round-trip (WS ping / direct echo),
+                // explicitly distinct from end-to-end voice latency; never a
+                // fabricated or static value — unmeasured says so.
+                Section {
+                    if let ms = state?.rttMilliseconds {
+                        Text(String(localized: "网络往返 · \(ms)ms"))
+                    } else {
+                        Text(String(localized: "网络往返 · 未测量"))
+                    }
+                }
             } label: {
                 label
             }

@@ -68,6 +68,16 @@ final class MediaProbeControllerTests: XCTestCase {
                        "cancelling a detached probe must not toggle shared audio")
     }
 
+    func testCandidateTypeExtractedFromSDPLine() {
+        let host = "candidate:1 1 udp 2130706431 192.168.10.163 40123 typ host generation 0"
+        let srflx = "candidate:2 1 udp 1694498815 43.161.240.56 5000 typ srflx raddr ..."
+        let relay = "candidate:3 1 udp 41819903 10.0.0.1 6000 typ relay raddr ..."
+        XCTAssertEqual(MediaProbeController.candidateType(from: host), "host")
+        XCTAssertEqual(MediaProbeController.candidateType(from: srflx), "srflx")
+        XCTAssertEqual(MediaProbeController.candidateType(from: relay), "relay")
+        XCTAssertEqual(MediaProbeController.candidateType(from: "garbage"), "unknown")
+    }
+
     func testLatePeerCallbackFromReplacedConnectionIsIgnored() async throws {
         let factory = RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil)
         let config = RTCConfiguration()

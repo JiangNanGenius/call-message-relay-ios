@@ -614,6 +614,17 @@ final class WSAudioGraphTests: XCTestCase {
         XCTAssertLessThan(crossings, 200)
     }
 
+    func testPipelineTracksTapDeliveryGapAndFrameLength() {
+        let pipeline = WSCapturePipeline(sourceFormat: capture48k)
+        pipeline.appendSamples([Float](repeating: 0.4, count: 960), frameLength: 960)
+        usleep(40000) // 40 ms
+        pipeline.appendSamples([Float](repeating: 0.4, count: 4800), frameLength: 4800)
+        XCTAssertEqual(pipeline.tapFrameLengthMaxSnapshot, 4800,
+                       "actual delivered tap-buffer length must be recorded")
+        XCTAssertGreaterThanOrEqual(pipeline.tapGapMaxMilliseconds, 30,
+                                    "real inter-tap gap must be measured per run")
+    }
+
     func testPipelineFlushDropsStagesAndRejectsMutedAudio() {
         let pipeline = WSCapturePipeline(sourceFormat: capture48k)
         pipeline.appendSamples([Float](repeating: 0.6, count: 4800))

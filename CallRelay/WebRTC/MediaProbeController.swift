@@ -38,6 +38,13 @@ final class MediaProbeController: NSObject {
 
     private(set) var connected = false
     private(set) var adopted = false
+
+    /// Local candidates gathered for THIS probe by type (host/srflx/relay/
+    /// prflx). A `host` candidate can connect on a shared subnet, but a
+    /// `srflx` candidate can also hole-punch across NAT, so this census does
+    /// NOT by itself prove a direct path impossible — it records which
+    /// candidates actually existed for correlation with the ICE state.
+    private var candidatesByType: [String: Int] = [:]
     /// True only after THIS instance adopted the peer and owns audio; only
     /// then may teardown disable the shared RTCAudioSession.
     private var audioOwned = false
@@ -215,6 +222,28 @@ final class MediaProbeController: NSObject {
         return true
     }
 
+    /// Extracts the candidate type from an SDP candidate line
+    /// (`... typ host|srflx|relay|prflx`). Pure and unit-testable.
+    static func candidateType(from sdp: String) -> String {
+        guard let range = sdp.range(of: "typ ") else { return "unknown" }
+        let rest = sdp[range.upperBound...]
+        return rest.split(whereSeparator: { " \r\n\t".contains($0) })
+            .first.map(String.init) ?? "unknown"
+    }
+
+    private var candidateCensus: String {
+        let order = ["host", "srflx", "prflx", "relay", "unknown"]
+        return order.compactMap { type in
+            guard let count = candidatesByType[type], count > 0 else { return nil }
+            return "\(type)=\(count)"
+        }.joined(separator: " ")
+    }
+
+    private func logGatheringSummary() {
+        DiagnosticsStore.shared.log(
+            "route", "direct ice gathered \(candidateCensus)")
+    }
+
     // MARK: Test seams (no WebRTC connection required)
 
     /// Seeds echo stamps to verify freshness arithmetic without a channel.
@@ -362,10 +391,27 @@ extension MediaProbeController: RTCPeerConnectionDelegate {
         }
     }
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) { }
+    func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
+        Task { @MainActor in
+            switch newState {
+            case .checking:
+                DiagnosticsStore.shared.log("route", "direct ice checking")
+            case .failed:
+                DiagnosticsStore.shared.log(
+                    "route", "direct ice failed \(candidateCensus)")
+            case .disconnected:
+                DiagnosticsStore.shared.log("route", "direct ice disconnected")
+            case .completed:
+                DiagnosticsStore.shared.log(
+                    "route", "direct ice completed \(candidateCensus)")
+            default: break
+            }
+        }
+    }
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {
         Task { @MainActor in
             guard newState == .complete else { return }
+            logGatheringSummary()
             if let cont = gatheringContinuation {
                 gatheringContinuation = nil
                 gatheringObserver?.invalidate()
@@ -375,7 +421,12 @@ extension MediaProbeController: RTCPeerConnectionDelegate {
             }
         }
     }
-    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) { }
+    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
+        Task { @MainActor in
+            let type = Self.candidateType(from: candidate.sdp)
+            candidatesByType[type, default: 0] += 1
+        }
+    }
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]) { }
     func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) { }
     func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) { }

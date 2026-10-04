@@ -39,6 +39,17 @@ final class WSCapturePipeline: @unchecked Sendable {
     /// distinguishes a dead engine render cycle — zero tap deliveries —
     /// from a merely quiet microphone).
     private(set) var tapDeliveryCount: Int = 0
+    /// Largest observed gap between tap deliveries. A healthy 20 ms cycle
+    /// stays ~20 ms; field evidence showed 100 ms-1 s gaps (input render
+    /// starvation), which this records per run so the next physical check
+    /// can prove capture loss instead of inferring it.
+    private var lastTapUptime: TimeInterval?
+    private(set) var tapGapMax: TimeInterval = 0
+    /// Largest ACTUAL delivered tap-buffer frame length. The tap requests
+    /// 1024 frames (~21 ms @ 48 kHz) but the engine may deliver a different
+    /// size, which combined with tapGapMax proves real delivery cadence
+    /// rather than a count-derived inference.
+    private(set) var tapFrameLengthMax: Int = 0
 
     init(sourceFormat: AVAudioFormat,
          pendingCaptureMax: Int = 48000 * 2,
@@ -60,16 +71,24 @@ final class WSCapturePipeline: @unchecked Sendable {
         guard let samples = Self.extractChannelZero(buffer: buffer,
                                                     interleaved: interleaved,
                                                     channels: channels) else { return }
-        appendSamples(samples)
+        appendSamples(samples, frameLength: Int(buffer.frameLength))
     }
 
     /// Direct Float injection (same locked path) for tests and non-tap
     /// producers.
-    func appendSamples(_ samples: [Float]) {
+    func appendSamples(_ samples: [Float], frameLength: Int? = nil) {
         guard !samples.isEmpty else { return }
+        let uptime = ProcessInfo.processInfo.systemUptime
         lock.lock()
         guard accepting else { lock.unlock(); return }
         tapDeliveryCount += 1
+        if let last = lastTapUptime, uptime - last > tapGapMax {
+            tapGapMax = uptime - last
+        }
+        lastTapUptime = uptime
+        if let frameLength, frameLength > tapFrameLengthMax {
+            tapFrameLengthMax = frameLength
+        }
         pending.append(contentsOf: samples)
         if pending.count > pendingCaptureMax {
             let overflow = pending.count - pendingCaptureMax
@@ -165,6 +184,16 @@ final class WSCapturePipeline: @unchecked Sendable {
     var tapDeliverySnapshotCount: Int {
         lock.lock(); defer { lock.unlock() }
         return tapDeliveryCount
+    }
+
+    var tapGapMaxMilliseconds: Int {
+        lock.lock(); defer { lock.unlock() }
+        return Int((tapGapMax * 1000).rounded())
+    }
+
+    var tapFrameLengthMaxSnapshot: Int {
+        lock.lock(); defer { lock.unlock() }
+        return tapFrameLengthMax
     }
 
     var convertedSnapshotCount: Int {

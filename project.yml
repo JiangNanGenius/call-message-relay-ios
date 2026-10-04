@@ -29,7 +29,7 @@ configs:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.16"
+    MARKETING_VERSION: "0.3.17"
     # v0.3.5 public build 9 stays immutable. Build 12 (0.3.5) was the
     # TestFlight CloudKit/WSS/LCK repair; build 13 ships the build-12 crash,
     # iCloud, push-environment and audio fixes in BOTH editions and adds the
@@ -69,7 +69,7 @@ settings:
     # mechanism is a hypothesis, the pre-start install is the canonical
     # pattern) and the tap-dead verdict gets its own longer grace so a merely
     # slow start is never churned by a restart it does not need.
-    CURRENT_PROJECT_VERSION: "23"
+    CURRENT_PROJECT_VERSION: "24"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.

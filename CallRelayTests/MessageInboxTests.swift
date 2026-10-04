@@ -42,7 +42,9 @@ final class MessageInboxTests: XCTestCase {
 
     func testSendIssuesOneHTTPRequestWithStableKeyAndReflectsStatus() async {
         let api = FakeGatewayAPI()
-        let accepted = makeMessage(id: "srv-1", thread: "555-0100", direction: .outbound,
+        // Cosmetic separators in the input are normalized to the dialable
+        // number; the server record also uses that canonical thread key.
+        let accepted = makeMessage(id: "srv-1", thread: "5550100", direction: .outbound,
                                    body: "你好", status: .sent)
         api.sendResult = .success(accepted)
         let inbox = MessageInbox(api: api)
@@ -51,10 +53,10 @@ final class MessageInboxTests: XCTestCase {
         XCTAssertNotNil(entry)
         await waitUntil { !api.sentMessages.isEmpty }
         XCTAssertEqual(api.sentMessages.count, 1)
-        XCTAssertEqual(api.sentMessages.first?.to, "555-0100")
-        await waitUntil { inbox.rows(for: "555-0100").contains { $0.status == .sent } }
+        XCTAssertEqual(api.sentMessages.first?.to, "5550100")
+        await waitUntil { inbox.rows(for: "5550100").contains { $0.status == .sent } }
         // The server record replaces the pending row instead of duplicating.
-        XCTAssertEqual(inbox.rows(for: "555-0100").count, 1)
+        XCTAssertEqual(inbox.rows(for: "5550100").count, 1)
     }
 
     func testRepeatedSendWhilePendingReusesOneSubmission() async {

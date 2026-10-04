@@ -73,8 +73,11 @@ final class MessagesUITests: XCTestCase {
 
         // MARK: 4. Send and observe the truthful sent state
         app.buttons["smsSendButton"].tap()
-        let sentThread = app.buttons["thread-555-0199"]
-        XCTAssertTrue(sentThread.waitForExistence(timeout: 5))
+        // The typed number contains a cosmetic separator; the sent thread is
+        // keyed by the normalized dialable number.
+        let sentThread = app.buttons["thread-5550199"]
+        XCTAssertTrue(sentThread.waitForExistence(timeout: 5),
+                      "demo send must create the normalized thread")
         sentThread.tap()
         XCTAssertTrue(element(containing: "已发送").waitForExistence(timeout: 10),
                       "demo send must reach the sent state")

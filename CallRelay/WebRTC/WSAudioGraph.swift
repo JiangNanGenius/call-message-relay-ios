@@ -181,12 +181,16 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
 
         var captureRate = 0
         var playbackRate = 0
+        var hardwareChannels = 0
+        var hardwareInterleaved = false
         do {
             let setup = try audioSurface.prepare(enableVoiceProcessing: voiceProcessingEnabled)
             engine = setup.engine
             player = setup.player
             captureRate = Int(setup.captureSourceFormat.sampleRate)
             playbackRate = Int(setup.playbackFormat.sampleRate)
+            hardwareChannels = Int(setup.hardwareFormat.channelCount)
+            hardwareInterleaved = setup.hardwareFormat.isInterleaved
             let pipeline = WSCapturePipeline(sourceFormat: setup.captureSourceFormat)
             let sink = PlayerNodeSink(player: setup.player)
             self.sink = sink
@@ -230,7 +234,8 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         }
         DiagnosticsCensus.shared.increment("audio.graphStart")
         DiagnosticsStore.shared.log("audio",
-            "graph start capRate=\(captureRate) playRate=\(playbackRate)"
+            "graph start capRate=\(captureRate) ch=\(hardwareChannels) "
+            + "interleaved=\(hardwareInterleaved) playRate=\(playbackRate)"
             + (voiceProcessingEnabled ? "" : " vp=off"))
         playback.start()
         armFeedTimer()
@@ -289,9 +294,14 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         DiagnosticsCensus.shared.increment("audio.graphStop")
         let capDropped = pipeline?.droppedSamples ?? 0
         let tapDeliveries = pipeline?.tapDeliverySnapshotCount ?? 0
+        let tapGapMs = pipeline?.tapGapMaxMilliseconds ?? 0
+        let tapFramesMax = pipeline?.tapFrameLengthMaxSnapshot ?? 0
+        if tapGapMs > 0 {
+            DiagnosticsCensus.shared.maximize("audio.tapGapMsMax", tapGapMs)
+        }
         let stopSummary = "graph stop capDropped=\(capDropped) "
             + "playDropped=\(playback.droppedFrames) inFlight=\(playback.framesInFlight)"
-            + " tapDeliveries=\(tapDeliveries)"
+            + " tapDeliveries=\(tapDeliveries) tapGapMsMax=\(tapGapMs) tapFramesMax=\(tapFramesMax)"
         let runSummary = " mic=\(run.mic) micSilent=\(run.micSilent) micPeak=\(run.micPeak)"
             + " micSilentDL=\(run.micSilentDL)"
             + " play=\(run.play) playSilent=\(run.playSilent) tickLate=\(run.tickLate)"

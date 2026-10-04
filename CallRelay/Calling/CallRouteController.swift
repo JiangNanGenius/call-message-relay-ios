@@ -41,6 +41,9 @@ final class CallRouteController {
         let promoteStagedRelay: (DirectProbeControlling?) -> Void
         let fetchTransport: () async -> String?
         let relaySamples: () async -> [TimeInterval]
+        /// Most recent measured relay round-trip with its arrival date, so the
+        /// publisher can apply an explicit freshness deadline.
+        let relayLatestSample: () -> WebSocketCallMedia.PingSample?
         let onState: (CallRouteState) -> Void
         let onNotice: (String, _ offersAuto: Bool) -> Void
     }
@@ -83,6 +86,11 @@ final class CallRouteController {
 
     private var policyTask: Task<Void, Never>?
     private var monitorTask: Task<Void, Never>?
+    /// Periodic relay transport RTT publisher. The WSS socket measures ping
+    /// RTT once connected; this pushes the latest fresh value into the route
+    /// state while the relay carries audio, so the in-call UI shows honest
+    /// measured latency instead of only during direct/probe phases.
+    private var relayRttTask: Task<Void, Never>?
 
     struct Cadence {
         var autoInterval: TimeInterval = 3
@@ -181,11 +189,42 @@ final class CallRouteController {
 
     // MARK: Lifecycle
 
+    // MARK: Relay RTT publisher
+
+    private func startRelayRttPublisher() {
+        relayRttTask?.cancel()
+        relayRttTask = Task { @MainActor [weak self] in
+            while let self, !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled, !tearingDown else { return }
+                // The relay stays the ACTIVE transport throughout a detached
+                // probe, so its own measured ping RTT is displayed regardless
+                // of probing; a detached candidate's RTT must never appear as
+                // active-relay latency. Explicit 8 s freshness: when no recent
+                // pong exists the value is CLEARED (dash), never held stale.
+                let sample = self.callbacks.relayLatestSample()
+                let fresh = sample.map { Date().timeIntervalSince($0.at) <= 8 } ?? false
+                self.publish { state in
+                    guard state.active == .relay else { return }
+                    state.rttSeconds = fresh ? sample?.rtt : nil
+                }
+            }
+        }
+    }
+
+    private func stopRelayRttPublisher() {
+        relayRttTask?.cancel()
+        relayRttTask = nil
+    }
+
+    // MARK: Lifecycle
+
     func relayDidConnect(wsMedia: WebSocketCallMedia?) {
         guard !tearingDown else { return }
         connectedAt = Date()
         transport = .relay
         expectingRelayClose = false
+        startRelayRttPublisher()
         publish {
             $0.active = .relay
             $0.switching = false
@@ -266,6 +305,7 @@ final class CallRouteController {
     func teardown() {
         tearingDown = true
         epoch &+= 1
+        stopRelayRttPublisher()
         policyTask?.cancel()
         monitorTask?.cancel()
         candidate?.cancel()
@@ -485,7 +525,9 @@ final class CallRouteController {
                 candidateStable: probe.connected && probe.mediaReady,
                 candidateLost: !probe.connected)
             publish {
-                $0.rttSeconds = direct.last
+                // The detached candidate is not the active transport (the
+                // relay still carries audio), so its echo RTT must NOT be
+                // written into rttSeconds — it feeds the advisor only.
                 $0.probing = true
             }
             if advisor.decide(metrics, callDuration: duration, baselineHealthy: true) == .promote {
@@ -629,6 +671,7 @@ final class CallRouteController {
         }
         candidate = nil
         committingProbe = nil
+        stopRelayRttPublisher()
         activeDirect?.closeTransport()
         activeDirect = probe
         transport = .direct
@@ -775,6 +818,7 @@ final class CallRouteController {
         monitorTask?.cancel()
         transport = .relay
         expectingRelayClose = false
+        startRelayRttPublisher()
         publish {
             $0.active = .relay
             $0.switching = false

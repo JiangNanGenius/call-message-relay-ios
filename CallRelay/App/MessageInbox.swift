@@ -604,7 +604,12 @@ final class MessageInbox: ObservableObject {
     func send(to rawRecipient: String, body rawBody: String, isLineReady: Bool,
               lineId: String? = nil) -> MessageOutboxEntry? {
         guard isValid else { return nil }
-        let recipient = rawRecipient.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Normalize the dialable destination FIRST: contact numbers carry
+        // cosmetic formatting ("+86 130 0313 2132") which the gateway's PDU
+        // encoder rejects before creating any message (every send failed
+        // instantly in the field). The normalized value also keys the thread,
+        // so the conversation can never split on formatting variants.
+        guard let recipient = PhoneNormalizer.dialable(rawRecipient) else { return nil }
         let body = rawBody.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canStartNewSend(to: recipient, body: body, isLineReady: isLineReady) == nil else {
             return nil
