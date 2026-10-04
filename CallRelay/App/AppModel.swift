@@ -928,6 +928,14 @@ final class AppModel: ObservableObject {
 
         let manager = Self.makeSystemCallManager()
         callKit = manager
+        let driverName: String
+        if #available(iOS 17.4, *), manager is LiveCommunicationManager {
+            driverName = "LiveCommunicationKit"
+        } else {
+            driverName = "CallKit"
+        }
+        DiagnosticsStore.shared.log("call",
+            "system call driver=\(driverName) ios=\(UIDevice.current.systemVersion)")
         let live = LiveCallDriver(
             api: http, transport: binding.transport,
             callKit: manager, mediaProvider: WebRTCMediaProvider(), registry: identityRegistry,
@@ -2291,10 +2299,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Minimal compliant placeholder: report a short-lived incoming call and
-    /// end it, awaiting both so the push completion is only called afterwards.
-    /// One factory for the system-call surface so cold-start push fallback
-    /// never spins up a second (old-API) provider alongside the bound one.
+    /// One factory for the system-call surface: LiveCommunicationKit on
+    /// iOS 17.4+ (the owner's explicit choice), legacy CallKit below.
     static func makeSystemCallManager() -> CallKitControlling {
         if #available(iOS 17.4, *) {
             return LiveCommunicationManager()
@@ -2302,16 +2308,24 @@ final class AppModel: ObservableObject {
         return CallKitManager()
     }
 
+    /// Minimal compliant placeholder: report a short-lived incoming call and
+    /// end it, awaiting both so the push completion is only called afterwards.
+    /// Uses a THROWAWAY system-call manager that is never cached in `callKit`:
+    /// caching here (build 19/20) could leave the placeholder's manager as the
+    /// live one, so the real incoming conversation got reported to a second
+    /// manager and the system showed/answered the wrong conversation (unknown
+    /// caller id, no audio activation). The placeholder conversation is
+    /// intentionally generic — the real call surfaces via the normal flow.
     func reportPlaceholderCall() async {
-        DiagnosticsStore.shared.log("push", "placeholder reported")
-        let manager = callKit ?? Self.makeSystemCallManager()
-        if callKit == nil { callKit = manager }
+        DiagnosticsStore.shared.log("push", "placeholder reported (transient manager)")
+        let manager = Self.makeSystemCallManager()
         let uuid = UUID()
         let reported = await manager.reportIncoming(uuid: uuid, handle: "未知来电", isVideo: false)
         if reported {
             try? await Task.sleep(nanoseconds: 200_000_000)
             await manager.reportEnded(uuid: uuid, reason: .failed)
         }
+        manager.invalidate()
     }
 }
 

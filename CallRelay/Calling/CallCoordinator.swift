@@ -478,6 +478,28 @@ final class CallCoordinator: NSObject {
         publishPhase()
     }
 
+    /// Bounded recovery for a lost system-side audio activation: when the
+    /// call is still active and no AVAudioSession is active, self-activate
+    /// the current transport. `activateAudioWithoutCallKit` is a no-op when a
+    /// session already exists, so a healthy system activation is untouched.
+    private func armActivationFallback(callId: String, gen: UInt64) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard let self, gen == self.generation,
+                  self.activeGatewayId == callId, !self.ended else { return }
+            guard AudioSessionBridge.shared.activeSession == nil else { return }
+            guard self.wsMedia?.isGraphRunning != true else { return }
+            guard self.wsMedia != nil || self.media != nil else { return }
+            DiagnosticsStore.shared.log("audio",
+                "answer activation fallback: no system session after answer; self-activating")
+            if let ws = self.wsMedia {
+                _ = ws.activateAudioWithoutCallKit()
+            } else {
+                _ = self.media?.activateAudioWithoutCallKit()
+            }
+        }
+    }
+
     /// Makes the given tracked call active, replacing any old media session.
     /// `selfManagedAudio` is true only for a direct in-app answer with no
     /// system call; every other path leaves activation to CallKit.
@@ -510,6 +532,12 @@ final class CallCoordinator: NSObject {
         knownUUIDs[uuid] = callId
         delegate?.callGroupChanged()
         publishPhase()
+        // System-owned activation can be lost (build 20: the gateway got the
+        // answer but neither didActivate nor any audio session ever arrived,
+        // leaving a connected call permanently silent). Arm a bounded
+        // fallback: if the call is still active and no session owns audio,
+        // self-activate so an answered call can never be silent.
+        armActivationFallback(callId: callId, gen: gen)
         mediaTask = Task { [weak self] in
             guard let self else { return }
             do {

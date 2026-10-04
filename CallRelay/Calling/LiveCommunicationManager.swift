@@ -71,7 +71,15 @@ final class LiveCommunicationManager: NSObject, CallKitControlling {
     var lastIncomingReportErrorCode: Int? { nil }
 
     func updateIncoming(uuid: UUID, handle: String) {
-        guard knownUUIDs.contains(uuid) else { return }
+        guard knownUUIDs.contains(uuid) else {
+            // Silent drops here are a caller-id failure class: log WHY so a
+            // future export can distinguish "never reported" from
+            // "reported to a different manager instance".
+            DiagnosticsStore.shared.log("call",
+                "lck updateIncoming dropped: unknown uuid (reported=\(knownUUIDs.count))")
+            return
+        }
+        DiagnosticsStore.shared.log("call", "lck updateIncoming handle set")
         let member = Handle(
             type: CallKitManager.handleType(for: handle) == .phoneNumber ? .phoneNumber : .generic,
             value: handle
@@ -184,6 +192,7 @@ extension LiveCommunicationManager: ConversationManagerDelegate {
     func conversationManagerDidReset(_ manager: ConversationManager) {
         actionCore.reset()
         knownUUIDs.removeAll()
+        DiagnosticsStore.shared.log("call", "lck manager reset")
         Task { @MainActor in self.director?.handleProviderReset() }
     }
 
@@ -383,10 +392,12 @@ extension LiveCommunicationManager: ConversationManagerDelegate {
     }
 
     func conversationManager(_ manager: ConversationManager, didActivate audioSession: AVAudioSession) {
+        DiagnosticsStore.shared.log("audio", "lck didActivate mode=\(audioSession.mode.rawValue)")
         AudioSessionBridge.shared.didActivate(audioSession)
     }
 
     func conversationManager(_ manager: ConversationManager, didDeactivate audioSession: AVAudioSession) {
+        DiagnosticsStore.shared.log("audio", "lck didDeactivate")
         AudioSessionBridge.shared.didDeactivate(audioSession)
     }
 }

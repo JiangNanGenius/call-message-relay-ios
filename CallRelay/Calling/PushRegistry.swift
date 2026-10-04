@@ -7,7 +7,13 @@ import PushKit
 /// widely-supported completion-handler callback; only one is invoked by the OS.
 final class PushRegistry: NSObject {
     private var registry: PKPushRegistry?
-    weak var handler: VoIPPushHandling?
+    /// STRONG reference on purpose: the handler is the process-lifetime
+    /// AppModel, and a weak reference here can silently nil out (e.g. during
+    /// a cold-start push before the UI hierarchy finishes), downgrading a
+    /// perfectly valid VoIP push to a placeholder (observed in the build-20
+    /// field log: "placeholder reported" with no decision line). The registry
+    /// is owned by that same model, so the cycle is bounded by the process.
+    var handler: VoIPPushHandling?
     var onVoIPToken: ((Data) -> Void)?
     var onTokenInvalidated: (() -> Void)?
     /// Called when a VoIP push with `mustReport` cannot be reported as a real
@@ -91,7 +97,11 @@ extension PushRegistry: PKPushRegistryDelegate {
                     // The handler is responsible for a report when mustReport.
                     await handler.handleVoIPPayload(value, mustReport: mustReport)
                 } else if mustReport {
-                    // Unpaired/no handler: still satisfy the report requirement.
+                    // Low-volume evidence for the "valid push downgraded to
+                    // placeholder" failure class: the handler must never be
+                    // nil in production, so log it when it somehow is.
+                    DiagnosticsStore.shared.log("push",
+                        "voip push unhandled: no handler; placeholder fallback")
                     await placeholderReporter?()
                 }
             case .failure:
