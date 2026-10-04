@@ -176,6 +176,33 @@ final class AudioTransportConcurrencyTests: XCTestCase {
             "each mic frame must reach the socket exactly once (sent \(sends) of \(emitted))")
     }
 
+    /// Steady-state uplink discriminator: when the socket send path stalls
+    /// (completions never fire), the outbound gate must bound the backlog at
+    /// 8 frames and count every forced drop — far-end "intermittent uplink"
+    /// with a rising drop count and a healthy per-run level census points at
+    /// the transport, not the capture.
+    func testStalledSendPathIsCountedByUplinkGate() throws {
+        let graph = WSAudioGraph()
+        let sink = ControllableSink()
+        XCTAssertTrue(graph.startHeadless(captureFormat: capture48k,
+                                          playbackFormat: playback48k,
+                                          sink: sink, armTimer: true))
+        let socket = FakeMediaSocket()
+        socket.scripted = [.message(.success(.string(Self.readyMessage()))), .park]
+        socket.holdSendCompletions = true // sends never complete: tunnel stalled
+        let media = WebSocketCallMedia(socketFactory: { _, _ in socket }, audioGraph: graph)
+        try awaitConnect(media)
+        DiagnosticsCensus.shared.reset()
+        settle(for: 1.0)
+        let emitted = DiagnosticsCensus.shared.snapshot()["audio.micFrames"] ?? 0
+        let dropped = DiagnosticsCensus.shared.snapshot()["audio.uplinkGateDropped"] ?? 0
+        graph.stop()
+        media.close()
+        XCTAssertGreaterThan(emitted, 20, "mic frames keep flowing at cadence")
+        XCTAssertGreaterThan(dropped, 0,
+                             "a stalled send path must show up as counted gate drops, not silent loss")
+    }
+
     func testCloseUnparksDrainAndReattachUsesNewEpoch() throws {
         let graph = WSAudioGraph()
         let sink = ControllableSink()

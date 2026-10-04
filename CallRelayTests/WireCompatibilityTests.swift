@@ -115,4 +115,82 @@ final class WireCompatibilityTests: XCTestCase {
         }
         XCTAssertEqual(payload.callId, "maybe-not-a-uuid")
     }
+
+    // Build-21 field regression, exact shape: the live gateway envelope
+    // (callUUID/callId/handle/gatewayId/lineId/issuedAt + aps — 7 keys, the
+    // count the field log recorded) with an EMPTY handle, which is what the
+    // gateway forwards when the network withholds the caller id. The old
+    // strict parser classified that as "malformed" and the real incoming push
+    // was downgraded to a placeholder — the system UI flashed 未知来电 instead
+    // of ringing the real call. An unknown caller must still parse (and ring).
+    func testVoIPPushEnvelopeWithEmptyHandleParsesAsRealCall() throws {
+        let json = #"{"aps":{"content-available":1},"callUUID":"00000000-0000-4000-8000-0000000000aa","callId":"call-id-not-a-uuid","handle":"","gatewayId":"gw","lineId":"line1","issuedAt":1780000000}"#
+        let dict = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [AnyHashable: Any])
+        XCTAssertEqual(dict.count, 7, "exact field-count the build-21 field log recorded")
+        guard case .success(let payload) = VoIPPushPayloadParser.parse(dict) else {
+            return XCTFail("an empty caller-id handle must still parse")
+        }
+        XCTAssertEqual(payload.callId, "call-id-not-a-uuid")
+        XCTAssertTrue(payload.handle.isEmpty, "the empty handle is preserved for the display fallback")
+        XCTAssertEqual(payload.gatewayId, "gw")
+        XCTAssertEqual(payload.issuedAt, 1_780_000_000)
+    }
+
+    // The exact 7-key shape the live gateway APNs sender emits
+    // (voipEnvelope: callUUID/callId/handle/gatewayId/lineId/issuedAt + aps),
+    // decoded through JSONSerialization like PushKit's dictionaryPayload.
+    func testVoIPPushEnvelopeFullGatewayShapeWithAps() throws {
+        let json = #"{"aps":{"content-available":1},"callUUID":"abc","callId":"abc","handle":"+8613800138000","gatewayId":"gw","lineId":"line1","issuedAt":1780000000}"#
+        let dict = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [AnyHashable: Any])
+        XCTAssertEqual(dict.count, 7)
+        guard case .success(let payload) = VoIPPushPayloadParser.parse(dict) else {
+            return XCTFail("the exact gateway envelope must parse")
+        }
+        XCTAssertEqual(payload.handle, "+8613800138000")
+        XCTAssertEqual(payload.gatewayId, "gw")
+        XCTAssertEqual(payload.issuedAt, 1_780_000_000)
+    }
+
+    // callId falls back to callUUID (the gateway currently puts call.ID in
+    // both fields), and a numeric-string issuedAt is accepted.
+    func testVoIPPushEnvelopeCallIdFallsBackToCallUUID() throws {
+        let dict: [AnyHashable: Any] = [
+            "callUUID": "only-uuid",
+            "handle": "5550123",
+            "gatewayId": "gw",
+            "issuedAt": "1780000000"
+        ]
+        guard case .success(let payload) = VoIPPushPayloadParser.parse(dict) else {
+            return XCTFail("expected parse")
+        }
+        XCTAssertEqual(payload.callId, "only-uuid")
+        XCTAssertEqual(payload.issuedAt, 1_780_000_000)
+    }
+
+    // Gateway identity and freshness stay mandatory: a PushKit topic match
+    // alone is not proof of the paired gateway or a current call.
+    func testVoIPPushEnvelopeMissingGatewayIdFails() {
+        let dict: [AnyHashable: Any] = [
+            "callUUID": "uuid-1", "callId": "uuid-1", "handle": "5550123",
+            "issuedAt": 1_780_000_000
+        ]
+        XCTAssertEqual(VoIPPushPayloadParser.parse(dict), .failure(.missing("gatewayId")))
+    }
+
+    func testVoIPPushEnvelopeMissingIssuedAtFails() {
+        let dict: [AnyHashable: Any] = [
+            "callUUID": "uuid-1", "callId": "uuid-1", "handle": "5550123", "gatewayId": "gw"
+        ]
+        XCTAssertEqual(VoIPPushPayloadParser.parse(dict), .failure(.missing("issuedAt")))
+    }
+
+    // Without ANY call identity there is nothing to converge on: this is the
+    // only shape that may legitimately become a placeholder.
+    func testVoIPPushEnvelopeWithoutAnyCallIdentityFails() {
+        let dict: [AnyHashable: Any] = ["handle": "5550123", "gatewayId": "gw"]
+        guard case .failure(let error) = VoIPPushPayloadParser.parse(dict) else {
+            return XCTFail("a push with no call identity must fail")
+        }
+        XCTAssertEqual(error, .missing("callId"))
+    }
 }

@@ -29,7 +29,7 @@ configs:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.15"
+    MARKETING_VERSION: "0.3.16"
     # v0.3.5 public build 9 stays immutable. Build 12 (0.3.5) was the
     # TestFlight CloudKit/WSS/LCK repair; build 13 ships the build-12 crash,
     # iCloud, push-environment and audio fixes in BOTH editions and adds the
@@ -54,8 +54,22 @@ settings:
     # legacy-key resolution, sanitized errors), rebuilds the dialer with fixed
     # compact geometry (one best match + sheet for all results, Apple-style)
     # and adds true pinyin/initial/T9 contact search with locale-aware name
-    # display.
-    CURRENT_PROJECT_VERSION: "22"
+    # display. Build 21 (0.3.14) repaired incoming-call audio activation after
+    # the system-answer regression; build 22 (0.3.15) hardened that repair per
+    # review. Build 23 (0.3.16) repairs the build-21 field defects: the field
+    # log showed every must-report push carrying the full 7-key gateway
+    # envelope yet failing parse with no decision line (consistent with the
+    # gateway forwarding an EMPTY handle when the network withholds the caller
+    # id — the one gateway-produced value that can be empty), so an empty
+    # handle now parses and rings as a real call with the 未知号码 display
+    # fallback while gatewayId/issuedAt validation stays mandatory; parse
+    # failures now log the missing FIELD NAME for the next export; the capture
+    # tap installs BEFORE the engine starts (every build-21 cold call opened
+    # with a ~2 s zero-delivery tap and a forced watchdog restart; the precise
+    # mechanism is a hypothesis, the pre-start install is the canonical
+    # pattern) and the tap-dead verdict gets its own longer grace so a merely
+    # slow start is never churned by a restart it does not need.
+    CURRENT_PROJECT_VERSION: "23"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.

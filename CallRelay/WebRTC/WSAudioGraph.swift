@@ -29,13 +29,20 @@ import AVFoundation
 /// answered calls). The watchdog watches sink-completion PROGRESS (a
 /// healthy continuously-buffered player always has in-flight buffers, so
 /// "outstanding > 0" can never mean dead) and tap deliveries; bounded,
-/// generation-fenced engine restarts recover. Recovery policy: the first
-/// restart of a window rebuilds with the SAME configuration (engine-level
-/// voice processing stays ON — a cold start without prepare() is the
-/// suspected one-off race); only a SECOND dead render in the same window
-/// falls back to VP OFF, logged explicitly as degraded processing (the
-/// voice-chat mode provides NO echo cancellation or gain correction
-/// without voice processing and lowers playback level).
+/// generation-fenced engine restarts recover. The capture tap is installed
+/// BEFORE the engine starts (the canonical AVAudioEngine pattern; a tap
+/// attached mid-run can miss the input node's first render cycle — the
+/// build-21 field log shows every cold call opened with a ~2 s zero-delivery
+/// tap, and the precise mechanism remains a hypothesis) and the tap-dead
+/// verdict gets its own longer grace so a merely slow start is never
+/// churned by a restart it does not need. This addresses the cold-start
+/// uplink gap only; steady-state uplink health is a separate question the
+/// per-run level census answers. Recovery policy: the first restart of a
+/// window rebuilds with the SAME configuration (engine-level voice
+/// processing stays ON); only a SECOND dead render in the same window falls
+/// back to VP OFF, logged explicitly as degraded processing (the
+/// voice-chat mode provides NO echo cancellation or gain correction without
+/// voice processing and lowers playback level).
 /// State shared between the main-actor lifecycle (start/stop/mute) and the
 /// dedicated feed-queue tick. Reference-typed so a `let` on the main actor
 /// class exposes it to nonisolated code without actor-isolation violations.
@@ -60,6 +67,17 @@ private final class FeedState: @unchecked Sendable {
     /// Watchdog timing knobs (production defaults; tests tighten them).
     var healthGrace: TimeInterval = 2.0
     var healthStall: TimeInterval = 1.5
+    /// Tap-dead detection gets its OWN, longer grace (EVIDENCE vs HYPOTHESIS:
+    /// the build-21 field log proves every cold graph start delivered ZERO
+    /// tap buffers for its first ~2 s and that a restart then recovered
+    /// instantly; WHY the first render cycle is missed is a hypothesis —
+    /// a cold-starting voice-processing input unit or a tap attached to an
+    /// already-running engine missing the first pull are both consistent).
+    /// The tap is now installed BEFORE engine start and this grace bounds how
+    /// long a genuinely dead tap may persist before the bounded restart
+    /// fires, so a merely slow start is never churned by a restart it does
+    /// not need.
+    var tapGrace: TimeInterval = 3.0
     /// Monotonic uptime of the most recent REAL downlink frame; the call
     /// progress tone only fills silence while this stays stale.
     var lastRealPlaybackUptime: TimeInterval?
@@ -70,6 +88,12 @@ private final class FeedState: @unchecked Sendable {
     var runMicFrames = 0
     var runMicSilent = 0
     var runMicPeak = 0
+    /// STEADY-STATE UPLINK DISCRIMINATOR: mic frames emitted SILENT while
+    /// real downlink audio arrived within the last 500 ms. A high count with
+    /// an otherwise healthy cadence points at voice-processing gating (AEC
+    /// misbehavior classically mutes the mic while the far end speaks); a
+    /// low count means plain speech pauses. Bounded counters only.
+    var runMicSilentDuringDownlink = 0
     var runPlayFrames = 0
     var runPlaySilent = 0
     var runTickLate = 0
@@ -167,12 +191,18 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             let sink = PlayerNodeSink(player: setup.player)
             self.sink = sink
             playback.configure(sink: sink, format: setup.playbackFormat)
+            // Install the capture tap BEFORE the engine starts. A tap attached
+            // to an already-running engine's input node can miss the first
+            // render cycle entirely (build-21 field evidence: EVERY cold graph
+            // start delivered zero tap buffers for ~2 s and needed a watchdog
+            // restart to recover, silent uplink in the meantime). Attached
+            // first, the tap is guaranteed present when the input renders.
+            installCapture(pipeline: pipeline)
             // Pre-allocate the render resources while the session is settled:
             // starting a cold engine is exactly when the dead-render cycle
             // (dead tap / never-completing player buffers) has been observed.
             audioSurface.prepareEngine()
             try audioSurface.startEngine()
-            installCapture(pipeline: pipeline)
         feed.lock.lock()
         feed.capture = pipeline
         feed.running = true
@@ -180,6 +210,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.runMicFrames = 0
         feed.runMicSilent = 0
         feed.runMicPeak = 0
+        feed.runMicSilentDuringDownlink = 0
         feed.runPlayFrames = 0
         feed.runPlaySilent = 0
         feed.runTickLate = 0
@@ -187,6 +218,9 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         } catch {
             AppLog.media.notice("ws audio engine start failed: \((error as NSError).code)")
             DiagnosticsCensus.shared.increment("audio.graphStartFail")
+            // The tap is now installed BEFORE start: a failed start must
+            // remove it or a retry would install a second tap on the node.
+            removeCapture()
             teardownEngine()
             feed.lock.lock()
             feed.capture = nil
@@ -221,6 +255,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.runMicFrames = 0
         feed.runMicSilent = 0
         feed.runMicPeak = 0
+        feed.runMicSilentDuringDownlink = 0
         feed.runPlayFrames = 0
         feed.runPlaySilent = 0
         feed.runTickLate = 0
@@ -247,15 +282,20 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feedTimer = nil
         feed.lock.lock()
         let run = (mic: feed.runMicFrames, micSilent: feed.runMicSilent, micPeak: feed.runMicPeak,
+                   micSilentDL: feed.runMicSilentDuringDownlink,
                    play: feed.runPlayFrames, playSilent: feed.runPlaySilent,
                    tickLate: feed.runTickLate)
         feed.lock.unlock()
         DiagnosticsCensus.shared.increment("audio.graphStop")
-        DiagnosticsStore.shared.log("audio",
-            "graph stop capDropped=\(pipeline?.droppedSamples ?? 0) "
+        let capDropped = pipeline?.droppedSamples ?? 0
+        let tapDeliveries = pipeline?.tapDeliverySnapshotCount ?? 0
+        let stopSummary = "graph stop capDropped=\(capDropped) "
             + "playDropped=\(playback.droppedFrames) inFlight=\(playback.framesInFlight)"
-            + " mic=\(run.mic) micSilent=\(run.micSilent) micPeak=\(run.micPeak)"
-            + " play=\(run.play) playSilent=\(run.playSilent) tickLate=\(run.tickLate)")
+            + " tapDeliveries=\(tapDeliveries)"
+        let runSummary = " mic=\(run.mic) micSilent=\(run.micSilent) micPeak=\(run.micPeak)"
+            + " micSilentDL=\(run.micSilentDL)"
+            + " play=\(run.play) playSilent=\(run.playSilent) tickLate=\(run.tickLate)"
+        DiagnosticsStore.shared.log("audio", stopSummary + runSummary)
 
         removeCapture()
         playback.flush()
@@ -270,6 +310,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     private func teardownEngine() {
         guard let engine, let player else { return }
         player.stopPlaying()
+        removeCapture()
         engine.stopEngine()
         engine.disconnectPlayerInput()
         engine.detachPlayer()
@@ -281,11 +322,14 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     // MARK: Health watchdog
 
     /// Tightens the watchdog window in tests (production keeps the
-    /// defaults stored in `FeedState`).
-    func configureHealthWindowForTest(grace: TimeInterval, stall: TimeInterval) {
+    /// defaults stored in `FeedState`). The tap grace tracks the shared
+    /// grace unless a test explicitly separates them.
+    func configureHealthWindowForTest(grace: TimeInterval, stall: TimeInterval,
+                                      tapGrace: TimeInterval? = nil) {
         feed.lock.lock()
         feed.healthGrace = grace
         feed.healthStall = stall
+        feed.tapGrace = tapGrace ?? grace
         feed.lock.unlock()
     }
 
@@ -320,6 +364,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         let restartAttempted = feed.restartAttempted
         let grace = feed.healthGrace
         let stallWindow = feed.healthStall
+        let tapGraceWindow = feed.tapGrace
         feed.lock.unlock()
         let now = ProcessInfo.processInfo.systemUptime
         // Grace window: the engine and the first buffers need time to spin
@@ -364,7 +409,13 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
 
         // Dead tap: running, unmuted, and the input tap never delivered a
         // single buffer — the engine's render cycle never pulled input.
-        if !muted, let capture, capture.tapDeliverySnapshotCount == 0 {
+        // The tap grace is LONGER than the render-stall gate: a cold-starting
+        // voice-processing unit may legitimately need a couple of seconds
+        // before its first render, and the pre-installed tap then receives
+        // data immediately (no restart needed). A genuinely dead render still
+        // recovers through the same bounded restart.
+        if !muted, let capture, capture.tapDeliverySnapshotCount == 0,
+           now - start > tapGraceWindow {
             requestHealthRestart(reason: "tap-dead", now: now, generation: generation)
         }
     }
@@ -542,9 +593,23 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
                     silentKey: "audio.micSilentFrames", peakKey: "audio.micPeakMax")
         feed.lock.lock()
         feed.runMicFrames += 1
-        if level.silent { feed.runMicSilent += 1 }
+        var silentDuringDownlink = false
+        if level.silent {
+            feed.runMicSilent += 1
+            // Steady-state uplink discriminator: silent mic frame while real
+            // downlink audio was playing in the last 500 ms. Cheap, bounded,
+            // and it separates AEC-style gating from speech pauses.
+            if let lastPlayback = feed.lastRealPlaybackUptime,
+               ProcessInfo.processInfo.systemUptime - lastPlayback < 0.5 {
+                feed.runMicSilentDuringDownlink += 1
+                silentDuringDownlink = true
+            }
+        }
         if level.peak > feed.runMicPeak { feed.runMicPeak = level.peak }
         feed.lock.unlock()
+        if silentDuringDownlink {
+            DiagnosticsCensus.shared.increment("audio.micSilentDuringDownlink")
+        }
         emit?(frame)
     }
 
@@ -637,6 +702,10 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
                      feed.runPlayFrames, feed.runPlaySilent, feed.runTickLate)
         feed.lock.unlock()
         return value
+    }
+    var runSilentDuringDownlinkForTest: Int {
+        feed.lock.lock(); defer { feed.lock.unlock() }
+        return feed.runMicSilentDuringDownlink
     }
     var isRunning: Bool {
         feed.lock.lock(); defer { feed.lock.unlock() }

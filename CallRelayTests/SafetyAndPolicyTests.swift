@@ -126,9 +126,36 @@ final class PushReceptionPolicyTests: XCTestCase {
         XCTAssertEqual(policy.evaluate(payload: payload, activeGatewayCallIds: []), .staleReconcile)
     }
 
-    private func makePayload(callId: String, gateway: String, age: TimeInterval) -> VoIPPushPayload {
+    // Build-21 field regression: a push whose handle is empty (suppressed
+    // caller id) must still ring as a REAL call; the display layer owns the
+    // 未知号码 fallback.
+    func testEmptyHandleStillRingsAsRealCall() {
+        let policy = PushReceptionPolicy(expectedGatewayId: "gw")
+        let payload = makePayload(callId: "c1", gateway: "gw", age: 1, handle: "")
+        guard case .reportIncoming(let target) = policy.evaluate(payload: payload, activeGatewayCallIds: []) else {
+            return XCTFail("an empty handle must not downgrade the push")
+        }
+        XCTAssertTrue(target.handle.isEmpty)
+    }
+
+    // Foreign/stale identity checks stay fully mandatory: a PushKit topic
+    // match alone is not proof of the paired gateway or a current call.
+    func testForeignGatewayWithEmptyHandleStillRejected() {
+        let policy = PushReceptionPolicy(expectedGatewayId: "gw")
+        let payload = makePayload(callId: "c1", gateway: "other", age: 1, handle: "")
+        XCTAssertEqual(policy.evaluate(payload: payload, activeGatewayCallIds: []), .foreignGateway)
+    }
+
+    func testStalePushWithEmptyHandleStillReconciles() {
+        let policy = PushReceptionPolicy(expectedGatewayId: "gw", maxAge: 30)
+        let payload = makePayload(callId: "c1", gateway: "gw", age: 120, handle: "")
+        XCTAssertEqual(policy.evaluate(payload: payload, activeGatewayCallIds: []), .staleReconcile)
+    }
+
+    private func makePayload(callId: String, gateway: String, age: TimeInterval,
+                             handle: String = "5550123") -> VoIPPushPayload {
         VoIPPushPayload(
-            callUUIDRaw: UUID().uuidString, callId: callId, handle: "5550123",
+            callUUIDRaw: UUID().uuidString, callId: callId, handle: handle,
             gatewayId: gateway, issuedAt: Int64(Date().addingTimeInterval(-age).timeIntervalSince1970)
         )
     }

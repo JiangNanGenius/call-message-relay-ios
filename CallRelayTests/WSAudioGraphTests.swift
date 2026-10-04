@@ -51,15 +51,19 @@ private final class RecordingPlaybackSink: WSPlaybackScheduler.WSPlaybackSchedul
 /// voice-processing flag the graph requests.
 @MainActor
 private final class MockAudioSurface: AudioSurfaceProviding {
-    struct Event: Equatable { enum Kind: Equatable { case prepare, prepareEngine, startEngine, stopEngine }; let kind: Kind; let voiceProcessing: Bool? }
+    struct Event: Equatable { enum Kind: Equatable { case prepare, installTap, removeTap, prepareEngine, startEngine, stopEngine }; let kind: Kind; let voiceProcessing: Bool? }
     private(set) var events: [Event] = []
     var requestedVoiceProcessing: [Bool] = []
     var startShouldFail = false
 
+    /// Engine-side event recorder (tap install/remove, stop) shares the
+    /// surface's ordered log so tests can assert cross-object call order.
+    func append(_ event: Event) { events.append(event) }
+
     func prepare(enableVoiceProcessing: Bool) throws -> AudioSurfaceSetup {
         events.append(.init(kind: .prepare, voiceProcessing: enableVoiceProcessing))
         requestedVoiceProcessing.append(enableVoiceProcessing)
-        let engine = MockEngine()
+        let engine = MockEngine(eventLog: self)
         let player = MockPlayer()
         return AudioSurfaceSetup(
             engine: engine, player: player,
@@ -76,14 +80,20 @@ private final class MockAudioSurface: AudioSurfaceProviding {
 
 @MainActor
 private final class MockEngine: AudioEngineControlling {
+    private let eventLog: MockAudioSurface
+    init(eventLog: MockAudioSurface) { self.eventLog = eventLog }
     var hardwareInputFormat: AVAudioFormat {
         AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
     }
-    func installInputTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat, callback: @escaping (AVAudioPCMBuffer) -> Void) { }
-    func removeInputTap() { }
+    func installInputTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat, callback: @escaping (AVAudioPCMBuffer) -> Void) {
+        eventLog.append(.init(kind: .installTap, voiceProcessing: nil))
+    }
+    func removeInputTap() {
+        eventLog.append(.init(kind: .removeTap, voiceProcessing: nil))
+    }
     func prepareEngine() { }
     func startEngine() throws { }
-    func stopEngine() { }
+    func stopEngine() { eventLog.append(.init(kind: .stopEngine, voiceProcessing: nil)) }
     func attachPlayer(_ player: AudioPlayerControlling, format: AVAudioFormat) { }
     func disconnectPlayerInput() { }
     func detachPlayer() { }
@@ -121,12 +131,69 @@ extension WSAudioGraphTests {
         XCTAssertLessThan(prepareEngineIndex, startIndex, "engine prepare() must run before start()")
     }
 
-    func testStartFailureTearsDownAndReportsFalse() {
+    /// Build-21 field regression: the capture tap must be attached BEFORE the
+    /// engine starts. A tap installed on an already-running engine can miss
+    /// the input node's first render cycle entirely — every cold graph start
+    /// in the build-21 field log delivered zero tap buffers for ~2 s and
+    /// needed a watchdog restart (silent uplink at the top of every call).
+    func testCaptureTapIsInstalledBeforeEngineStarts() {
+        let surface = MockAudioSurface()
+        let graph = WSAudioGraph(audioSurface: surface)
+        defer { graph.stop() }
+
+        XCTAssertTrue(graph.startIfNeeded(), "mock surface start must succeed")
+        let kinds = surface.events.map(\.kind)
+        guard let tapIndex = kinds.firstIndex(of: .installTap),
+              let startIndex = kinds.firstIndex(of: .startEngine) else {
+            return XCTFail("expected tap install and engine start events, got \(kinds)")
+        }
+        XCTAssertLessThan(tapIndex, startIndex,
+                          "the capture tap must be attached before the engine starts")
+    }
+
+    /// A start failure after the tap was installed must leave NO tap behind:
+    /// the retry would otherwise install a second tap on the same input node.
+    func testStartFailureRemovesPreinstalledTapBeforeRetry() {
         let surface = MockAudioSurface()
         surface.startShouldFail = true
         let graph = WSAudioGraph(audioSurface: surface)
         XCTAssertFalse(graph.startIfNeeded(), "a failing engine must never claim audio")
         XCTAssertFalse(graph.isRunning)
+        let kinds = surface.events.map(\.kind)
+        XCTAssertEqual(kinds.filter { $0 == .installTap }.count, 1, "one tap installed")
+        XCTAssertEqual(kinds.filter { $0 == .removeTap }.count, 1,
+                       "the failed start must remove the pre-installed tap")
+        // Retry succeeds and installs exactly one fresh tap before start.
+        surface.startShouldFail = false
+        XCTAssertTrue(graph.startIfNeeded())
+        let retryKinds = surface.events.map(\.kind)
+        XCTAssertEqual(retryKinds.filter { $0 == .installTap }.count, 2)
+        guard let retryTap = retryKinds.lastIndex(of: .installTap),
+              let retryStart = retryKinds.lastIndex(of: .startEngine) else {
+            return XCTFail("expected retry tap install + start")
+        }
+        XCTAssertLessThan(retryTap, retryStart)
+        graph.stop()
+    }
+
+    /// The tap-dead verdict gets its own LONGER grace: with a dead mock tap
+    /// and the tap grace pushed far out, a run that lives past the render
+    /// gate must NOT be restarted by the tap-dead check (a cold-starting
+    /// voice-processing unit is slow, not dead — churning it costs a real
+    /// call its opening seconds of uplink).
+    func testTapDeadGraceIsSeparateAndLonger() async {
+        WSAudioGraph.resetRestartBudgetForTest()
+        let surface = MockAudioSurface()
+        let graph = WSAudioGraph(audioSurface: surface)
+        // Shared gate tiny so the render-stall gate is long past; tap grace
+        // huge so a zero-delivery tap must NOT restart.
+        graph.configureHealthWindowForTest(grace: 0.05, stall: 0.05, tapGrace: 3600)
+        XCTAssertTrue(graph.startIfNeeded())
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        graph.stop()
+        XCTAssertEqual(surface.requestedVoiceProcessing, [true],
+                       "no tap-dead restart may fire inside the long tap grace")
+        XCTAssertEqual(surface.events.filter { $0.kind == .startEngine }.count, 1)
     }
 
     /// Recovery policy through the REAL watchdog → request → scheduled
@@ -416,6 +483,30 @@ final class WSAudioGraphTests: XCTestCase {
         XCTAssertGreaterThan(run.micPeak, 8000, "loud capture shows up in the run peak")
         XCTAssertEqual(run.play, 12)
         XCTAssertEqual(run.playSilent, 4)
+    }
+
+    /// Steady-state uplink discriminator: a SILENT mic frame emitted while
+    /// real downlink audio played within the last 500 ms counts as
+    /// micSilentDL (AEC-gating class); silence with no recent downlink does
+    /// not (plain speech pause).
+    func testSilentMicDuringDownlinkIsCountedSeparately() async {
+        let (graph, _) = makeHeadlessGraph()
+        defer { graph.stop() }
+        graph.onMicFrame = { _ in }
+
+        // Downlink active, mic starved → silent frame DURING downlink.
+        graph.pushPlayback([Int16](repeating: 9000, count: 160))
+        graph.tickOnceForTest()
+        XCTAssertEqual(graph.runDiagnosticsForTest.micSilent, 1)
+        XCTAssertEqual(graph.runSilentDuringDownlinkForTest, 1,
+                       "silent mic frame with fresh downlink counts as gating-class evidence")
+
+        // No downlink at all, mic starved → plain pause, not gating.
+        try? await Task.sleep(nanoseconds: 600_000_000) // outlast the 500 ms window
+        graph.tickOnceForTest()
+        XCTAssertEqual(graph.runDiagnosticsForTest.micSilent, 2)
+        XCTAssertEqual(graph.runSilentDuringDownlinkForTest, 1,
+                       "silence without recent downlink must not inflate the gating count")
     }
 
     func testRunCountersResetOnRestart() {

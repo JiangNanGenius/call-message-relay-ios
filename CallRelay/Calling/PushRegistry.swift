@@ -104,8 +104,13 @@ extension PushRegistry: PKPushRegistryDelegate {
                         "voip push unhandled: no handler; placeholder fallback")
                     await placeholderReporter?()
                 }
-            case .failure:
+            case .failure(let error):
                 AppLog.push.notice("malformed voip payload")
+                // Exportable evidence for the placeholder failure class: the
+                // FIELD NAME only, never values. A valid push must never land
+                // here (the parser tolerates absent metadata); when one does,
+                // the next export must show why without any payload content.
+                DiagnosticsStore.shared.log("push", "voip push malformed: \(error)")
                 if mustReport {
                     // Apple requires a CallKit report for must-report VoIP
                     // pushes. Present a minimal placeholder and end it at once;

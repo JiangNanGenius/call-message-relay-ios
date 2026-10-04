@@ -2403,6 +2403,7 @@ extension AppModel: VoIPPushHandling {
             DiagnosticsStore.shared.log("push",
                 "reportIncoming call=\(Self.logPrefix(target.gatewayCallId)) "
                 + "age=\(Int(Date().timeIntervalSince(payload.issuedDate)))s "
+                + "handleEmpty=\(target.handle.isEmpty) "
                 + "mustReport=\(mustReport)")
             reservedCallIds.insert(target.gatewayCallId)
             // Cold start: a VoIP push can be delivered before the async

@@ -6,9 +6,17 @@ import Foundation
 struct VoIPPushPayload: Equatable {
     let callUUIDRaw: String
     let callId: String
+    /// MAY BE EMPTY: the cellular network can withhold the caller id and the
+    /// gateway then forwards an empty `handle`. The build-21 field log is
+    /// consistent with that (every must-report push showed keys=7 — the full
+    /// gateway envelope — yet no decision line followed, i.e. parse failure;
+    /// of the gateway-produced values only `handle` can be empty). An unknown
+    /// caller must still ring as a REAL call (the display layer falls back to
+    /// 未知号码); the new malformed-field diagnostics export will name the
+    /// exact failing field on the next occurrence.
     let handle: String
     let gatewayId: String
-    /// Unix seconds.
+    /// Unix seconds; mandatory freshness metadata.
     let issuedAt: Int64
 
     var issuedDate: Date { Date(unixSeconds: issuedAt) }
@@ -20,6 +28,14 @@ enum VoIPPushParseError: Error, Equatable {
 }
 
 enum VoIPPushPayloadParser {
+    /// The gateway identity and freshness metadata stay MANDATORY: a PushKit
+    /// topic match alone is not proof of the paired gateway or a current
+    /// call, so a missing gatewayId/issuedAt is rejected exactly as before.
+    /// The ONE tolerated gap is an EMPTY `handle`: the network can withhold
+    /// the caller id and the gateway forwards that emptiness verbatim, and an
+    /// unknown caller must still ring as a real call — downgrading it to a
+    /// placeholder was the build-21 field defect. `callUUID`/`callId` remain
+    /// an either/or identity (the sender may duplicate or omit one).
     static func parse(_ dictionary: [AnyHashable: Any]) -> Result<VoIPPushPayload, VoIPPushParseError> {
         func string(_ key: String) -> String? {
             (dictionary[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -29,15 +45,22 @@ enum VoIPPushPayloadParser {
         if let n = dictionary["issuedAt"] as? NSNumber { issued = n.int64Value }
         if issued == nil, let s = string("issuedAt"), let v = Int64(s) { issued = v }
 
-        guard let raw = string("callUUID"), !raw.isEmpty else { return .failure(.missing("callUUID")) }
-        guard let callId = string("callId"), !callId.isEmpty else { return .failure(.missing("callId")) }
-        guard let handle = string("handle"), !handle.isEmpty else { return .failure(.missing("handle")) }
-        guard let gatewayId = string("gatewayId"), !gatewayId.isEmpty else { return .failure(.missing("gatewayId")) }
+        let callUUID = string("callUUID") ?? ""
+        let callId = string("callId") ?? ""
+        guard !callUUID.isEmpty || !callId.isEmpty else {
+            return .failure(.missing("callId"))
+        }
+        guard let gatewayId = string("gatewayId"), !gatewayId.isEmpty else {
+            return .failure(.missing("gatewayId"))
+        }
         guard let issuedAt = issued else { return .failure(.missing("issuedAt")) }
 
         return .success(VoIPPushPayload(
-            callUUIDRaw: raw, callId: callId, handle: handle,
-            gatewayId: gatewayId, issuedAt: issuedAt
+            callUUIDRaw: callUUID,
+            callId: callId.isEmpty ? callUUID : callId,
+            handle: string("handle") ?? "",
+            gatewayId: gatewayId,
+            issuedAt: issuedAt
         ))
     }
 }

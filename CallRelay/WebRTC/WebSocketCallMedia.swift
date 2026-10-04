@@ -390,10 +390,16 @@ final class WebSocketCallMedia: NSObject {
                 let snapshot = self.outbound.snapshot()
                 guard snapshot.accepting, snapshot.epoch == delivery.epoch,
                       let socket = snapshot.socket else { return }
+                let sendStarted = ProcessInfo.processInfo.systemUptime
                 do {
                     try await self.withSocketTimeout(seconds: self.sendTimeout, socket: socket) {
                         try await socket.sendValue(.data(delivery.frame))
                     }
+                    // Send-path health: a stalled tunnel shows up here (and in
+                    // uplinkGateDropped) long before the call feels it.
+                    DiagnosticsCensus.shared.maximize(
+                        "audio.uplinkSendMsMax",
+                        Int((ProcessInfo.processInfo.systemUptime - sendStarted) * 1000))
                 } catch {
                     // Only the CURRENT socket's failure may fail the session.
                     guard self.outbound.snapshot().epoch == snapshot.epoch else { return }
@@ -547,6 +553,7 @@ final class WebSocketCallMedia: NSObject {
         pingTimer?.invalidate()
         pingTimer = nil
         pendingPings.removeAll()
+        let gateDrops = outbound.droppedFrames
         outbound.detach()
         sendDrainTask?.cancel()
         sendDrainTask = nil
@@ -557,6 +564,10 @@ final class WebSocketCallMedia: NSObject {
         audioIO.stop()
         deactivateAudioWithoutCallKit()
         currentState = .closed
+        if gateDrops > 0 {
+            DiagnosticsStore.shared.log("audio",
+                "ws uplink gate dropped=\(gateDrops) (send path fell behind realtime)")
+        }
     }
 }
 
@@ -613,6 +624,12 @@ private final class OutboundFrameGate: @unchecked Sendable {
     private var socket: WebSocketCallMedia.MediaSocket?
     private var epoch: UInt64 = 0
     private var accepting = false
+    /// STEADY-STATE UPLINK DISCRIMINATOR: frames dropped because the socket
+    /// send path fell behind realtime (>8 frames queued). If the per-run
+    /// level census is healthy (mic frames flowing, few silent) yet the far
+    /// end hears gaps together with a rising drop count, the loss sits in the
+    /// transport, not the capture. Bounded counter only.
+    private(set) var droppedFrames = 0
 
     struct Snapshot {
         let socket: WebSocketCallMedia.MediaSocket?
@@ -658,6 +675,8 @@ private final class OutboundFrameGate: @unchecked Sendable {
         }
         if queue.count >= maxQueue {
             queue.removeFirst() // drop-stale: oldest realtime audio first
+            droppedFrames += 1
+            DiagnosticsCensus.shared.increment("audio.uplinkGateDropped")
         }
         queue.append(frame)
         lock.unlock()
