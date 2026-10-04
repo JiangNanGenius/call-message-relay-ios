@@ -23,11 +23,12 @@ struct ComposeMessageView: View {
     @FocusState private var recipientFocused: Bool
     @FocusState private var bodyFocused: Bool
 
-    /// Contact autocomplete under the To row: name or digit-fragment match
-    /// over the app's own contact snapshot. Dismisses itself once the text
-    /// IS an exact contact number; free text is never auto-committed.
+    /// Contact autocomplete under the To row: Latin name, full pinyin or
+    /// syllable-initial match (multilingual keyboard) over the snapshot's
+    /// cached pinyin index. Dismisses itself once the text IS an exact
+    /// contact number; free text is never auto-committed.
     private var recipientSuggestions: [ContactSuggestion] {
-        ContactAutocomplete.suggestions(contacts: model.contacts.contacts, query: recipient)
+        model.contacts.searchContacts(query: recipient)
     }
 
     private var showSuggestions: Bool {
@@ -252,7 +253,7 @@ struct ComposeMessageView: View {
         // impossible in the UI while any unsent entry for this draft is active.
         let trimmedRecipient = recipient.trimmingCharacters(in: .whitespacesAndNewlines)
         return inbox.outbox.contains { entry in
-            entry.isSending && entry.threadKey == trimmedRecipient && entry.body == trimmedBody
+            entry.isSending && entry.to == trimmedRecipient && entry.body == trimmedBody
         }
     }
 
@@ -286,8 +287,12 @@ struct ComposeMessageView: View {
         let sentBody = trimmedBody
         validationMessage = nil
         // Persist the explicit choice for this conversation so replies and
-        // retries reuse the same line/number.
-        model.setPreferredLine(chosenLineID, for: target)
+        // retries reuse the same line/number. Keyed by the canonical
+        // `lineID:peer` form: the conversation view reads that same key, so
+        // the choice actually follows the thread (a bare recipient key was
+        // invisible to the conversation and vice versa).
+        model.setPreferredLine(chosenLineID,
+                               for: ThreadKey.canonical(lineID: resolvedLineID, peer: target))
         inbox.send(to: target, body: sentBody,
                    isLineReady: model.isDemo || model.lineCanSendSMS(resolvedLineID),
                    lineId: resolvedLineID)

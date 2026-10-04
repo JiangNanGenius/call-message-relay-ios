@@ -78,7 +78,9 @@ enum MessageRow: Identifiable, Equatable {
 /// retry (which reuses the stable idempotency key) may submit them.
 struct MessageOutboxEntry: Identifiable, Equatable, Codable {
     let id: String
-    let threadKey: String
+    /// Canonical `lineID:peer` form; `var` solely so persisted legacy bare
+    /// keys can be migrated at recovery (the idempotency key is untouched).
+    var threadKey: String
     let to: String
     let body: String
     let idempotencyKey: String
@@ -184,6 +186,10 @@ final class MessageInbox: ObservableObject {
     /// Unified gateway: default line used when a conversation has no
     /// explicit per-thread preference.
     var lineIdProvider: (() -> String?)?
+    /// Every line id the bound session is authorized for, in display order.
+    /// Used ONLY to resolve legacy unqualified keys against an explicit
+    /// authorized line (default first) — never to guess across servers.
+    var authorizedLineIDsProvider: (() -> [String])?
     /// Per-conversation outgoing line preference (threadKey -> lineId).
     /// New submissions capture it into the entry; retries reuse the
     /// captured line and never silently fall back to another number.
@@ -299,12 +305,16 @@ final class MessageInbox: ObservableObject {
 
     /// Gateway threads plus not-yet-reflected outbox submissions, newest
     /// activity first, so a freshly sent message is visible immediately.
+    /// Outbox entries are keyed canonically (`lineID:peer`), so a pending
+    /// send now lands ON the gateway thread it belongs to instead of
+    /// duplicating it with an unopenable bare-key row.
     var displayThreads: [MessageThread] {
         var result = threads
         for entry in outbox {
-            if result.contains(where: { $0.key == entry.threadKey }) { continue }
+            if result.contains(where: { $0.key == entry.threadKey
+                    || $0.key == ThreadKey.canonical(lineID: entry.lineID, peer: entry.to) }) { continue }
             let record = MessageRecord(
-                id: entry.id, gatewayID: nil, lineID: nil,
+                id: entry.id, gatewayID: nil, lineID: entry.lineID,
                 threadKey: entry.threadKey, direction: .outbound, peer: entry.to,
                 body: entry.body, encoding: nil,
                 status: entry.isSending ? .queued : entry.status,
@@ -421,18 +431,80 @@ final class MessageInbox: ObservableObject {
         guard isValid else { return false }
         let captured = generation
         if oldest == nil { openPhases[key] = threadCache[key] == nil ? .loading : .loaded }
+        // Legacy unqualified keys (restored history from a v1 pairing, or an
+        // ancient outbox row): the v2 gateway rejects them with
+        // CB-V2-400 "threadKey 格式错误" — a raw developer error that must
+        // never reach the UI. Resolve against an EXPLICIT authorized line
+        // (default first, then each authorized line) — the server validation
+        // stays strict, we simply try the concrete qualified candidates.
+        if oldest == nil && !ThreadKey.isQualified(key) {
+            return await loadUnqualifiedThread(key, captured: captured)
+        }
+        return await loadThreadPage(key, qualifiedKey: key, olderThan: oldest, captured: captured)
+    }
+
+    private func loadUnqualifiedThread(_ key: String, captured: UInt64) async -> Bool {
+        var candidates: [String] = []
+        if let line = lineIdProvider?() {
+            candidates.append(line)
+        }
+        for line in authorizedLineIDsProvider?() ?? [] where !candidates.contains(line) {
+            candidates.append(line)
+        }
+        // No lines at all (offline demo): the API accepts the bare key as-is.
+        if candidates.isEmpty {
+            return await loadThreadPage(key, qualifiedKey: key, olderThan: nil, captured: captured)
+        }
+        for line in candidates {
+            let qualified = ThreadKey.canonical(lineID: line, peer: key)
+            // Display key: the bare key the user tapped; fetch key: the
+            // concrete qualified candidate.
+            if await loadThreadPage(key, qualifiedKey: qualified, olderThan: nil, captured: captured) {
+                return true
+            }
+        }
+        guard captured == generation else { return false }
+        if threadCache[key] == nil {
+            DiagnosticsStore.shared.log("messages",
+                "unqualified threadKey unresolved: peer=\(DiagnosticsRedactor.redactPhoneNumbers(ThreadKey.peer(of: key))) lines=\(candidates.count)")
+            openPhases[key] = .failed(String(localized:
+                "无法确定这条旧对话所属的线路。请在对话列表中向该号码发送一条新短信，或联系网关管理员同步线路。"))
+        }
+        return false
+    }
+
+    @discardableResult
+    private func loadThreadPage(_ key: String, qualifiedKey fetchKey: String,
+                                olderThan oldest: MessageRecord?,
+                                captured: UInt64) async -> Bool {
         do {
             let page = try await api.listThreadMessages(
-                threadKey: key,
+                threadKey: fetchKey,
                 beforeCreatedAt: oldest?.createdAt,
                 beforeID: oldest?.id,
                 limit: pageLimit
             )
             guard captured == generation else { return false }
-            merge(page.messages, for: key)
+            // Cache under the tapped key so the open/rows state stays
+            // consistent for the conversation the user actually opened. The
+            // gateway returns the canonical qualified threadKey; when the
+            // user tapped a legacy bare row, rekey the page to that bare key
+            // (the line that served it is preserved on each record).
+            let messages: [MessageRecord]
+            if fetchKey == key {
+                messages = page.messages
+            } else {
+                messages = page.messages.map {
+                    MessageRecord(id: $0.id, gatewayID: $0.gatewayID, lineID: $0.lineID,
+                                  threadKey: key, direction: $0.direction, peer: $0.peer,
+                                  body: $0.body, encoding: $0.encoding, status: $0.status,
+                                  createdAt: $0.createdAt)
+                }
+            }
+            merge(messages, for: key)
             if page.hasMore { hasMoreThreads.insert(key) } else { hasMoreThreads.remove(key) }
             openPhases[key] = .loaded
-            markUnreadReadIfNeeded(page.messages)
+            markUnreadReadIfNeeded(messages)
             reevaluateAll()
             return true
         } catch is CancellationError {
@@ -475,11 +547,20 @@ final class MessageInbox: ObservableObject {
         reevaluateAll()
     }
 
+    /// Whether an outbox entry belongs to this conversation: exact canonical
+    /// key, or a legacy bare entry whose captured line/peer resolves here.
+    private func outboxEntry(_ entry: MessageOutboxEntry, belongsTo threadKey: String) -> Bool {
+        if entry.threadKey == threadKey { return true }
+        guard !ThreadKey.isQualified(entry.threadKey) else { return false }
+        return threadKey == ThreadKey.canonical(lineID: entry.lineID, peer: entry.to)
+            || ThreadKey.peer(of: threadKey) == entry.to
+    }
+
     func rows(for threadKey: String) -> [MessageRow] {
         let records = threadCache[threadKey] ?? []
         var rows = records.map(MessageRow.record)
         let knownIDs = Set(records.map(\.id))
-        for entry in outbox where entry.threadKey == threadKey {
+        for entry in outbox where outboxEntry(entry, belongsTo: threadKey) {
             if let serverID = entry.serverMessageID, knownIDs.contains(serverID) { continue }
             rows.append(.pending(entry))
         }
@@ -531,8 +612,14 @@ final class MessageInbox: ObservableObject {
         if let pending = outbox.first(where: { $0.isSending && $0.to == recipient && $0.body == body }) {
             return pending
         }
-        let entry = MessageOutboxEntry(threadKey: recipient, to: recipient, body: body, now: now(),
-                                       lineID: lineId ?? preferredLine(for: recipient))
+        // Capture the line FIRST so the outbox row is keyed by the canonical
+        // `lineID:peer` form: a legacy bare-keyed synthetic thread duplicates
+        // the gateway conversation and can never open on v2 (CB-V2-400), which
+        // is exactly what the "threadKey 格式错误" screen reported.
+        let capturedLine = lineId ?? preferredLine(for: recipient)
+        let entry = MessageOutboxEntry(
+            threadKey: ThreadKey.canonical(lineID: capturedLine, peer: recipient),
+            to: recipient, body: body, now: now(), lineID: capturedLine)
         outbox.append(entry)
         persistOutbox()
         performSend(entry)
@@ -668,9 +755,15 @@ final class MessageInbox: ObservableObject {
     private func pruneMirroredOutbox() {
         var removed = false
         for entry in outbox {
-            guard let serverID = entry.serverMessageID,
-                  let records = threadCache[entry.threadKey],
-                  records.contains(where: { $0.id == serverID }) else { continue }
+            guard let serverID = entry.serverMessageID else { continue }
+            // Exact canonical lookup first; legacy bare entries resolve via
+            // their captured line/peer.
+            let keys = [entry.threadKey,
+                        ThreadKey.canonical(lineID: entry.lineID, peer: entry.to)]
+            let mirrored = keys.contains { key in
+                threadCache[key]?.contains(where: { $0.id == serverID }) == true
+            }
+            guard mirrored else { continue }
             outbox.removeAll { $0.id == entry.id }
             removed = true
         }
@@ -690,6 +783,12 @@ final class MessageInbox: ObservableObject {
             var entry = entry
             entry.isSending = false
             entry.needsConfirmation = true
+            // Migrate legacy bare keys to the canonical qualified form so the
+            // recovered row joins the real conversation (and opens) instead
+            // of duplicating it with an unopenable bare-key thread.
+            if !ThreadKey.isQualified(entry.threadKey) {
+                entry.threadKey = ThreadKey.canonical(lineID: entry.lineID, peer: entry.to)
+            }
             if entry.status != .failed {
                 entry.status = .queued
                 entry.errorText = String(localized: "应用重启后待确认，点“重试”发送")
@@ -703,6 +802,16 @@ final class MessageInbox: ObservableObject {
         guard let outboxStore else { return }
         outboxStore.save(outbox)
     }
+
+    // MARK: Test seams (@testable import only)
+
+    /// Inserts an externally-constructed entry (legacy-shape fixtures) without
+    /// triggering a send.
+    func addOutboxEntryForTest(_ entry: MessageOutboxEntry) {
+        outbox.append(entry)
+    }
+
+    var outboxForTest: [MessageOutboxEntry] { outbox }
 
     // MARK: CloudKit-restored history (read-only, never gateway actions)
 
@@ -870,6 +979,16 @@ final class MessageInbox: ObservableObject {
     #endif
 
     private func friendly(_ error: Error) -> String {
-        (error as? APIError)?.friendlyMessage ?? "无法连接网关，请稍后重试。"
+        // Never leak the raw gateway developer error into the product UI:
+        // "threadKey 格式错误" means an unqualified key slipped through; the
+        // user cannot act on that wording. Keep the precise failure in the
+        // sanitized diagnostics instead.
+        if case .http(_, let code, let message) = error as? APIError,
+           code == "CB-V2-400", message?.contains("threadKey") == true {
+            DiagnosticsStore.shared.log("messages",
+                "gateway rejected threadKey format (raw error preserved here)")
+            return String(localized: "对话标识无法被网关识别。这通常来自旧版本的数据：返回列表重进该对话，或向该号码发一条新短信即可恢复。")
+        }
+        return (error as? APIError)?.friendlyMessage ?? "无法连接网关，请稍后重试。"
     }
 }

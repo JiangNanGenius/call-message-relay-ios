@@ -263,11 +263,20 @@ final class AppModel: ObservableObject {
     // MARK: Per-conversation line (dual-SIM style)
 
     /// The line a conversation sends from: the explicit per-thread choice
-    /// when one exists, otherwise the app default. Never silently resolves
-    /// to a different number mid-submission: the outbox entry captures this
-    /// value once and retries reuse the capture.
+    /// when one exists, otherwise the app default. A qualified key falls
+    /// back to its bare peer key so preferences saved by older builds (and
+    /// the compose view's recipient field) keep resolving. Never silently
+    /// resolves to a different number mid-submission: the outbox entry
+    /// captures this value once and retries reuse the capture.
     func preferredLine(for threadKey: String) -> String? {
-        threadLineStore?.lineID(for: threadKey) ?? defaultLineId
+        if let explicit = threadLineStore?.lineID(for: threadKey) {
+            return explicit
+        }
+        if ThreadKey.isQualified(threadKey),
+           let legacy = threadLineStore?.lineID(for: ThreadKey.peer(of: threadKey)) {
+            return legacy
+        }
+        return defaultLineId
     }
 
     /// An explicit user choice (or nil to follow the default again).
@@ -935,6 +944,7 @@ final class AppModel: ObservableObject {
         messages.lineReady = { [weak self] in self?.isSMSLineUsable ?? false }
         messages.lineReadyForEntry = { [weak self] lineID in self?.lineCanSendSMS(lineID) ?? false }
         messages.lineIdProvider = { [weak self] in self?.defaultLineId }
+        messages.authorizedLineIDsProvider = { [weak self] in self?.authorizedLines.map(\.id) ?? [] }
         threadLineStore = ThreadLinePreferenceStore.shared.scope(for: binding.gatewayId)
         messages.lineIdForThread = { [weak self] threadKey in self?.preferredLine(for: threadKey) }
         messages.isTrustedContact = { [weak self] peer in self?.isTrustedContact(peer) ?? false }

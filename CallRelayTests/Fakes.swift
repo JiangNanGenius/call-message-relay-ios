@@ -244,6 +244,11 @@ final class FakeGatewayAPI: GatewayAPI {
     // SMS surface
     var threads: [MessageThread] = []
     var threadPages: [String: [MessageRecord]] = [:]
+    /// Per-key errors so tests can make one line candidate fail while
+    /// another succeeds (unqualified-key resolution order).
+    var threadPageErrors: [String: Error] = [:]
+    /// Every threadKey requested via listThreadMessages, in order.
+    private(set) var requestedThreadKeys: [String] = []
     var threadHasMore = false
     var sentMessages: [SentSMS] = []
     /// Parallel to `sentMessages`: the line each send requested.
@@ -506,7 +511,9 @@ final class FakeGatewayAPI: GatewayAPI {
     func listThreadMessages(
         threadKey: String, beforeCreatedAt: Int64?, beforeID: String?, limit: Int
     ) async throws -> ThreadMessagePage {
-        ThreadMessagePage(messages: threadPages[threadKey] ?? [], hasMore: threadHasMore)
+        requestedThreadKeys.append(threadKey)
+        if let error = threadPageErrors[threadKey] { throw error }
+        return ThreadMessagePage(messages: threadPages[threadKey] ?? [], hasMore: threadHasMore)
     }
 
     func sendMessage(to: String, body: String, idempotencyKey: String) async throws -> MessageRecord {

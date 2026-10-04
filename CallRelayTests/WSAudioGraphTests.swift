@@ -45,6 +45,134 @@ private final class RecordingPlaybackSink: WSPlaybackScheduler.WSPlaybackSchedul
     }
 }
 
+// MARK: - Lifecycle policy: prepare ordering and voice-processing default
+
+/// Mock audio surface recording the lifecycle call order and the
+/// voice-processing flag the graph requests.
+@MainActor
+private final class MockAudioSurface: AudioSurfaceProviding {
+    struct Event: Equatable { enum Kind: Equatable { case prepare, prepareEngine, startEngine, stopEngine }; let kind: Kind; let voiceProcessing: Bool? }
+    private(set) var events: [Event] = []
+    var requestedVoiceProcessing: [Bool] = []
+    var startShouldFail = false
+
+    func prepare(enableVoiceProcessing: Bool) throws -> AudioSurfaceSetup {
+        events.append(.init(kind: .prepare, voiceProcessing: enableVoiceProcessing))
+        requestedVoiceProcessing.append(enableVoiceProcessing)
+        let engine = MockEngine()
+        let player = MockPlayer()
+        return AudioSurfaceSetup(
+            engine: engine, player: player,
+            hardwareFormat: AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!,
+            captureSourceFormat: AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!,
+            playbackFormat: AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1)!)
+    }
+    func prepareEngine() { events.append(.init(kind: .prepareEngine, voiceProcessing: nil)) }
+    func startEngine() throws {
+        events.append(.init(kind: .startEngine, voiceProcessing: nil))
+        if startShouldFail { throw NSError(domain: "MockAudioSurface", code: 1) }
+    }
+}
+
+@MainActor
+private final class MockEngine: AudioEngineControlling {
+    var hardwareInputFormat: AVAudioFormat {
+        AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
+    }
+    func installInputTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat, callback: @escaping (AVAudioPCMBuffer) -> Void) { }
+    func removeInputTap() { }
+    func prepareEngine() { }
+    func startEngine() throws { }
+    func stopEngine() { }
+    func attachPlayer(_ player: AudioPlayerControlling, format: AVAudioFormat) { }
+    func disconnectPlayerInput() { }
+    func detachPlayer() { }
+}
+
+@MainActor
+private final class MockPlayer: AudioPlayerControlling {
+    var isPlaying = false
+    func playPlayback() { isPlaying = true }
+    func stopPlaying() { isPlaying = false }
+    func scheduleBuffer(_ buffer: AVAudioPCMBuffer, completion: @escaping () -> Void) { }
+}
+
+extension WSAudioGraphTests {
+    func testStartPreparesEngineBeforeStartingAndKeepsVoiceProcessingOn() {
+        let surface = MockAudioSurface()
+        let graph = WSAudioGraph(audioSurface: surface)
+        defer { graph.stop() }
+
+        XCTAssertTrue(graph.startIfNeeded(), "mock surface start must succeed")
+        // Voice processing stays ON by default: the voice-chat mode provides
+        // NO AEC/AGC without it (Apple mode contract) — only a measured,
+        // bounded failure fallback may disable it.
+        XCTAssertEqual(surface.requestedVoiceProcessing, [true])
+        // Cold-start hardening: render resources are prepared BEFORE the
+        // engine starts (the dead-render cycle has been observed on cold
+        // starts), and prepare runs before the surface start call.
+        let kinds = surface.events.map(\.kind)
+        guard let prepareIndex = kinds.firstIndex(of: .prepare),
+              let prepareEngineIndex = kinds.firstIndex(of: .prepareEngine),
+              let startIndex = kinds.firstIndex(of: .startEngine) else {
+            return XCTFail("expected prepare→prepareEngine→startEngine, got \(kinds)")
+        }
+        XCTAssertLessThan(prepareIndex, prepareEngineIndex, "surface prepare must come first")
+        XCTAssertLessThan(prepareEngineIndex, startIndex, "engine prepare() must run before start()")
+    }
+
+    func testStartFailureTearsDownAndReportsFalse() {
+        let surface = MockAudioSurface()
+        surface.startShouldFail = true
+        let graph = WSAudioGraph(audioSurface: surface)
+        XCTAssertFalse(graph.startIfNeeded(), "a failing engine must never claim audio")
+        XCTAssertFalse(graph.isRunning)
+    }
+
+    /// Recovery policy through the REAL watchdog → request → scheduled
+    /// perform sequence (mock tap never delivers ⇒ tap-dead): the FIRST
+    /// health restart keeps the SAME voice-processing configuration; only
+    /// the SECOND dead render in the window falls back to degraded VP OFF.
+    func testHealthRestartPolicyFirstSameConfigSecondDegradedFallback() async {
+        WSAudioGraph.resetRestartBudgetForTest()
+        let surface = MockAudioSurface()
+        let graph = WSAudioGraph(audioSurface: surface)
+        graph.configureHealthWindowForTest(grace: 0.1, stall: 0.1)
+        XCTAssertTrue(graph.startIfNeeded())
+
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline && surface.requestedVoiceProcessing.count < 3 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        graph.stop()
+        XCTAssertGreaterThanOrEqual(surface.requestedVoiceProcessing.count, 3,
+            "initial start + two health restarts expected, got \(surface.requestedVoiceProcessing)")
+        XCTAssertEqual(surface.requestedVoiceProcessing.first, true,
+                       "the initial start keeps engine voice processing ON (voice-chat provides no AEC without it)")
+        XCTAssertEqual(surface.requestedVoiceProcessing[1], true,
+                       "the FIRST health restart must keep the SAME configuration (same-config rebuild)")
+        XCTAssertEqual(surface.requestedVoiceProcessing[2], false,
+                       "the SECOND dead render is the measured fallback: degraded processing VP OFF")
+    }
+
+    /// A run that stops before the watchdog fires must never restart or
+    /// touch the voice-processing policy (generation fence at request time).
+    func testRunEndingBeforeDetectionNeverRestarts() async {
+        WSAudioGraph.resetRestartBudgetForTest()
+        let surface = MockAudioSurface()
+        let graph = WSAudioGraph(audioSurface: surface)
+        // Grace far above the run's lifetime: detection can never fire.
+        graph.configureHealthWindowForTest(grace: 3600, stall: 3600)
+        XCTAssertTrue(graph.startIfNeeded())
+        graph.stop()
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(surface.requestedVoiceProcessing, [true],
+                       "no restart may fire after stop; VP policy untouched")
+        XCTAssertEqual(surface.events.filter { $0.kind == .startEngine }.count, 1,
+                       "the engine must have started exactly once")
+    }
+}
+
 // MARK: - Real data-flow tests for the WSS audio graph
 
 @MainActor
@@ -259,6 +387,68 @@ final class WSAudioGraphTests: XCTestCase {
         XCTAssertEqual(graph.pendingCaptureCount, 0, "old run's capture8k/pending must not survive stop")
         XCTAssertEqual(graph.convertedCaptureCount, 0)
         graph.stop()
+    }
+
+    // MARK: Run-scoped diagnostics (per-run stop-log evidence)
+
+    func testRunCountersTrackFramesSilenceAndPlayback() {
+        let (graph, _) = makeHeadlessGraph()
+        defer { graph.stop() }
+        var emitted: [[Int16]] = []
+        graph.onMicFrame = { emitted.append($0) }
+
+        // 25 ticks: loud audio for the first 15, silence after (no capture).
+        for _ in 0..<15 {
+            graph.injectCapturedSamplesForTest(constantSamples(0.5, count: 960))
+            graph.tickOnceForTest()
+        }
+        for _ in 0..<10 { graph.tickOnceForTest() }
+
+        // Loud downlink frames for 8 ticks, silent ones for 4.
+        let loud = [Int16](repeating: 12000, count: 160)
+        let quiet = [Int16](repeating: 0, count: 160)
+        for _ in 0..<8 { graph.pushPlayback(loud) }
+        for _ in 0..<4 { graph.pushPlayback(quiet) }
+
+        let run = graph.runDiagnosticsForTest
+        XCTAssertEqual(run.mic, 25, "one mic frame per tick")
+        XCTAssertGreaterThanOrEqual(run.micSilent, 10, "the 10 capture-starved ticks emit silence")
+        XCTAssertGreaterThan(run.micPeak, 8000, "loud capture shows up in the run peak")
+        XCTAssertEqual(run.play, 12)
+        XCTAssertEqual(run.playSilent, 4)
+    }
+
+    func testRunCountersResetOnRestart() {
+        let (graph, _) = makeHeadlessGraph()
+        graph.injectCapturedSamplesForTest(constantSamples(0.5, count: 960))
+        graph.tickOnceForTest()
+        graph.pushPlayback([Int16](repeating: 9000, count: 160))
+        XCTAssertGreaterThan(graph.runDiagnosticsForTest.mic, 0)
+        XCTAssertGreaterThan(graph.runDiagnosticsForTest.play, 0)
+        graph.stop()
+
+        let fresh = RecordingPlaybackSink()
+        XCTAssertTrue(graph.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: fresh))
+        defer { graph.stop() }
+        let run = graph.runDiagnosticsForTest
+        XCTAssertEqual(run.mic, 0, "run counters reset on the new run")
+        XCTAssertEqual(run.play, 0)
+        XCTAssertEqual(run.tickLate, 0)
+    }
+
+    func testMeasureClassifiesSilenceAndPeak() {
+        let loud = [Int16](repeating: 12000, count: 160)
+        let level = WSAudioGraph.measure(loud)
+        XCTAssertFalse(level.silent)
+        XCTAssertEqual(level.peak, 12000)
+        XCTAssertEqual(level.absSum, 12000 * 160)
+
+        let silence = [Int16](repeating: 0, count: 160)
+        XCTAssertTrue(WSAudioGraph.measure(silence).silent)
+        // Sub-threshold noise stays "silent" (mean |x| < 200).
+        let noise = [Int16](repeating: 100, count: 160)
+        XCTAssertTrue(WSAudioGraph.measure(noise).silent)
     }
 
     // MARK: Pipeline units: formats, stride, same-rate

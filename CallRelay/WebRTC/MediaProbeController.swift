@@ -58,12 +58,15 @@ final class MediaProbeController: NSObject {
 
     init(echoChannelEnabled: Bool = true) {
         self.echoChannelEnabled = echoChannelEnabled
+        // Manual audio policy must be installed BEFORE any WebRTC object
+        // exists: a detached probe must never let the SDK auto-activate or
+        // reconfigure the shared AVAudioSession while the WSS relay owns the
+        // live route (2026-10-04 review: two concurrent audio owners stall
+        // the active engine's tap/render cycle). With manual audio the SDK
+        // never flips the GLOBAL isAudioEnabled on factory/peer creation.
+        RTCAudioSession.sharedInstance().useManualAudio = true
         self.factory = RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil)
         super.init()
-        // Manual audio mode matches the live transport's policy; a detached
-        // probe never flips the GLOBAL isAudioEnabled (that could mute an
-        // already-adopted peer of another instance).
-        RTCAudioSession.sharedInstance().useManualAudio = true
     }
 
     // MARK: Offer / answer

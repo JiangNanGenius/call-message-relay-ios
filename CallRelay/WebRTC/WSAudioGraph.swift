@@ -28,11 +28,14 @@ import AVFoundation
 /// tap delivering zeros and player buffers never completing on system-
 /// answered calls). The watchdog watches sink-completion PROGRESS (a
 /// healthy continuously-buffered player always has in-flight buffers, so
-/// "outstanding > 0" can never mean dead) and tap deliveries; one bounded,
-/// generation-fenced engine restart recovers. That restart is the single
-/// supported toggle that disables engine voice processing for diagnosis;
-/// turning it off is safe because the voice-chat session mode applies its
-/// own system voice processing.
+/// "outstanding > 0" can never mean dead) and tap deliveries; bounded,
+/// generation-fenced engine restarts recover. Recovery policy: the first
+/// restart of a window rebuilds with the SAME configuration (engine-level
+/// voice processing stays ON — a cold start without prepare() is the
+/// suspected one-off race); only a SECOND dead render in the same window
+/// falls back to VP OFF, logged explicitly as degraded processing (the
+/// voice-chat mode provides NO echo cancellation or gain correction
+/// without voice processing and lowers playback level).
 /// State shared between the main-actor lifecycle (start/stop/mute) and the
 /// dedicated feed-queue tick. Reference-typed so a `let` on the main actor
 /// class exposes it to nonisolated code without actor-isolation violations.
@@ -60,6 +63,16 @@ private final class FeedState: @unchecked Sendable {
     /// Monotonic uptime of the most recent REAL downlink frame; the call
     /// progress tone only fills silence while this stays stale.
     var lastRealPlaybackUptime: TimeInterval?
+    /// Run-scoped diagnostics (reset on every start): per-run frame counts
+    /// make each graph run self-describing in the stop log, so a physical
+    /// call check can attribute uplink loss to a specific run/stage without
+    /// reading the process-wide (multi-session) census aggregates.
+    var runMicFrames = 0
+    var runMicSilent = 0
+    var runMicPeak = 0
+    var runPlayFrames = 0
+    var runPlaySilent = 0
+    var runTickLate = 0
 }
 
 /// Process-wide engine-restart budget shared by all graph instances: at
@@ -69,6 +82,16 @@ private final class FeedState: @unchecked Sendable {
 private final class RestartBudget: @unchecked Sendable {
     let lock = NSLock()
     var timestamps: [TimeInterval] = []
+
+    /// Health restarts already spent in the current window (recovery
+    /// policy: first = same-config rebuild, second = degraded VP-off).
+    var count: Int {
+        lock.lock()
+        let now = ProcessInfo.processInfo.systemUptime
+        let live = timestamps.filter { now - $0 <= 600 }.count
+        lock.unlock()
+        return live
+    }
 }
 
 @MainActor
@@ -96,10 +119,18 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     private let feedQueue = DispatchQueue(label: "callrelay.audio.feed")
     private var configuredForHeadlessTesting = false
 
-    /// Engine-level voice processing. Only the health-restart recovery path
-    /// turns this off (diagnostic toggle for the observed dead-render
-    /// cycle); `prepare` applies the flag in BOTH directions on the reused
-    /// engine's input node.
+    /// Engine-level voice processing. DEFAULT ON: Apple's voice-chat session
+    /// mode does NOT provide echo cancellation or gain correction unless
+    /// voice processing is enabled (Voice I/O / inputNode
+    /// setVoiceProcessingEnabled) — with VP off, voiceChat additionally
+    /// LOWERS the playback level, so disabling it by default would degrade
+    /// the already-quiet uplink (build-18 field complaint). A measured,
+    /// bounded failure fallback MAY disable it: the FIRST health restart of
+    /// a window rebuilds with the SAME configuration (a cold start without
+    /// prepare() is the suspected one-off race), and only a SECOND dead
+    /// render in the same window falls back to VP OFF — logged explicitly as
+    /// degraded processing (no AEC/AGC, lowered playback). `prepare` applies
+    /// the flag in BOTH directions on the reused engine's input node.
     private var voiceProcessingEnabled = true
 
     /// Production audio surface (abstracted so lifecycle/start failure is
@@ -136,13 +167,23 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             let sink = PlayerNodeSink(player: setup.player)
             self.sink = sink
             playback.configure(sink: sink, format: setup.playbackFormat)
+            // Pre-allocate the render resources while the session is settled:
+            // starting a cold engine is exactly when the dead-render cycle
+            // (dead tap / never-completing player buffers) has been observed.
+            audioSurface.prepareEngine()
             try audioSurface.startEngine()
             installCapture(pipeline: pipeline)
-            feed.lock.lock()
-            feed.capture = pipeline
-            feed.running = true
-            feed.generation &+= 1
-            feed.lock.unlock()
+        feed.lock.lock()
+        feed.capture = pipeline
+        feed.running = true
+        feed.generation &+= 1
+        feed.runMicFrames = 0
+        feed.runMicSilent = 0
+        feed.runMicPeak = 0
+        feed.runPlayFrames = 0
+        feed.runPlaySilent = 0
+        feed.runTickLate = 0
+        feed.lock.unlock()
         } catch {
             AppLog.media.notice("ws audio engine start failed: \((error as NSError).code)")
             DiagnosticsCensus.shared.increment("audio.graphStartFail")
@@ -177,6 +218,12 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.capture = WSCapturePipeline(sourceFormat: captureFormat)
         feed.running = true
         feed.generation &+= 1
+        feed.runMicFrames = 0
+        feed.runMicSilent = 0
+        feed.runMicPeak = 0
+        feed.runPlayFrames = 0
+        feed.runPlaySilent = 0
+        feed.runTickLate = 0
         feed.lock.unlock()
         playback.configure(sink: sink, format: playbackFormat)
         configuredForHeadlessTesting = true
@@ -198,10 +245,17 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
 
         feedTimer?.cancel()
         feedTimer = nil
+        feed.lock.lock()
+        let run = (mic: feed.runMicFrames, micSilent: feed.runMicSilent, micPeak: feed.runMicPeak,
+                   play: feed.runPlayFrames, playSilent: feed.runPlaySilent,
+                   tickLate: feed.runTickLate)
+        feed.lock.unlock()
         DiagnosticsCensus.shared.increment("audio.graphStop")
         DiagnosticsStore.shared.log("audio",
             "graph stop capDropped=\(pipeline?.droppedSamples ?? 0) "
-            + "playDropped=\(playback.droppedFrames) inFlight=\(playback.framesInFlight)")
+            + "playDropped=\(playback.droppedFrames) inFlight=\(playback.framesInFlight)"
+            + " mic=\(run.mic) micSilent=\(run.micSilent) micPeak=\(run.micPeak)"
+            + " play=\(run.play) playSilent=\(run.playSilent) tickLate=\(run.tickLate)")
 
         removeCapture()
         playback.flush()
@@ -233,6 +287,15 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.healthGrace = grace
         feed.healthStall = stall
         feed.lock.unlock()
+    }
+
+    /// Resets the process-wide restart budget (deterministic recovery-policy
+    /// tests; production never calls this).
+    static func resetRestartBudgetForTest() {
+        let budget = restartBudget
+        budget.lock.lock()
+        budget.timestamps.removeAll()
+        budget.lock.unlock()
     }
 
     private func healthRunStarted() {
@@ -327,6 +390,12 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             DiagnosticsCensus.shared.increment("audio.engineRestartSkipped")
             return
         }
+        // Restarts BEFORE this one (the recovery policy boundary): the first
+        // restart keeps the same config; only the second dead render in the
+        // window falls back to degraded processing. Captured BEFORE the
+        // append — reading the count later at perform time would count this
+        // very restart and disable VP on the FIRST recovery.
+        let priorRestarts = budget.timestamps.count
         budget.timestamps.append(now)
         budget.lock.unlock()
 
@@ -334,22 +403,37 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         DiagnosticsCensus.shared.increment("audio.engineRestart.\(reason)")
         DispatchQueue.main.async { [weak self] in
             Task { @MainActor in
-                self?.performHealthRestart(reason: reason, generation: generation)
+                self?.performHealthRestart(reason: reason, generation: generation,
+                                           priorRestarts: priorRestarts)
             }
         }
     }
 
     /// Main-actor restart: rebuild the engine once, verifying the graph
-    /// generation so a queued restart can never hit a newer run. Engine
-    /// voice processing moves off for the rest of the process — the
-    /// supported recovery toggle for the observed dead-render cycle; the
-    /// voice-chat session mode applies its own system voice processing.
-    private func performHealthRestart(reason: String, generation: UInt64) {
+    /// generation so a queued restart can never hit a newer run. Recovery
+    /// policy (bounded, measured): the FIRST health restart in the current
+    /// window keeps the SAME voice-processing configuration — a cold start
+    /// without `prepare()` is the suspected one-off race, so the rebuild
+    /// adds engine prepare(). Only a SECOND dead render in the same window
+    /// (`priorRestarts >= 1`) falls back to VP OFF, logged explicitly as
+    /// degraded processing (no AEC/AGC and lowered playback per the
+    /// voice-chat mode contract). `priorRestarts` is captured at REQUEST
+    /// time (before the budget append) so a stale or superseded perform can
+    /// never miscount or degrade a different run. The process-wide budget
+    /// (3 restarts / 600 s) bounds the fallback automatically.
+    private func performHealthRestart(reason: String, generation: UInt64,
+                                      priorRestarts: Int) {
         feed.lock.lock()
         guard feed.running, feed.generation == generation else { feed.lock.unlock(); return }
         feed.lock.unlock()
-        DiagnosticsStore.shared.log("audio", "engine health restart: \(reason)")
-        voiceProcessingEnabled = false
+        if priorRestarts >= 1 && voiceProcessingEnabled {
+            voiceProcessingEnabled = false
+            DiagnosticsStore.shared.log("audio",
+                "engine health restart: \(reason); degraded processing fallback: "
+                + "voice processing OFF (no echo cancellation/gain correction, lowered playback)")
+        } else {
+            DiagnosticsStore.shared.log("audio", "engine health restart: \(reason)")
+        }
         // Headless runs own no engine; restarting them would build a real
         // AVAudioEngine inside unit tests for no diagnostic value.
         guard !configuredForHeadlessTesting else { return }
@@ -436,6 +520,9 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             DiagnosticsCensus.shared.maximize("audio.tickMsMax", intervalMs)
             if intervalMs > 26 {
                 DiagnosticsCensus.shared.increment("audio.tickLate")
+                feed.lock.lock()
+                feed.runTickLate += 1
+                feed.lock.unlock()
             }
         }
     }
@@ -450,9 +537,36 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         }
         // Aggregate counters only — never a per-frame log line.
         DiagnosticsCensus.shared.increment("audio.micFrames")
-        Self.recordLevel(frame, absSumKey: "audio.micAbsSum",
-                         silentKey: "audio.micSilentFrames", peakKey: "audio.micPeakMax")
+        let level = Self.measure(frame)
+        Self.record(level, absSumKey: "audio.micAbsSum",
+                    silentKey: "audio.micSilentFrames", peakKey: "audio.micPeakMax")
+        feed.lock.lock()
+        feed.runMicFrames += 1
+        if level.silent { feed.runMicSilent += 1 }
+        if level.peak > feed.runMicPeak { feed.runMicPeak = level.peak }
+        feed.lock.unlock()
         emit?(frame)
+    }
+
+    /// Per-frame level statistics (pure; one pass over the frame).
+    nonisolated static func measure(_ frame: [Int16], silentThreshold: Int = 200)
+        -> (absSum: Int, peak: Int, silent: Bool) {
+        var absSum = 0
+        var peak = 0
+        for sample in frame {
+            let magnitude = abs(Int(sample))
+            absSum += magnitude
+            if magnitude > peak { peak = magnitude }
+        }
+        return (absSum, peak, absSum < frame.count * silentThreshold)
+    }
+
+    nonisolated static func record(_ level: (absSum: Int, peak: Int, silent: Bool),
+                                   absSumKey: String, silentKey: String, peakKey: String) {
+        let census = DiagnosticsCensus.shared
+        census.add(absSumKey, level.absSum)
+        census.maximize(peakKey, level.peak)
+        if level.silent { census.increment(silentKey) }
     }
 
     /// Aggregate level evidence for one 160-sample frame: running |sample|
@@ -464,19 +578,8 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     nonisolated static func recordLevel(_ frame: [Int16], absSumKey: String,
                                         silentKey: String, peakKey: String,
                                         silentThreshold: Int = 200) {
-        var absSum = 0
-        var peak = 0
-        for sample in frame {
-            let magnitude = abs(Int(sample))
-            absSum += magnitude
-            if magnitude > peak { peak = magnitude }
-        }
-        let census = DiagnosticsCensus.shared
-        census.add(absSumKey, absSum)
-        census.maximize(peakKey, peak)
-        if absSum < frame.count * silentThreshold {
-            census.increment(silentKey)
-        }
+        record(measure(frame, silentThreshold: silentThreshold),
+               absSumKey: absSumKey, silentKey: silentKey, peakKey: peakKey)
     }
 
     // MARK: Playback
@@ -489,6 +592,9 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         let running = feed.running
         if running {
             feed.lastRealPlaybackUptime = ProcessInfo.processInfo.systemUptime
+            feed.runPlayFrames += 1
+            let level = Self.measure(frame)
+            if level.silent { feed.runPlaySilent += 1 }
         }
         feed.lock.unlock()
         guard running else { return }
@@ -522,6 +628,16 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     var queuedPlaybackFrames: Int { playback.queuedFrames }
     var framesInFlight: Int { playback.framesInFlight }
     var playbackDroppedFrames: Int { playback.droppedFrames }
+    /// Run-scoped diagnostics snapshot (tests assert the per-run counters
+    /// behind the extended stop-log evidence).
+    var runDiagnosticsForTest: (mic: Int, micSilent: Int, micPeak: Int,
+                                play: Int, playSilent: Int, tickLate: Int) {
+        feed.lock.lock()
+        let value = (feed.runMicFrames, feed.runMicSilent, feed.runMicPeak,
+                     feed.runPlayFrames, feed.runPlaySilent, feed.runTickLate)
+        feed.lock.unlock()
+        return value
+    }
     var isRunning: Bool {
         feed.lock.lock(); defer { feed.lock.unlock() }
         return feed.running
@@ -572,6 +688,7 @@ protocol AudioEngineControlling: AnyObject {
                          format: AVAudioFormat,
                          callback: @escaping (AVAudioPCMBuffer) -> Void)
     func removeInputTap()
+    func prepareEngine()
     func startEngine() throws
     func stopEngine()
     func attachPlayer(_ player: AudioPlayerControlling, format: AVAudioFormat)
@@ -600,6 +717,9 @@ protocol AudioSurfaceProviding: AnyObject {
     /// `enableVoiceProcessing` mirrors the graph health policy: engine
     /// voice processing retries OFF after a dead-render restart.
     func prepare(enableVoiceProcessing: Bool) throws -> AudioSurfaceSetup
+    /// Pre-allocates render resources before `startEngine` (cold starts are
+    /// when the dead-render cycle has been observed).
+    func prepareEngine()
     func startEngine() throws
 }
 
@@ -663,6 +783,8 @@ private final class AVAudioEngineSurface: AudioSurfaceProviding {
 
     func startEngine() throws { try engine.startEngine() }
 
+    func prepareEngine() { engine.prepareEngine() }
+
     private final class EngineBox: AudioEngineControlling {
         let avEngine = AVAudioEngine()
         weak var attachedPlayer: PlayerBox?
@@ -687,6 +809,7 @@ private final class AVAudioEngineSurface: AudioSurfaceProviding {
         func removeInputTap() {
             avEngine.inputNode.removeTap(onBus: 0)
         }
+        func prepareEngine() { avEngine.prepare() }
         func startEngine() throws { try avEngine.start() }
         func stopEngine() { avEngine.stop() }
         func disconnectPlayerInput() {

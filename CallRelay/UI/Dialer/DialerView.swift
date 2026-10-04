@@ -1,28 +1,36 @@
 import SwiftUI
 import UIKit
 
-/// Native Phone-style keypad: generous whitespace, subtle circular keys with
-/// normal digits and small letter captions, a single large green call button,
-/// and a discreet gateway status line. No large title competes with the pad.
+/// Native Phone-style keypad with FIXED geometry: the number, SIM selector,
+/// keypad and call controls never move when suggestions appear or disappear
+/// (the 2026-10-04 field complaint: the growing inline suggestion list pushed
+/// the keypad and green call button under the tab bar). Matches present at
+/// most one compact two-row panel — ONE best candidate plus an
+/// "其他 N 个结果" row that opens a sheet with the full list. Overflow lives
+/// in the sheet, never on the page.
 struct DialerView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var number = ""
-    @State private var expandedContactID: String?
+    @State private var showsResultsSheet = false
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
     private let keys: [String] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
 
-    /// Keypad-fragment contact matches (compact rows above the pad). Never
-    /// pops the system keyboard; selection fills the number like a dialed
-    /// digit. Multi-number contacts expand to per-number rows first.
-    private var suggestions: [ContactSuggestion] {
-        ContactAutocomplete.suggestions(contacts: model.contacts.contacts, query: number, limit: 4)
+    /// ALL matches (uncapped) so the inline "其他 N 个结果" count is honest
+    /// and the results sheet can reach every contact — the cached pinyin/T9
+    /// index keeps per-keystroke full scans cheap.
+    private var allSuggestions: [ContactSuggestion] {
+        model.contacts.searchContacts(query: number, limit: 0)
     }
 
     private var showSuggestions: Bool {
-        ContactSuggestionList.shouldShowSuggestions(suggestions: suggestions, query: number)
+        ContactSuggestionList.shouldShowSuggestions(suggestions: allSuggestions, query: number)
     }
+
+    /// The fixed-height suggestion slot (2 rows). Reserving it keeps the
+    /// keypad pinned whether or not matches exist.
+    private let suggestionSlotHeight: CGFloat = 104
 
     var body: some View {
         NavigationStack {
@@ -38,35 +46,15 @@ struct DialerView: View {
 
                 DialNumberDisplay(number: $number)
 
-                if let match = contactMatch, !match.isEmpty {
-                    Text(match)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
-                } else {
-                    Text(" ")
-                        .font(.subheadline)
-                        .padding(.top, 2)
+                // The suggestion slot ALWAYS occupies its fixed height
+                // (clear placeholder) so the keypad and call controls never
+                // move when matches appear or disappear.
+                ZStack(alignment: .top) {
+                    Color.clear
+                    suggestionPanel
                 }
-
-                if showSuggestions {
-                    ContactSuggestionList(
-                        suggestions: suggestions,
-                        expandedNumbers: expandedContactID.map {
-                            ContactAutocomplete.numbers(for: $0, in: model.contacts.contacts)
-                        },
-                        onFill: { suggestion in
-                            number = suggestion.phone
-                            expandedContactID = nil
-                        },
-                        onExpand: { contactID in
-                            expandedContactID = expandedContactID == contactID ? nil : contactID
-                        }
-                    )
-                    .padding(.horizontal, 40)
-                    .padding(.bottom, 6)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
+                .frame(height: suggestionSlotHeight)
+                .padding(.top, 6)
 
                 Spacer(minLength: 10)
 
@@ -122,6 +110,18 @@ struct DialerView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
+            .sheet(isPresented: $showsResultsSheet) {
+                DialerResultsSheet(
+                    query: number,
+                    suggestions: allSuggestions,
+                    contacts: model.contacts.contacts,
+                    onFill: { suggestion in
+                        number = suggestion.phone
+                        showsResultsSheet = false
+                    }
+                )
+                .presentationDetents([.medium, .large])
+            }
             .alert("已按拦截规则阻止", isPresented: Binding(
                 get: { model.blockedDialAttempt != nil },
                 set: { if !$0 { model.blockedDialAttempt = nil } }
@@ -135,14 +135,54 @@ struct DialerView: View {
         }
     }
 
+    /// Compact two-row panel: row 1 = best candidate (tap fills; a
+    /// multi-number contact opens the sheet so a number is chosen
+    /// explicitly), row 2 = "其他 N 个结果" opening the sheet.
+    @ViewBuilder
+    private var suggestionPanel: some View {
+        if showSuggestions, let best = allSuggestions.first {
+            VStack(spacing: 0) {
+                BestMatchRow(suggestion: best) {
+                    if best.hasMultipleNumbers {
+                        showsResultsSheet = true
+                    } else {
+                        number = best.phone
+                    }
+                }
+                if allSuggestions.count > 1 {
+                    Divider().padding(.leading, 52)
+                    Button {
+                        showsResultsSheet = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("其他 \(allSuggestions.count - 1) 个结果")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Image(systemName: "chevron.up")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("dialerMoreResults")
+                }
+            }
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 40)
+            .transition(.opacity)
+        }
+    }
+
     private var canDial: Bool {
         !number.trimmingCharacters(in: .whitespaces).isEmpty
             && (!model.dialableLines.isEmpty || model.isDemo)
-    }
-
-    private var contactMatch: String? {
-        guard !number.isEmpty else { return nil }
-        return model.contacts.name(forPeer: number)
     }
 
     /// Phone-like current-SIM indicator. Shown in live mode whenever a line
@@ -169,8 +209,134 @@ struct DialerView: View {
     private func append(_ key: String) {
         if number.count < 32 {
             number.append(key)
-            expandedContactID = nil
         }
+    }
+}
+
+/// The single best candidate row (avatar + name + labeled number). Explicit
+/// per-number choice for multi-number contacts happens in the results sheet.
+private struct BestMatchRow: View {
+    let suggestion: ContactSuggestion
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(Color(.systemGray3))
+                    .frame(width: 30, height: 30)
+                    .overlay(
+                        Text(suggestion.name.first.map(String.init) ?? "?")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.white)
+                    )
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(suggestion.name)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(suggestion.hasMultipleNumbers
+                         ? String(localized: "多个号码，点选其中一个")
+                         : suggestion.labeledPhone)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if suggestion.hasMultipleNumbers {
+                    Image(systemName: "chevron.up")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("dialerBestMatch")
+        .accessibilityHint(suggestion.hasMultipleNumbers
+                           ? "该联系人有多个号码"
+                           : "使用号码 \(suggestion.phone)")
+    }
+}
+
+/// Full suggestion list presented as a sheet so overflow never affects the
+/// dialer page geometry. Reuses the shared multi-number expansion: a number
+/// is only ever filled by an explicit per-number choice.
+private struct DialerResultsSheet: View {
+    let query: String
+    let suggestions: [ContactSuggestion]
+    let contacts: [ContactItem]
+    let onFill: (ContactSuggestion) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var expandedContactID: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(suggestions) { suggestion in
+                    if suggestion.hasMultipleNumbers {
+                        DisclosureGroup(isExpanded: Binding(
+                            get: { expandedContactID == suggestion.contactID },
+                            set: { expandedContactID = $0 ? suggestion.contactID : nil }
+                        )) {
+                            ForEach(ContactAutocomplete.numbers(for: suggestion.contactID, in: contacts)) { number in
+                                Button {
+                                    onFill(number)
+                                } label: {
+                                    HStack {
+                                        Text(number.labeledPhone)
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                            }
+                        } label: {
+                            rowLabel(suggestion)
+                        }
+                    } else {
+                        Button {
+                            onFill(suggestion)
+                        } label: {
+                            rowLabel(suggestion)
+                        }
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle(query.isEmpty ? String(localized: "联系人") : query)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func rowLabel(_ suggestion: ContactSuggestion) -> some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(Color(.systemGray3))
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Text(suggestion.name.first.map(String.init) ?? "?")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                )
+            VStack(alignment: .leading, spacing: 1) {
+                Text(suggestion.name).font(.body).lineLimit(1)
+                Text(suggestion.hasMultipleNumbers
+                     ? String(localized: "多个号码，点选其中一个")
+                     : suggestion.labeledPhone)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 
@@ -226,44 +392,52 @@ private struct DialNumberDisplay: View {
     @Binding var number: String
 
     var body: some View {
-        Text(number.isEmpty ? " " : number)
-            .font(.system(size: 36, weight: .regular))
-            .monospacedDigit()
-            .lineLimit(1)
-            .minimumScaleFactor(0.45)
-            .frame(maxWidth: .infinity)
-            .frame(height: 46)
-            .contentShape(Rectangle())
-            .contextMenu {
+        HStack(spacing: 2) {
+            Text(number.isEmpty ? " " : number)
+                .font(.system(size: 36, weight: .regular))
+                .monospacedDigit()
+                .lineLimit(1)
+                // Shrink-to-fit inside the REAL layout budget that remains
+                // after the clear button's reserved slot, so long numbers
+                // can never run under the clear action.
+                .minimumScaleFactor(0.4)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .frame(height: 46)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(number.isEmpty ? "号码" : number)
+            if !number.isEmpty {
                 Button {
-                    pasteFromPasteboard()
+                    number = ""
                 } label: {
-                    Label("粘贴", systemImage: "doc.on.clipboard")
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(Color(UIColor.tertiaryLabel))
+                        .frame(width: 28, height: 46)
                 }
-                .disabled(pasteboardText == nil)
-                Button {
-                    UIPasteboard.general.string = number
-                } label: {
-                    Label("拷贝", systemImage: "doc.on.doc")
-                }
-                .disabled(number.isEmpty)
+                .buttonStyle(.plain)
+                .accessibilityLabel("清空号码")
+                .fixedSize()
             }
-            .overlay(alignment: .trailing) {
-                if !number.isEmpty {
-                    Button {
-                        number = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(Color(UIColor.tertiaryLabel))
-                    }
-                    .padding(.trailing, 24)
-                    .accessibilityLabel("清空号码")
-                }
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 46)
+        .contentShape(Rectangle())
+        .accessibilityIdentifier("dialerNumberDisplay")
+        .contextMenu {
+            Button {
+                pasteFromPasteboard()
+            } label: {
+                Label("粘贴", systemImage: "doc.on.clipboard")
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(number.isEmpty ? "号码" : number)
-            .accessibilityHint("长按可粘贴或拷贝")
+            .disabled(pasteboardText == nil)
+            Button {
+                UIPasteboard.general.string = number
+            } label: {
+                Label("拷贝", systemImage: "doc.on.doc")
+            }
+            .disabled(number.isEmpty)
+        }
+        .accessibilityHint("长按可粘贴或拷贝")
     }
 
     private var pasteboardText: String? {

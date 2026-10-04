@@ -31,7 +31,15 @@ struct ContactItem: Identifiable, Equatable, Sendable {
         let value: String
     }
 
+    /// Locale/script-aware display name computed once from the system
+    /// contact (Chinese names read family-first in Chinese locales, Latin
+    /// names keep their natural order — the system Contacts presentation).
+    /// nil for memberwise-built items (demo fixtures), which fall back to
+    /// the plain join below. Stored fields are never altered.
+    var formattedName: String? = nil
+
     var displayName: String {
+        if let formattedName, !formattedName.isEmpty { return formattedName }
         let full = [givenName, familyName]
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -104,6 +112,15 @@ extension ContactItem {
         // Guard every optional restricted key: an unfetched/unentitled key
         // must read as empty, never raise or silently fail the conversion.
         note = cn.isKeyAvailable(CNContactNoteKey) ? cn.note : ""
+        // Display-layer only: the native, locale/script-aware full name.
+        if !cn.givenName.isEmpty || !cn.familyName.isEmpty {
+            let display = CNMutableContact()
+            display.givenName = cn.givenName
+            display.familyName = cn.familyName
+            display.namePrefix = cn.namePrefix
+            display.nickname = cn.nickname
+            formattedName = CNContactFormatter.string(from: display, style: .fullName)
+        }
     }
 
     nonisolated static func addressSummary(_ address: CNPostalAddress) -> String? {
@@ -201,10 +218,22 @@ enum ContactsAccess: Equatable {
 @MainActor
 final class ContactsService: ObservableObject {
     @Published private(set) var access: ContactsAccess = .notDetermined
-    @Published private(set) var contacts: [ContactItem] = []
+    @Published private(set) var contacts: [ContactItem] = [] {
+        didSet { searchIndex.rebuild(contacts: contacts) }
+    }
     @Published private(set) var isLoading = false
     /// Canonical phone key -> display name, for recents/thread decoration.
     @Published private(set) var nameIndex: [String: String] = [:]
+    /// Cached pinyin/T9 search over the snapshot; rebuilt only when the
+    /// snapshot changes (never per keystroke).
+    private var searchIndex = ContactSearchIndex()
+
+    /// Autocomplete over the snapshot: Latin/pinyin/initial matching for
+    /// text queries, T9 + phone fragments for digit queries. `limit <= 0`
+    /// returns every match (dialer count/sheet honesty).
+    func searchContacts(query: String, limit: Int = 6) -> [ContactSuggestion] {
+        searchIndex.search(query: query, limit: limit)
+    }
 
     private let store: CNContactStore
     private let writer: ContactStoreWriting
@@ -441,7 +470,45 @@ final class ContactsService: ObservableObject {
                 .init(label: CNLabelHome, value: "555-014-3333"),
                 .init(label: CNLabelWork, value: "555-014-4444")
             ],
-            emailAddresses: [], avatarData: nil)
+            emailAddresses: [], avatarData: nil),
+        // A deeper Chinese/Latin set so the dialer sheet can prove the
+        // one-best + "其他 N 个结果" overflow with an honest count.
+        ContactItem(
+            id: "demo-chenchen", givenName: "陈晨", familyName: "", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberMobile, value: "555-015-1001")],
+            emailAddresses: [], avatarData: nil),
+        ContactItem(
+            id: "demo-chenchao", givenName: "陈超", familyName: "", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberMobile, value: "555-015-1002")],
+            emailAddresses: [], avatarData: nil),
+        ContactItem(
+            id: "demo-chengang", givenName: "程刚", familyName: "", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberMobile, value: "555-015-1003")],
+            emailAddresses: [], avatarData: nil),
+        ContactItem(
+            id: "demo-liqiang", givenName: "李强", familyName: "", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberMobile, value: "555-015-1004")],
+            emailAddresses: [], avatarData: nil),
+        ContactItem(
+            id: "demo-liwei", givenName: "李伟", familyName: "", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberMobile, value: "555-015-1005")],
+            emailAddresses: [], avatarData: nil),
+        ContactItem(
+            id: "demo-liuyang", givenName: "刘洋", familyName: "", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberMobile, value: "555-015-1006")],
+            emailAddresses: [], avatarData: nil),
+        ContactItem(
+            id: "demo-yangfan", givenName: "杨帆", familyName: "", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberMobile, value: "555-015-1007")],
+            emailAddresses: [], avatarData: nil),
+        ContactItem(
+            id: "demo-zhaomin", givenName: "赵敏", familyName: "", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberMobile, value: "555-015-1008")],
+            emailAddresses: [], avatarData: nil),
+        ContactItem(
+            id: "demo-huangxm", givenName: "黄晓明", familyName: "", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberMobile, value: "555-015-1009")],
+            emailAddresses: [], avatarData: nil),
     ]
 
     /// Load ``demoFixtureContacts`` as the active snapshot (demo/UI tests).

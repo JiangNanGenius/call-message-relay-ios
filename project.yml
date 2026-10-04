@@ -29,7 +29,7 @@ configs:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.11"
+    MARKETING_VERSION: "0.3.12"
     # v0.3.5 public build 9 stays immutable. Build 12 (0.3.5) was the
     # TestFlight CloudKit/WSS/LCK repair; build 13 ships the build-12 crash,
     # iCloud, push-environment and audio fixes in BOTH editions and adds the
@@ -46,8 +46,16 @@ settings:
     # field: the digits-only phonePad keyboard made contact-name autocomplete
     # unreachable even though the matcher worked, so the To field now uses the
     # normal multilingual keyboard with a "姓名或号码" placeholder (the dialer
-    # keypad stays digits-only).
-    CURRENT_PROJECT_VERSION: "18"
+    # keypad stays digits-only). Build 19 (0.3.12) repairs the uplink audio
+    # path (gateway jitter-buffer cursor rebase; bounded engine-restart
+    # recovery with per-run diagnostics; WebRTC probe manual-audio ordering),
+    # restores the native VoIP push sender (gateway APNs config preservation),
+    # fixes the SMS "threadKey 格式错误" screen (canonical line:peer keys,
+    # legacy-key resolution, sanitized errors), rebuilds the dialer with fixed
+    # compact geometry (one best match + sheet for all results, Apple-style)
+    # and adds true pinyin/initial/T9 contact search with locale-aware name
+    # display.
+    CURRENT_PROJECT_VERSION: "19"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.
