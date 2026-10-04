@@ -58,7 +58,7 @@ struct RootView: View {
             // handoff (or a manual check): re-authenticate with the
             // stored pairing and surface actually-ringing calls.
             if IncomingCheckDeepLink.matches(url) {
-                model.handleIncomingCheckDeepLink()
+                model.handleIncomingCheckDeepLink(url)
                 return
             }
 #endif

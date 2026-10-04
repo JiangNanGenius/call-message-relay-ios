@@ -31,6 +31,17 @@ final class IncomingCheckTests: XCTestCase {
         XCTAssertFalse(IncomingCheckDeepLink.matches(URL(string: "tel:+15550100")!))
     }
 
+    func testPreferredCallIDParsesOnlyConservativeHints() {
+        XCTAssertEqual(
+            IncomingCheckDeepLink.preferredCallID(from: URL(string: "callrelay://incoming?call=line1:wc-7&g=gw-1")!),
+            "line1:wc-7")
+        XCTAssertNil(IncomingCheckDeepLink.preferredCallID(from: URL(string: "callrelay://incoming")!))
+        XCTAssertNil(IncomingCheckDeepLink.preferredCallID(from: URL(string: "callrelay://settings?call=x")!))
+        // Structure-smuggling values are rejected outright.
+        XCTAssertNil(IncomingCheckDeepLink.preferredCallID(from: URL(string: "callrelay://incoming?call=a%20b")!))
+        XCTAssertNil(IncomingCheckDeepLink.preferredCallID(from: URL(string: "callrelay://incoming?call=a&b")!))
+    }
+
     // MARK: Filter
 
     func testFilterDropsEndedOutboundForeignAndDuplicateCalls() {
@@ -115,6 +126,27 @@ final class IncomingCheckTests: XCTestCase {
         XCTAssertFalse(driver.autoAnswered, "the model path never auto-answers")
     }
 
+    func testPreferredCallHintNarrowsOnlyWhenVerifiedRinging() async throws {
+        let (model, api, driver, _) = try makeModel()
+        api.activeCallsStub = [
+            makeRecord(id: "call-a", state: .incomingRinging, peer: "10010"),
+            makeRecord(id: "call-b", state: .incomingRinging, peer: "10086")
+        ]
+        // A valid hint narrows to exactly that call, even with several ringing.
+        let outcome = await model.performIncomingCheck(preferringCallID: "call-b")
+        XCTAssertEqual(outcome, .ringing(1))
+        await waitUntil { driver.incomingReports.count == 1 }
+        XCTAssertEqual(driver.incomingReports.map(\.id), ["call-b"])
+
+        // A stale/foreign hint must NOT surface the wrong call: every
+        // genuinely ringing authorized call is surfaced instead.
+        driver.reset()
+        let fallback = await model.performIncomingCheck(preferringCallID: "stale-call")
+        XCTAssertEqual(fallback, .ringing(2))
+        await waitUntil { driver.incomingReports.count == 2 }
+        XCTAssertEqual(Set(driver.incomingReports.map(\.id)), ["call-a", "call-b"])
+    }
+
     func testModelCheckWithoutPairingIsNotPaired() async throws {
         let model = AppModel(
             identities: IdentityStore(keychain: DictionaryKeychain()),
@@ -132,7 +164,7 @@ final class IncomingCheckTests: XCTestCase {
         api.activeCallsStub = []
         IncomingCallChecker.shared.model = model
 
-        model.handleIncomingCheckDeepLink()
+        model.handleIncomingCheckDeepLink(URL(string: "callrelay://incoming")!)
         await waitUntil { model.incomingCheckNotice != nil }
         XCTAssertFalse(model.incomingCheckNotice?.isEmpty ?? true)
         model.dismissIncomingCheckNotice()
@@ -201,6 +233,10 @@ private final class CheckRecordingDriver: CallDriver {
     func playDTMF(_ digit: String) {}
     func setMuted(_ muted: Bool) {}
     func setSpeaker(_ enabled: Bool) {}
-    func reset() {}
+    func reset() {
+        incomingReports.removeAll()
+        answers = 0
+        hangups = 0
+    }
 }
 #endif

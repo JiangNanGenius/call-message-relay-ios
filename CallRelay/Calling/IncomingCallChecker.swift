@@ -80,7 +80,9 @@ final class IncomingCallChecker {
         self.modelWait = modelWait
     }
 
-    func check(source: IncomingCheckSource) async -> IncomingCheckOutcome {
+    func check(
+        source: IncomingCheckSource, preferredCallID: String? = nil
+    ) async -> IncomingCheckOutcome {
         if inFlight { return .busy }
         inFlight = true
         defer { inFlight = false }
@@ -92,7 +94,7 @@ final class IncomingCallChecker {
         // Forces/awaits the real live session (driver + CallKit/LCK owner).
         await model.ensureLiveForIncomingCheck()
         guard model.canRunLiveIncomingCheck else { return .offline }
-        return await model.performIncomingCheck()
+        return await model.performIncomingCheck(preferringCallID: preferredCallID)
     }
 
     /// Bounded wait for the app's own model to register; never creates a

@@ -26,5 +26,25 @@ enum IncomingCheckDeepLink {
         let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
         return host.isEmpty && (path == "incoming" || path == "check-incoming")
     }
+
+    /// The exact call hinted by the web handoff (`?call=<id>`). Strictly a
+    /// hint: the caller must re-validate it against the authorized ringing
+    /// set before narrowing anything, and fall back to the full check when
+    /// it is absent, stale or foreign. Only a conservative character set is
+    /// accepted so the value can never smuggle structure.
+    static func preferredCallID(from url: URL) -> String? {
+        guard matches(url) else { return nil }
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let items = components.queryItems,
+              // Only the expected hint keys may appear; anything else makes
+              // the whole hint untrusted.
+              items.allSatisfy({ $0.name == "call" || $0.name == "g" }),
+              let item = items.first(where: { $0.name == "call" }),
+              let value = item.value else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ":-._"))
+        guard !value.isEmpty, value.count <= 128,
+              value.rangeOfCharacter(from: allowed.inverted) == nil else { return nil }
+        return value
+    }
 }
 #endif

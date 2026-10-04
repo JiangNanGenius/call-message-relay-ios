@@ -2011,13 +2011,18 @@ final class AppModel: ObservableObject {
     /// Fetches the authoritative ringing set and hands it to the native path.
     /// Authentication uses this app's own stored pairing; nothing from the
     /// deeplink/notification is trusted.
-    func performIncomingCheck() async -> IncomingCheckOutcome {
+    /// - Parameter preferredCallID: an untrusted hint from the notification
+    ///   handoff (PWA edition). It narrows the presentation ONLY when the
+    ///   re-validated, authorized ringing set actually contains that call;
+    ///   otherwise every ringing call is surfaced — a stale or foreign hint
+    ///   can never select the wrong call.
+    func performIncomingCheck(preferringCallID preferredCallID: String? = nil) async -> IncomingCheckOutcome {
         guard !isDemo else { return .notPaired }
         guard isPaired else { return .notPaired }
         guard let api, driver != nil else { return .offline }
         do {
             let active = try await api.activeCalls()
-            return surfaceRingingCalls(active)
+            return surfaceRingingCalls(active, preferringCallID: preferredCallID)
         } catch let error as APIError {
             switch error {
             case .unauthorized, .noCredentials:
@@ -2033,12 +2038,22 @@ final class AppModel: ObservableObject {
     /// Presents only actually-ringing inbound calls through the existing
     /// event path (CallKit/LCK, per-call dedup, never auto-answer). Returns how
     /// many were newly surfaced.
-    func surfaceRingingCalls(_ calls: [CallRecord]) -> IncomingCheckOutcome {
+    func surfaceRingingCalls(
+        _ calls: [CallRecord], preferringCallID preferredCallID: String? = nil
+    ) -> IncomingCheckOutcome {
         let ringing = IncomingCallFilter.ringing(
             from: calls, expectedGatewayID: bindingStore.current()?.gatewayId
         )
+        // The preferred-call hint narrows only when the hinted call is in
+        // the verified ringing set; otherwise all ringing calls surface.
+        let selected: [CallRecord]
+        if let preferredCallID, ringing.contains(where: { $0.id == preferredCallID }) {
+            selected = ringing.filter { $0.id == preferredCallID }
+        } else {
+            selected = ringing
+        }
         var surfaced = 0
-        for call in ringing {
+        for call in selected {
             let alreadyKnown = reportingIncomingIds.contains(call.id)
                 || activeGatewayCallIds.contains(call.id)
                 || terminalCallIds.contains(call.id)
@@ -2052,17 +2067,22 @@ final class AppModel: ObservableObject {
     /// Entry point for `callrelay://incoming` and the Settings manual check.
     /// A ringing outcome shows the call UI; anything else becomes a concise
     /// notice so the user is never left guessing.
-    func checkIncomingNow(source: IncomingCheckSource) {
+    func checkIncomingNow(source: IncomingCheckSource, preferredCallID: String? = nil) {
         Task { [weak self] in
             guard let self else { return }
-            let outcome = await IncomingCallChecker.shared.check(source: source)
+            let outcome = await IncomingCallChecker.shared.check(
+                source: source, preferredCallID: preferredCallID
+            )
             if case .ringing = outcome { return }
             self.incomingCheckNotice = outcome.message
         }
     }
 
-    func handleIncomingCheckDeepLink() {
-        checkIncomingNow(source: .deepLink)
+    func handleIncomingCheckDeepLink(_ url: URL) {
+        checkIncomingNow(
+            source: .deepLink,
+            preferredCallID: IncomingCheckDeepLink.preferredCallID(from: url)
+        )
     }
 
     func dismissIncomingCheckNotice() { incomingCheckNotice = nil }

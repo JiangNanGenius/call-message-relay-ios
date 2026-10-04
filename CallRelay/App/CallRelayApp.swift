@@ -15,8 +15,8 @@ struct CallRelayApp: App {
                     appDelegate.model = model
                     model.bootstrap()
 #if PWA_BRIDGE
-                    if appDelegate.takePendingIncomingCheck() {
-                        model.handleIncomingCheckDeepLink()
+                    if let pendingURL = appDelegate.takePendingIncomingCheckURL() {
+                        model.handleIncomingCheckDeepLink(pendingURL)
                     }
 #endif
                     if let pending = appDelegate.takePendingPeer() {
@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     weak var model: AppModel?
     private var pendingPeer: String?
 #if PWA_BRIDGE
-    private var pendingIncomingCheck = false
+    private var pendingIncomingCheckURL: URL?
 #endif
 
     /// Cold-start relaunch from a system Phone/Recents row (INStartCallIntent).
@@ -61,9 +61,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// Cold-start `callrelay://incoming` from the self-hosted PWA handoff.
     /// The check itself runs only after the app model exists; the URL carries
     /// no credential, so nothing here is trusted beyond "please check".
-    func takePendingIncomingCheck() -> Bool {
-        let value = pendingIncomingCheck
-        pendingIncomingCheck = false
+    func takePendingIncomingCheckURL() -> URL? {
+        let value = pendingIncomingCheckURL
+        pendingIncomingCheckURL = nil
         return value
     }
 #endif
@@ -76,9 +76,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 #if PWA_BRIDGE
         if IncomingCheckDeepLink.matches(url) {
             if let model {
-                model.handleIncomingCheckDeepLink()
+                model.handleIncomingCheckDeepLink(url)
             } else {
-                pendingIncomingCheck = true
+                pendingIncomingCheckURL = url
             }
             return true
         }
