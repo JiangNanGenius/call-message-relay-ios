@@ -109,9 +109,16 @@ struct ComposeMessageView: View {
                 .lineLimit(1)
                 .fixedSize()
                 .padding(.leading, 16)
-            TextField("输入号码", text: $recipient)
-                .keyboardType(.phonePad)
-                .textContentType(.telephoneNumber)
+            // The To field accepts BOTH contact names (Chinese characters,
+            // pinyin/Latin letters — the matcher folds case/diacritics/width)
+            // and phone numbers, so it must use the normal multilingual
+            // keyboard: a digits-only .phonePad made name autocomplete
+            // unreachable. The dialer keypad stays digits-only by design;
+            // name search is not offered there. No textContentType lets the
+            // owner type free-form names without a phone-number QuickType
+            // suggestion overriding them.
+            TextField("姓名或号码", text: $recipient)
+                .keyboardType(.default)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .focused($recipientFocused)

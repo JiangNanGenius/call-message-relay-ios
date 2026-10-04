@@ -112,4 +112,32 @@ final class ContactAutocompleteTests: XCTestCase {
         let row = ContactAutocomplete.suggestions(contacts: [item], query: "王五").first
         XCTAssertEqual(row?.labeledPhone, "工作 · 5550001")
     }
+
+    /// The offline demo snapshot (also used by the build-18 recipient UI
+    /// regression) must cover Chinese names, Latin letters, digit fragments
+    /// through formatting, and an explicit multi-number choice.
+    func testDemoFixtureSupportsNameAndNumberQueries() {
+        let contacts = ContactsService.demoFixtureContacts
+        XCTAssertEqual(ContactAutocomplete.suggestions(contacts: contacts, query: "王五")
+            .first?.contactID, "demo-wangwu")
+        XCTAssertEqual(ContactAutocomplete.suggestions(contacts: contacts, query: "alice")
+            .first?.contactID, "demo-alice")
+        let fragment = ContactAutocomplete.suggestions(contacts: contacts, query: "0162")
+        XCTAssertEqual(fragment.first?.contactID, "demo-zhangsan")
+        XCTAssertEqual(fragment.first?.phone, "+1 (555) 016-2222")
+
+        let multi = ContactAutocomplete.suggestions(contacts: contacts, query: "014")
+        XCTAssertEqual(multi.count, 1, "one collapsed row per multi-number contact")
+        XCTAssertTrue(multi.first?.hasMultipleNumbers == true)
+        let numbers = ContactAutocomplete.numbers(for: "demo-wangwu", in: contacts)
+        XCTAssertEqual(Set(numbers.map(\.phone)), ["555-014-3333", "555-014-4444"])
+        // A dedicated Home/Work label must survive into the fill row.
+        XCTAssertEqual(numbers.first(where: { $0.phone == "555-014-3333" })?.labeledPhone,
+                       "住宅 · 555-014-3333")
+
+        let exact = ContactAutocomplete.suggestions(contacts: contacts, query: "555-017-7777")
+        XCTAssertFalse(ContactSuggestionList.shouldShowSuggestions(suggestions: exact,
+                                                                   query: "555-017-7777"),
+                       "an exact number fills and dismisses the list")
+    }
 }

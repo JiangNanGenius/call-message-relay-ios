@@ -420,6 +420,39 @@ final class ContactsService: ObservableObject {
         }
     }
 
+    // MARK: Offline demo fixture
+
+    /// Synthetic contacts for the fully offline demo/UI tests: fictional
+    /// people with reserved 555-range numbers covering Chinese names, Latin
+    /// names, formatting and a two-number contact. They only populate the
+    /// in-memory snapshot — never the system address book, logs or uploads.
+    static let demoFixtureContacts: [ContactItem] = [
+        ContactItem(
+            id: "demo-zhangsan", givenName: "张三", familyName: "", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberMobile, value: "+1 (555) 016-2222")],
+            emailAddresses: [], avatarData: nil),
+        ContactItem(
+            id: "demo-alice", givenName: "Alice", familyName: "Wong", organization: "",
+            phoneNumbers: [.init(label: CNLabelPhoneNumberiPhone, value: "555-017-7777")],
+            emailAddresses: [], avatarData: nil),
+        ContactItem(
+            id: "demo-wangwu", givenName: "王五", familyName: "", organization: "",
+            phoneNumbers: [
+                .init(label: CNLabelHome, value: "555-014-3333"),
+                .init(label: CNLabelWork, value: "555-014-4444")
+            ],
+            emailAddresses: [], avatarData: nil)
+    ]
+
+    /// Load ``demoFixtureContacts`` as the active snapshot (demo/UI tests).
+    /// Never queries or writes the real Contacts database.
+    func loadDemoFixture() {
+        let fixture = Self.demoFixtureContacts
+        access = .full
+        contacts = fixture
+        rebuildIndex(from: fixture)
+    }
+
     // MARK: vCard export
 
     /// Number of vCard contacts the export with these selected groups yields.

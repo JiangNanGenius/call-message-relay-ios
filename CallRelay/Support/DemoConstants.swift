@@ -18,6 +18,10 @@ enum DemoConstants {
 /// demo without onboarding or stored defaults.
 enum LaunchArguments {
     static let forceDemo = "-callrelayDemoMode"
+    /// UI-test support: populate the in-memory contact snapshot with synthetic
+    /// demo contacts (Chinese/Latin names, 555 numbers) so recipient
+    /// autocomplete is provable without system Contacts authorization.
+    static let demoContacts = "-callrelayDemoContacts"
     /// Hermetic UI-test support flags.
     static let uiTestReset = "-callrelayUITestReset"
     static let demoEnableSpamPresets = "-callrelayDemoSpamPresets"
@@ -60,6 +64,9 @@ enum LaunchArguments {
     }
     static var enablesDemoSpamPresets: Bool {
         ProcessInfo.processInfo.arguments.contains(demoEnableSpamPresets)
+    }
+    static var enablesDemoContacts: Bool {
+        ProcessInfo.processInfo.arguments.contains(demoContacts)
     }
     static var enablesMultilinePreview: Bool {
         ProcessInfo.processInfo.arguments.contains(multilinePreview)

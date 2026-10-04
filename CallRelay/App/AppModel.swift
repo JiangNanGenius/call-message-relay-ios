@@ -435,6 +435,9 @@ final class AppModel: ObservableObject {
         if defaults.bool(forKey: DefaultsKey.demo)
             || ProcessInfo.processInfo.arguments.contains(LaunchArguments.forceDemo) {
             enterDemo(persist: false)
+            if LaunchArguments.enablesDemoContacts {
+                contacts.loadDemoFixture()
+            }
             if ProcessInfo.processInfo.arguments.contains(LaunchArguments.multilinePreview) {
                 enableLinePreview()
             }

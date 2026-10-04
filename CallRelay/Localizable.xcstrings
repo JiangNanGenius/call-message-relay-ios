@@ -8579,6 +8579,29 @@
         }
       },
       "extractionState": "manual"
+    },
+    "姓名或号码": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Name or number"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "姓名或号码"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "姓名或號碼"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

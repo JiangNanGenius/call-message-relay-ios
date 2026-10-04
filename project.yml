@@ -29,7 +29,7 @@ configs:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.10"
+    MARKETING_VERSION: "0.3.11"
     # v0.3.5 public build 9 stays immutable. Build 12 (0.3.5) was the
     # TestFlight CloudKit/WSS/LCK repair; build 13 ships the build-12 crash,
     # iCloud, push-environment and audio fixes in BOTH editions and adds the
@@ -40,8 +40,14 @@ settings:
     # (0.3.9) replaces the App Store edition's Bark bridge with the
     # self-hosted PWA Web Push path (gateway serves an installable PWA over
     # its own HTTPS domain, owns its VAPID key and sends Web Push itself) and
-    # keeps the pure native edition untouched.
-    CURRENT_PROJECT_VERSION: "17"
+    # keeps the pure native edition untouched. Build 17 (0.3.10) repairs
+    # system-answer audio, makes SMS truthfulness/per-line selection real and
+    # adds contact autocomplete. Build 18 (0.3.11) fixes the SMS recipient
+    # field: the digits-only phonePad keyboard made contact-name autocomplete
+    # unreachable even though the matcher worked, so the To field now uses the
+    # normal multilingual keyboard with a "姓名或号码" placeholder (the dialer
+    # keypad stays digits-only).
+    CURRENT_PROJECT_VERSION: "18"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.
