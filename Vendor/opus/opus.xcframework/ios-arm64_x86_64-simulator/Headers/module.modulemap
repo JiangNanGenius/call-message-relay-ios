@@ -1,0 +1,6 @@
+module Opus {
+    header "opus.h"
+    header "opus_multistream.h"
+    header "callrelay_opus_shim.h"
+    export *
+}

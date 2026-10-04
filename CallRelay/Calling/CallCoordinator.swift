@@ -95,6 +95,9 @@ final class CallCoordinator: NSObject {
     private var stagedPreviousRelay: WebSocketCallMedia?
     /// Auto/Direct/Relay routing for the active non-conference call.
     private var route: CallRouteController?
+    /// Foreground, call-independent direct-path preflight (AppModel-owned).
+    /// The route controller consumes its fresh candidate at call start.
+    var routePreflight: RoutePreflightController?
     private let routeModeDefault: MediaRouteMode
     private let routeGatewayID: String?
     /// ICE/direct advertised by the gateway for the active call.
@@ -217,6 +220,12 @@ final class CallCoordinator: NSObject {
     // MARK: Multi-call inspection
 
     /// Current active (unheld) call, when any.
+    /// True while ANY call is still live on this device (ringing, dialing or
+    /// connected): the foreground preflight stays idle then.
+    var hasLiveCall: Bool {
+        tracked.values.contains { $0.record?.isFinished == false }
+    }
+
     var activeCallRecord: CallRecord? {
         if let activeGatewayId { return tracked[activeGatewayId]?.record ?? latestGateway }
         return latestGateway
@@ -1160,6 +1169,10 @@ final class CallCoordinator: NSObject {
     private func establishMedia(
         callId: String, uuid: UUID, generation gen: UInt64, selfManagedAudio: Bool
     ) async throws {
+        // A call is starting: stop the idle preflight cycle. Ownership of a
+        // fresh candidate moves to the route controller via consumeHandoff;
+        // anything else is cancelled here (bounded server TTL covers races).
+        routePreflight?.callWillStart()
         let ice = try await api.iceConfiguration(callId: callId)
         guard gen == self.generation else { throw CancellationError() }
 
@@ -1403,6 +1416,10 @@ final class CallCoordinator: NSObject {
                 promoteStagedRelay: { [weak self] peer in
                     self?.promoteStagedWSMedia(retiringDirect: peer)
                 },
+                discardPreflight: { [weak self] handoff in
+                    handoff.probe.cancel()
+                    Task { try? await self?.api.discardMediaPreflight(preflightId: handoff.preflightId) }
+                },
                 fetchTransport: { [weak self] in
                     guard let self else { return nil }
                     return (try? await self.api.fetchCall(id: callId))?.mediaTransport
@@ -1422,7 +1439,8 @@ final class CallCoordinator: NSObject {
                 onNotice: { [weak self] message, offersAuto in
                     Task { @MainActor in self?.onRouteNotice?(message, offersAuto) }
                 }
-            )
+            ),
+            preflight: routePreflight?.consumeHandoff()
         )
         route = controller
         controller.relayDidConnect(wsMedia: wsMedia)

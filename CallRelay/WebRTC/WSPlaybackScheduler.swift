@@ -49,6 +49,20 @@ final class WSPlaybackScheduler: @unchecked Sendable {
 
     private var queue: [[Int16]] = []
     private let maxQueuedFrames: Int
+    /// Adaptive bounded-jitter target (2026-10-05 review: a FIXED 25/16
+    /// water mark is a bound, not adaptation, and 500 ms+ is too much
+    /// latency). The target follows the measured inter-arrival spacing
+    /// (EWMA): steady 20 ms streams hold ~4-6 frames (~100 ms), bursty
+    /// transports earn up to `maxTargetFrames`; latency is bounded by
+    /// construction. The hard cap stays as the safety bound.
+    private let minTargetFrames: Int
+    private let maxTargetFrames: Int
+    private var targetFrames: Int
+    private var interArrivalEWMA: TimeInterval = 0.02
+    private var lastArrivalUptime: TimeInterval?
+    /// One frame past the adaptive target is the high water: beyond it the
+    /// backlog is caught up by trimming to the target.
+    private var highWaterFrames: Int { targetFrames + 1 }
     private var inFlight = 0
     private let maxScheduledFrames: Int
     private let refillThreshold: Int
@@ -58,15 +72,37 @@ final class WSPlaybackScheduler: @unchecked Sendable {
     private var running = false
 
     private var dropped = 0
+    /// Catch-up trims from the adaptive target handling (evidence).
+    private var trimmed = 0
+    /// PLC concealment inserts (evidence).
+    private var concealed = 0
     private var scheduled = 0
     private var completed = 0
 
+    /// Packet-loss concealment state. HONEST SCOPE: this is a BOUNDED BASIC
+    /// FALLBACK — repeat-the-last-scheduled-frame with exponential decay and
+    /// sign alternation (the classic anti-buzz trick). It is NOT NetEq or
+    /// G.711 Appendix I and must not be presented as such. Seed discipline
+    /// (2026-10-05 review): the seed is the last frame that ENTERED
+    /// PLAYBACK (scheduled), and EVERY scheduled frame updates it —
+    /// including SILENT ones, which clear it — so an underrun during true
+    /// silence can never replay stale speech.
+    private var plcSeed: [Int16]?
+    private var concealmentsInARow = 0
+    private let maxConcealmentFrames = 5
+    private var lastNetworkArrivalUptime: TimeInterval?
+
     init(maxQueuedFrames: Int = 50,
          maxScheduledFrames: Int = 24,
-         refillThreshold: Int = 8) {
+         refillThreshold: Int = 8,
+         minTargetFrames: Int = 4,
+         maxTargetFrames: Int = 12) {
         self.maxQueuedFrames = maxQueuedFrames
         self.maxScheduledFrames = maxScheduledFrames
         self.refillThreshold = refillThreshold
+        self.minTargetFrames = minTargetFrames
+        self.maxTargetFrames = maxTargetFrames
+        self.targetFrames = minTargetFrames
     }
 
     func configure(sink: WSPlaybackScheduling, format: AVAudioFormat) {
@@ -86,6 +122,12 @@ final class WSPlaybackScheduler: @unchecked Sendable {
             generation &+= 1
             completed = 0
             scheduled = 0
+            plcSeed = nil
+            concealmentsInARow = 0
+            lastNetworkArrivalUptime = nil
+            lastArrivalUptime = nil
+            interArrivalEWMA = 0.02
+            targetFrames = minTargetFrames
             sink?.startPlaying()
             drain()
         }
@@ -100,6 +142,12 @@ final class WSPlaybackScheduler: @unchecked Sendable {
             generation &+= 1
             queue.removeAll(keepingCapacity: false)
             inFlight = 0
+            plcSeed = nil
+            concealmentsInARow = 0
+            lastNetworkArrivalUptime = nil
+            lastArrivalUptime = nil
+            interArrivalEWMA = 0.02
+            targetFrames = minTargetFrames
             sink?.stopPlaying()
         }
     }
@@ -120,6 +168,16 @@ final class WSPlaybackScheduler: @unchecked Sendable {
         ownerQueue.sync { dropped }
     }
 
+    /// Adaptive high-water catch-up trims (evidence).
+    var trimmedFrames: Int {
+        ownerQueue.sync { trimmed }
+    }
+
+    /// PLC concealment frames inserted (evidence).
+    var concealedFrames: Int {
+        ownerQueue.sync { concealed }
+    }
+
     /// Health evidence for the engine watchdog: how many buffers the sink
     /// has completed in this run. Dead-render detection keys on this count
     /// STOPPING (while buffers remain in flight), never on outstanding
@@ -128,16 +186,62 @@ final class WSPlaybackScheduler: @unchecked Sendable {
         ownerQueue.sync { completed }
     }
 
-    func enqueue(_ frame: [Int16]) {
+    /// NETWORK frame entry (real downlink audio): arrival bookkeeping and
+    /// queueing are ONE serialized operation, so the PLC eligibility window
+    /// and the adaptive inter-arrival measure always describe THIS frame.
+    /// Local synthetic fill (call-progress tone) uses `enqueueSynthetic`,
+    /// which touches neither — repeating a tone frame would be an artifact,
+    /// not concealment.
+    func enqueueNetwork(_ frame: [Int16]) {
         ownerQueue.sync {
             guard running, frame.count == 160 else { return }
-            if queue.count >= maxQueuedFrames {
-                queue.removeFirst()
-                dropped += 1
+            let now = ProcessInfo.processInfo.systemUptime
+            if let last = lastArrivalUptime {
+                let spacing = max(0.001, now - last)
+                interArrivalEWMA = interArrivalEWMA == 0.02
+                    ? spacing
+                    : interArrivalEWMA * 0.8 + spacing * 0.2
+                let measured = Int((interArrivalEWMA / 0.02).rounded()) + 2
+                targetFrames = max(minTargetFrames, min(maxTargetFrames, measured))
             }
-            queue.append(frame)
-            drain()
+            lastArrivalUptime = now
+            lastNetworkArrivalUptime = now
+            enqueueLocked(frame)
         }
+    }
+
+    /// Synthetic fill entry (call-progress tone): plain queueing; no arrival
+    /// bookkeeping, no PLC arming.
+    func enqueueSynthetic(_ frame: [Int16]) {
+        ownerQueue.sync {
+            guard running, frame.count == 160 else { return }
+            enqueueLocked(frame)
+        }
+    }
+
+    /// Legacy entry used by tests and the tone path before the split; treats
+    /// the frame as NETWORK audio (the production tone path calls
+    /// `enqueueSynthetic`).
+    func enqueue(_ frame: [Int16]) {
+        enqueueNetwork(frame)
+    }
+
+    /// Owner-queue only.
+    private func enqueueLocked(_ frame: [Int16]) {
+        concealmentsInARow = 0
+        if queue.count >= maxQueuedFrames {
+            queue.removeFirst()
+            dropped += 1
+        } else if queue.count >= highWaterFrames {
+            // Adaptive catch-up: the backlog exceeded the (adaptive) target;
+            // trim back to it so latency stays bounded by the measured
+            // jitter, not by the burst.
+            let excess = queue.count - targetFrames + 1
+            queue.removeFirst(excess)
+            trimmed += excess
+        }
+        queue.append(frame)
+        drain()
     }
 
     /// Called by the 20 ms cadence as well: even if a completion is lost to
@@ -151,8 +255,43 @@ final class WSPlaybackScheduler: @unchecked Sendable {
     /// callback and never under a contended lock.
     private func drain() {
         guard running, let sink, let format = playbackFormat else { return }
+        // PLC: the queue underran while recent REAL network audio was
+        // playing — repeat the last SCHEDULED frame (the playback timeline,
+        // not the newest queued input) with exponential decay and SIGN
+        // ALTERNATION (anti-buzz) for at most `maxConcealmentFrames`
+        // ticks, then stop (the call progress tone owns longer silences).
+        // Every scheduled frame updates the seed — silence clears it — so
+        // true silence can never replay stale speech.
+        if queue.isEmpty, inFlight == 0,
+           concealmentsInARow < maxConcealmentFrames,
+           let seed = plcSeed,
+           let arrival = lastNetworkArrivalUptime,
+           ProcessInfo.processInfo.systemUptime - arrival < 0.5 {
+            concealmentsInARow += 1
+            concealed += 1
+            let gain = pow(0.8, Double(concealmentsInARow))
+            let sign = concealmentsInARow % 2 == 0 ? -1.0 : 1.0
+            let frame = seed.map {
+                Int16(max(-32767, min(32767, Int(Double($0) * gain * sign))))
+            }
+            guard let buffer = render(frame: frame, format: format) else { return }
+            inFlight += 1
+            scheduled += 1
+            let scheduledGeneration = generation
+            sink.schedule(buffer: buffer) { [weak self] in
+                guard let self else { return }
+                self.ownerQueue.async {
+                    self.completionArrived(generation: scheduledGeneration)
+                }
+            }
+            sink.startPlaying()
+            return
+        }
         while inFlight < min(refillThreshold, maxScheduledFrames), !queue.isEmpty {
             let frame = queue.removeFirst()
+            // The seed follows the PLAYBACK timeline: every frame that
+            // enters playback replaces it; a silent frame clears it.
+            plcSeed = frame.contains(where: { abs(Int($0)) >= 200 }) ? frame : nil
             guard let buffer = render(frame: frame, format: format) else { continue }
             inFlight += 1
             scheduled += 1

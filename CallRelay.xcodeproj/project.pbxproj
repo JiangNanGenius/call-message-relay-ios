@@ -16,6 +16,7 @@
 		0A468E39D6CDEEB00882D760 /* DemoConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5252BE7A5377965154F12A7 /* DemoConstants.swift */; };
 		0B6D3B722D2EE618906E0FD9 /* CallProgressToneController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E777882D4303B2D42AEAE549 /* CallProgressToneController.swift */; };
 		0C6CE48C385B45FB903AEB8F /* IdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED4DCDF083D3E2962363EB3 /* IdentityTests.swift */; };
+		0CEFAF85455A44A4CAC82B1A /* WSSBitrateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EAE3FE18DC974B944C6BB94 /* WSSBitrateController.swift */; };
 		0D181C120C65D6D7DF0A370E /* ContactVCardBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91037604E3E119B2328480FA /* ContactVCardBuilder.swift */; };
 		0DF3DF1888FC917331695632 /* ComposeMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24A262CF8CFE3BC7D5383283 /* ComposeMessageView.swift */; };
 		0EDAC10B2FC00BB56E68F8E6 /* NumberList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0578D59989C935F5182D0E /* NumberList.swift */; };
@@ -30,6 +31,7 @@
 		1C4FF6DEE4F8DAD8D639983C /* VoicemailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 776CC7F799D6B6D0D3AC31E9 /* VoicemailView.swift */; };
 		1E57FEECB85FF0E17F200D61 /* CallIntentRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5CDFE06EDC7BD7C66C0FA17 /* CallIntentRouter.swift */; };
 		21AD690D98AAFCF526E4114A /* SystemContactRefresh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 655353652620C7C87D2249F1 /* SystemContactRefresh.swift */; };
+		233144997C5CB023E7D8456A /* WSSFrameCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = B26FE3FC674F936263847697 /* WSSFrameCodec.swift */; };
 		247E120275775EEB7C4ABB58 /* WebSocketCallMediaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002BC2784552BFF3A2ECAD3A /* WebSocketCallMediaTests.swift */; };
 		2604621D7090D6A6DBE80545 /* WSSAudioHandoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70C81D49FBCE98878D4A2F07 /* WSSAudioHandoffTests.swift */; };
 		272523DF263DF1874DCAA24C /* CloudSyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = FED147AF8C4E97E5632501D8 /* CloudSyncEngine.swift */; };
@@ -61,6 +63,7 @@
 		46A808F6B26F17DBD5207739 /* DiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C0B4094E0617F44383F724F /* DiagnosticsTests.swift */; };
 		4AB8C12A4AEB90CCE72EC62B /* AudioDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E3BBBAEB469D6E419EF75B /* AudioDiagnosticsTests.swift */; };
 		4AE3B9EE984B3B00F4F90FFC /* SafetyAndPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B1F80F83B232F1C87894F28 /* SafetyAndPolicyTests.swift */; };
+		4E99991FC749AC616E2C1C73 /* WSSFrameCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E97BA4B491FEE0BE9FF8BEB8 /* WSSFrameCodecTests.swift */; };
 		4EECE8C7467CAB323FB1F16D /* APITypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B24B1137456D9029D5D036 /* APITypes.swift */; };
 		4F930407CD97FB4D07C8AD58 /* DemoCallDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A772A3DADD60E9829B43C7E /* DemoCallDriver.swift */; };
 		50D0CD611B1D3AD677EB1E7F /* Diagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2075222C9CB2E00DF3FD0F7 /* Diagnostics.swift */; };
@@ -92,9 +95,11 @@
 		6FF6B13D7AE8F8A1E9026575 /* ContactSearchIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E663C75CA2166BF579A646BE /* ContactSearchIndexTests.swift */; };
 		729B906025BD86CDAB2DD31B /* LiveCommunicationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F6F1A0C7446903C0C740247 /* LiveCommunicationManager.swift */; };
 		7407094820EC6C777CA26198 /* IdentityBindingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444DD6802AFC2753B1AD8155 /* IdentityBindingPolicy.swift */; };
+		748C9EABA6FB7380BFBAC3DB /* RoutePreflightController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B27697239B895BB60E82B75 /* RoutePreflightController.swift */; };
 		76BBDF4D0F3AC75499465427 /* DialerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5FF86542FF077ADFA588B46 /* DialerView.swift */; };
 		779556BB078733CD87ED70C3 /* CallState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570B277AE0721CACCDEF9076 /* CallState.swift */; };
 		77ADD4F4D122F26778117546 /* SMSHTTPClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60004AE25C5C1B99740CE26F /* SMSHTTPClientTests.swift */; };
+		7B7AA9C48316AE8BE3A912B9 /* WSSCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE5699E5B691A1996A715AFD /* WSSCodecTests.swift */; };
 		7C9AE4EED50C9409288340AF /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E143357666B2A1132FBA2858 /* AppLog.swift */; };
 		80AB9B5E2B54D627E5793127 /* OutboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B34F75CD206B2EF834D234 /* OutboxStore.swift */; };
 		819CC34A3D0039785EE01FAB /* RetryPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91F1C73CB1F265028D221DB1 /* RetryPolicyTests.swift */; };
@@ -130,10 +135,12 @@
 		B28B1D394FDD26A023937964 /* CKCloudSyncTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7D36C32C39D67D00792E85B /* CKCloudSyncTransport.swift */; };
 		B3360F6947FD32F621D3C84B /* CallRelayApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 218A231BA4DBC03932C09DB0 /* CallRelayApp.swift */; };
 		B38DC8E51B9B4CA0C117AE79 /* MediaReconnectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 571FDBDEE26D76EB7641E3D9 /* MediaReconnectionTests.swift */; };
+		B40A89443963CA96660DCA70 /* WSCaptureContinuityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B878F994E37E7C00C8C0798 /* WSCaptureContinuityTests.swift */; };
 		B47D483AF10B690AEE0C9022 /* RecoveryGrantTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8565B8A812FB15C9ECC1DE7 /* RecoveryGrantTests.swift */; };
 		B7F683E14FEA51D710E0A3A7 /* HTTPGatewayAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BE7430C6BBEE3E2140F20DB /* HTTPGatewayAPI.swift */; };
 		B87E93BD732DD924242DEC8C /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FD73019CC490571ECD09FD /* OnboardingView.swift */; };
 		BD63617CCEB3616E82245FEC /* WebPushBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10A461BD9CA9FBA0DA3CAB8 /* WebPushBridgeTests.swift */; };
+		BDEAB94B697C6E846A41670F /* opus.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 601A3D259FD502A8E272612F /* opus.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BE8FB8065B9B86BDC1E3C25E /* CloudSyncSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7645C567EC9502D507AF685B /* CloudSyncSettingsView.swift */; };
 		C0B48EBFDE896CDB9167C4F7 /* OutgoingLineSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BD3FDBD2F16E7C9812308CC /* OutgoingLineSelectionTests.swift */; };
 		C39E000B13B2175B6AF0ABA8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 277EF6E70492478D477ECC8D /* Assets.xcassets */; };
@@ -156,6 +163,8 @@
 		D85FEB560030C5B83C27C9B0 /* ContactDeduperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0730972643F1C299521240 /* ContactDeduperTests.swift */; };
 		D9BAACD0DC42058BD981BD9F /* CallRelay-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 23D6C5702132450ACA6B62AE /* CallRelay-LICENSE.txt */; };
 		DBC78951A54E55ACA41BC95F /* V2TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A201F54A8F28266CE1D63A30 /* V2TestSupport.swift */; };
+		DCA10453859EEFEA7DA8715A /* opus.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 601A3D259FD502A8E272612F /* opus.xcframework */; };
+		DD7E3751BC97C81B7B278761 /* OpusCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B394AE4AFE0E1A6802002E3 /* OpusCodec.swift */; };
 		DE3E4BB3A6339B8F13EA1FE4 /* WSPlaybackScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 165A1FAFE2CF5CDCF43ED64F /* WSPlaybackScheduler.swift */; };
 		DEC80AB6BDEEDE4C98626E3A /* ConferenceMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9526ACDE242FC88C513C4E /* ConferenceMedia.swift */; };
 		E03EA6A4FBFBDF2FC799401F /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0B93D3F916BD119C734732 /* NetworkMonitor.swift */; };
@@ -202,6 +211,20 @@
 			remoteInfo = CallRelay;
 		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		BDBD3A9836F10C1703BC3D65 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				BDEAB94B697C6E846A41670F /* opus.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		002BC2784552BFF3A2ECAD3A /* WebSocketCallMediaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketCallMediaTests.swift; sourceTree = "<group>"; };
@@ -272,11 +295,13 @@
 		571FDBDEE26D76EB7641E3D9 /* MediaReconnectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaReconnectionTests.swift; sourceTree = "<group>"; };
 		5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireCompatibilityTests.swift; sourceTree = "<group>"; };
 		5A588139CFF48C724501CBCD /* MessageInboxSpamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageInboxSpamTests.swift; sourceTree = "<group>"; };
+		5B394AE4AFE0E1A6802002E3 /* OpusCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpusCodec.swift; sourceTree = "<group>"; };
 		5C0578D59989C935F5182D0E /* NumberList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumberList.swift; sourceTree = "<group>"; };
 		5C0B4094E0617F44383F724F /* DiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsTests.swift; sourceTree = "<group>"; };
 		5D25999B1DF31DDC1F356766 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		5E2FA0BA6159B54457B7990A /* CallLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallLifecycleTests.swift; sourceTree = "<group>"; };
 		60004AE25C5C1B99740CE26F /* SMSHTTPClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMSHTTPClientTests.swift; sourceTree = "<group>"; };
+		601A3D259FD502A8E272612F /* opus.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = opus.xcframework; path = Vendor/opus/opus.xcframework; sourceTree = "<group>"; };
 		628E25BD6BAAC8F96258A291 /* TokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenStore.swift; sourceTree = "<group>"; };
 		63F18CADA2C6F05024CA03F9 /* ContactMergeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactMergeUITests.swift; sourceTree = "<group>"; };
 		6476BD526BA8EBAB8598EB2D /* MediaRouteAdvisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaRouteAdvisor.swift; sourceTree = "<group>"; };
@@ -285,7 +310,9 @@
 		655353652620C7C87D2249F1 /* SystemContactRefresh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemContactRefresh.swift; sourceTree = "<group>"; };
 		68131717E602752C98CFC610 /* SystemContactRefreshTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemContactRefreshTests.swift; sourceTree = "<group>"; };
 		6B1F80F83B232F1C87894F28 /* SafetyAndPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyAndPolicyTests.swift; sourceTree = "<group>"; };
+		6B878F994E37E7C00C8C0798 /* WSCaptureContinuityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSCaptureContinuityTests.swift; sourceTree = "<group>"; };
 		6BD1D6124FBCB269EB6F0FC7 /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
+		6EAE3FE18DC974B944C6BB94 /* WSSBitrateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSSBitrateController.swift; sourceTree = "<group>"; };
 		6FB4F36A44706DA364FB2943 /* ContactVCardExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactVCardExportTests.swift; sourceTree = "<group>"; };
 		70C81D49FBCE98878D4A2F07 /* WSSAudioHandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSSAudioHandoffTests.swift; sourceTree = "<group>"; };
 		7645C567EC9502D507AF685B /* CloudSyncSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncSettingsView.swift; sourceTree = "<group>"; };
@@ -301,6 +328,7 @@
 		88DA399FE480E12698ADD587 /* EventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStream.swift; sourceTree = "<group>"; };
 		88E9487540D9BA19CF743832 /* CallRelay.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CallRelay.entitlements; sourceTree = "<group>"; };
 		8A98ED7284FE1534630974E5 /* DemoGatewayAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoGatewayAPI.swift; sourceTree = "<group>"; };
+		8B27697239B895BB60E82B75 /* RoutePreflightController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutePreflightController.swift; sourceTree = "<group>"; };
 		8B4B7CD920055CAF9C3CD8FD /* WebPushBridge.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = WebPushBridge.xcstrings; sourceTree = "<group>"; };
 		8CAF007C73F29396871E0A30 /* LinePickerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinePickerUITests.swift; sourceTree = "<group>"; };
 		8F7732742AEB5B9E644FAF2C /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = InfoPlist.strings; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
@@ -334,6 +362,7 @@
 		AB73232B076B466BC8CF3C2E /* LiveCommunicationActionCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCommunicationActionCoreTests.swift; sourceTree = "<group>"; };
 		AC3B54C00DA01EB928B0C2D1 /* CallCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallCoordinator.swift; sourceTree = "<group>"; };
 		AEC39E3077CDD6B94384297A /* InCallRouteMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InCallRouteMenu.swift; sourceTree = "<group>"; };
+		B26FE3FC674F936263847697 /* WSSFrameCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSSFrameCodec.swift; sourceTree = "<group>"; };
 		B4C325915AF215D04C24E9C4 /* WebPushSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPushSettingsView.swift; sourceTree = "<group>"; };
 		B4EE9CEB354B47C90282094C /* MediaProbeControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaProbeControllerTests.swift; sourceTree = "<group>"; };
 		B6C27AF8BBB153A1613996CB /* cn-historical-2020.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "cn-historical-2020.txt"; sourceTree = "<group>"; };
@@ -376,6 +405,7 @@
 		E73C07502BB800A12322596B /* OutgoingLineMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutgoingLineMenu.swift; sourceTree = "<group>"; };
 		E777882D4303B2D42AEAE549 /* CallProgressToneController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallProgressToneController.swift; sourceTree = "<group>"; };
 		E8565B8A812FB15C9ECC1DE7 /* RecoveryGrantTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryGrantTests.swift; sourceTree = "<group>"; };
+		E97BA4B491FEE0BE9FF8BEB8 /* WSSFrameCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSSFrameCodecTests.swift; sourceTree = "<group>"; };
 		EA9D1F966A56BAE859036823 /* CallRelay-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "CallRelay-Bridging-Header.h"; sourceTree = "<group>"; };
 		EC0B93D3F916BD119C734732 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		F03311AAD0BE8B5012CE8DE3 /* RetryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryPolicy.swift; sourceTree = "<group>"; };
@@ -386,6 +416,7 @@
 		FCC14582B4BA466AA1A7AEB5 /* CallGroupStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallGroupStore.swift; sourceTree = "<group>"; };
 		FD363457A02585F2F385C685 /* UnifiedGatewayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedGatewayTests.swift; sourceTree = "<group>"; };
 		FE0D81C8E4061FFAEA8009F6 /* MessageInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageInbox.swift; sourceTree = "<group>"; };
+		FE5699E5B691A1996A715AFD /* WSSCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSSCodecTests.swift; sourceTree = "<group>"; };
 		FED147AF8C4E97E5632501D8 /* CloudSyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncEngine.swift; sourceTree = "<group>"; };
 		FED4DCDF083D3E2962363EB3 /* IdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityTests.swift; sourceTree = "<group>"; };
 		FF9E2D4EA8C019A6CFAD5B79 /* WebRTC */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WebRTC; path = Vendor/WebRTC; sourceTree = SOURCE_ROOT; };
@@ -397,6 +428,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C4563CE7BD6A1FBD0B41E296 /* WebRTC in Frameworks */,
+				DCA10453859EEFEA7DA8715A /* opus.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -437,12 +469,16 @@
 			children = (
 				4262E9B7C0FB0E409F6F3BE5 /* MediaProbeController.swift */,
 				6476BD526BA8EBAB8598EB2D /* MediaRouteAdvisor.swift */,
+				5B394AE4AFE0E1A6802002E3 /* OpusCodec.swift */,
+				8B27697239B895BB60E82B75 /* RoutePreflightController.swift */,
 				AA27AA16B850DA6DA915F5C8 /* WebRTCCallMedia.swift */,
 				09059BC539A092D01A4FAF95 /* WebSocketCallMedia.swift */,
 				2A5C48DE22380CFCEFC6E122 /* WSAudioGraph.swift */,
 				E5BE4A948288B607404EDEAA /* WSCapturePipeline.swift */,
 				48D61291AD987C29064A67B6 /* WSMediaMeasure.swift */,
 				165A1FAFE2CF5CDCF43ED64F /* WSPlaybackScheduler.swift */,
+				6EAE3FE18DC974B944C6BB94 /* WSSBitrateController.swift */,
+				B26FE3FC674F936263847697 /* WSSFrameCodec.swift */,
 			);
 			path = WebRTC;
 			sourceTree = "<group>";
@@ -561,7 +597,10 @@
 				002BC2784552BFF3A2ECAD3A /* WebSocketCallMediaTests.swift */,
 				5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */,
 				3BB1A7EA52ED05399F8C3D2A /* WSAudioGraphTests.swift */,
+				6B878F994E37E7C00C8C0798 /* WSCaptureContinuityTests.swift */,
 				70C81D49FBCE98878D4A2F07 /* WSSAudioHandoffTests.swift */,
+				FE5699E5B691A1996A715AFD /* WSSCodecTests.swift */,
+				E97BA4B491FEE0BE9FF8BEB8 /* WSSFrameCodecTests.swift */,
 				D7620C89F766008B03BC07B5 /* UITests */,
 			);
 			path = CallRelayTests;
@@ -611,6 +650,7 @@
 				37FC1AE3BE462A80E7B903F7 /* CallRelay */,
 				40197F870E308E6A91FCF750 /* CallRelayTests */,
 				25070BB4B03349065F469394 /* Packages */,
+				D78538B3762486B707AAE752 /* Frameworks */,
 				81142FD28986DC7B3D3F1819 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -759,6 +799,14 @@
 			path = UITests;
 			sourceTree = "<group>";
 		};
+		D78538B3762486B707AAE752 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				601A3D259FD502A8E272612F /* opus.xcframework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		DEEBCFFE12A4CAA7CB6A9044 /* Onboarding */ = {
 			isa = PBXGroup;
 			children = (
@@ -848,6 +896,7 @@
 				F6234655FF6E36E48E38F690 /* Sources */,
 				BC45CE4A8968BEE43C60C518 /* Resources */,
 				9B8CCE23DD29F6EA50711919 /* Frameworks */,
+				BDBD3A9836F10C1703BC3D65 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -987,7 +1036,10 @@
 				3994DDA38898E51294073BDA /* VoicemailDeleteTests.swift in Sources */,
 				F627C7D82E267828162473C2 /* VoicemailPlaybackTests.swift in Sources */,
 				FE6B6F47D29D5F2D0C770A6E /* WSAudioGraphTests.swift in Sources */,
+				B40A89443963CA96660DCA70 /* WSCaptureContinuityTests.swift in Sources */,
 				2604621D7090D6A6DBE80545 /* WSSAudioHandoffTests.swift in Sources */,
+				7B7AA9C48316AE8BE3A912B9 /* WSSCodecTests.swift in Sources */,
+				4E99991FC749AC616E2C1C73 /* WSSFrameCodecTests.swift in Sources */,
 				BD63617CCEB3616E82245FEC /* WebPushBridgeTests.swift in Sources */,
 				37172BAFE0D79FF923D0A34C /* WebRTCOfferPipelineTests.swift in Sources */,
 				247E120275775EEB7C4ABB58 /* WebSocketCallMediaTests.swift in Sources */,
@@ -1085,6 +1137,7 @@
 				0EDAC10B2FC00BB56E68F8E6 /* NumberList.swift in Sources */,
 				38975939B9CC8C6966CD7AAF /* NumberListsView.swift in Sources */,
 				B87E93BD732DD924242DEC8C /* OnboardingView.swift in Sources */,
+				DD7E3751BC97C81B7B278761 /* OpusCodec.swift in Sources */,
 				80AB9B5E2B54D627E5793127 /* OutboxStore.swift in Sources */,
 				162E7882876CF0B079622833 /* OutgoingLineMenu.swift in Sources */,
 				890603471A633DB8A05871BA /* PairingService.swift in Sources */,
@@ -1094,6 +1147,7 @@
 				C54437A9AB6834A1947F4293 /* RecoveryGrant.swift in Sources */,
 				AFBC8312DA10813FDA7079D2 /* RetryPolicy.swift in Sources */,
 				52F1F86137E90954ADF3B18F /* RootView.swift in Sources */,
+				748C9EABA6FB7380BFBAC3DB /* RoutePreflightController.swift in Sources */,
 				3C2919F9716340686742BAC6 /* SettingsView.swift in Sources */,
 				5B08C2354AEF7FB3CF9FCA3F /* SpamFilterStore.swift in Sources */,
 				4592DF5E9ED226766C5FA05F /* SpamPolicy.swift in Sources */,
@@ -1110,6 +1164,8 @@
 				882FDAED406C5E51B39DBFDD /* WSCapturePipeline.swift in Sources */,
 				291E132B6EB6171E5376C8F4 /* WSMediaMeasure.swift in Sources */,
 				DE3E4BB3A6339B8F13EA1FE4 /* WSPlaybackScheduler.swift in Sources */,
+				0CEFAF85455A44A4CAC82B1A /* WSSBitrateController.swift in Sources */,
+				233144997C5CB023E7D8456A /* WSSFrameCodec.swift in Sources */,
 				3081DCEB35BA0F6A528D0E79 /* WebPushBridge.swift in Sources */,
 				649EA8C433A3A7FC5891D043 /* WebPushLocalization.swift in Sources */,
 				0FAA06F8ACB0C0E6B3F4016C /* WebPushSettingsView.swift in Sources */,
@@ -1223,7 +1279,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 27;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1239,7 +1295,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.17;
+				MARKETING_VERSION = 0.3.20;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1258,6 +1314,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = CallRelay/CallRelay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Vendor/opus\"",
+				);
 				INFOPLIST_FILE = "CallRelay/Info-PWA.plist";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1308,7 +1368,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 27;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1324,7 +1384,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.17;
+				MARKETING_VERSION = 0.3.20;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1379,6 +1439,10 @@
 				CODE_SIGN_ENTITLEMENTS = CallRelay/CallRelay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				EXCLUDED_SOURCE_FILE_NAMES = WebPushBridge.xcstrings;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Vendor/opus\"",
+				);
 				INFOPLIST_FILE = CallRelay/Info.plist;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1480,7 +1544,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 27;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1502,7 +1566,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.17;
+				MARKETING_VERSION = 0.3.20;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1523,6 +1587,10 @@
 				CODE_SIGN_ENTITLEMENTS = CallRelay/CallRelay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				EXCLUDED_SOURCE_FILE_NAMES = WebPushBridge.xcstrings;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Vendor/opus\"",
+				);
 				INFOPLIST_FILE = CallRelay/Info.plist;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1573,7 +1641,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 27;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1595,7 +1663,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.17;
+				MARKETING_VERSION = 0.3.20;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1615,6 +1683,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = CallRelay/CallRelay.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"Vendor/opus\"",
+				);
 				INFOPLIST_FILE = "CallRelay/Info-PWA.plist";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (

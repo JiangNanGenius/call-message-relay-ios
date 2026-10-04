@@ -38,6 +38,14 @@ struct InCallRouteMenu: View {
                         Text(String(localized: "网络往返 · 未测量"))
                     }
                 }
+                // 2026-10-05 routing policy: the route is chosen once at call
+                // start and pinned; a mode picked now is a NEXT-CALL
+                // preference and must say so.
+                if state?.pinned == true {
+                    Section {
+                        Text(String(localized: "本次通话已锁定当前线路，更改将于下次通话生效。"))
+                    }
+                }
             } label: {
                 label
             }

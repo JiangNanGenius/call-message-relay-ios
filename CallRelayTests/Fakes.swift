@@ -203,6 +203,9 @@ final class FakeGatewayAPI: GatewayAPI {
 
     var commitError: Error?
     private(set) var commitCalls: [String] = []
+    private(set) var preflightCommitIds: [String?] = []
+    private(set) var discardPreflightIds: [String] = []
+    private(set) var deletedThreadKeys: [String] = []
     private var commitContinuation: CheckedContinuation<Void, Error>?
     private var commitArmed = false
     var discardProbeCalls: [String] = []
@@ -563,8 +566,9 @@ final class FakeGatewayAPI: GatewayAPI {
         }
         return try attachProbeResult.get()
     }
-    func commitMediaProbe(callId: String) async throws {
+    func commitMediaProbe(callId: String, preflightId: String?) async throws {
         commitCalls.append(callId)
+        preflightCommitIds.append(preflightId)
         onCommit?()
         if commitArmed {
             commitArmed = false
@@ -575,6 +579,18 @@ final class FakeGatewayAPI: GatewayAPI {
     }
     func discardMediaProbe(callId: String) async throws {
         discardProbeCalls.append(callId)
+    }
+    func iceConfiguration() async throws -> ICEConfiguration {
+        throw APIError.notReady("demo")
+    }
+    func attachMediaPreflight(sdp: String) async throws -> V2PreflightAnswer {
+        throw APIError.notReady("demo")
+    }
+    func discardMediaPreflight(preflightId: String) async throws {
+        discardPreflightIds.append(preflightId)
+    }
+    func deleteThread(threadKey: String) async throws {
+        deletedThreadKeys.append(threadKey)
     }
     func mediaMeasureWebSocketRequest(callId: String) async throws -> URLRequest {
         measureRequestCallCount += 1

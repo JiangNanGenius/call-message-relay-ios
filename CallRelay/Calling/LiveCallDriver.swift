@@ -24,6 +24,17 @@ final class LiveCallDriver: NSObject, CallDriver {
     private let coordinator: CallCoordinator
     private let registry: CallIdentityRegistry
     private let routeGatewayID: String?
+
+    /// Foreground, call-independent direct-path preflight (AppModel-owned);
+    /// forwarded to the coordinator so call start can consume fresh
+    /// measurements.
+    var routePreflight: RoutePreflightController? {
+        get { coordinator.routePreflight }
+        set { coordinator.routePreflight = newValue }
+    }
+
+    /// True while any call is live on this device (preflight eligibility).
+    var hasLiveCall: Bool { coordinator.hasLiveCall }
     private var current: ActiveCallViewState?
     private var currentUUID: UUID?
     /// Gateway id of the call currently surfaced by ``current``.
@@ -72,6 +83,7 @@ final class LiveCallDriver: NSObject, CallDriver {
         )
         super.init()
         coordinator.delegate = self
+        coordinator.routePreflight = routePreflight
         coordinator.onQuality = { [weak self] quality in self?.onQuality?(quality) }
         coordinator.onRouteState = { [weak self] state in self?.onRouteState?(state) }
         coordinator.onRouteNotice = { [weak self] message, offerAuto in

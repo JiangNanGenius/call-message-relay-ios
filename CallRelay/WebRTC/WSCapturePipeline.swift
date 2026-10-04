@@ -45,6 +45,19 @@ final class WSCapturePipeline: @unchecked Sendable {
     /// can prove capture loss instead of inferring it.
     private var lastTapUptime: TimeInterval?
     private(set) var tapGapMax: TimeInterval = 0
+    /// Rolling recent inter-tap gaps (seconds) — diagnostics only (tap
+    /// batching is healthy; cadence never drives a verdict).
+    private var recentTapGaps: [TimeInterval] = []
+    private let recentTapGapsMax = 25
+    /// Capture-conservation accounting over a BOUNDED ROLLING WINDOW of
+    /// deliveries (2026-10-05 review: a cumulative first→last ratio masks
+    /// later starvation behind a healthy opening minute, and a stalled tap
+    /// freezes it). The window resets on mute/unmute/flush boundaries and
+    /// ages out: only recent delivery history answers "is capture keeping
+    /// up with wall time RIGHT NOW".
+    private var windowDeliveries: [(uptime: TimeInterval, samples: Int)] = []
+    private let windowSeconds: TimeInterval = 4
+    private var windowSamples = 0
     /// Largest ACTUAL delivered tap-buffer frame length. The tap requests
     /// 1024 frames (~21 ms @ 48 kHz) but the engine may deliver a different
     /// size, which combined with tapGapMax proves real delivery cadence
@@ -82,10 +95,22 @@ final class WSCapturePipeline: @unchecked Sendable {
         lock.lock()
         guard accepting else { lock.unlock(); return }
         tapDeliveryCount += 1
-        if let last = lastTapUptime, uptime - last > tapGapMax {
-            tapGapMax = uptime - last
+        if let last = lastTapUptime {
+            let gap = uptime - last
+            if gap > tapGapMax { tapGapMax = gap }
+            recentTapGaps.append(gap)
+            if recentTapGaps.count > recentTapGapsMax {
+                recentTapGaps.removeFirst(recentTapGaps.count - recentTapGapsMax)
+            }
         }
         lastTapUptime = uptime
+        windowDeliveries.append((uptime, samples.count))
+        windowSamples += samples.count
+        let cutoff = uptime - windowSeconds
+        while let first = windowDeliveries.first, first.uptime < cutoff {
+            windowSamples -= first.samples
+            windowDeliveries.removeFirst()
+        }
         if let frameLength, frameLength > tapFrameLengthMax {
             tapFrameLengthMax = frameLength
         }
@@ -108,12 +133,16 @@ final class WSCapturePipeline: @unchecked Sendable {
     }
 
     /// Clears both stages and installs a fresh converter so no filter
-    /// history survives a mute/stop boundary.
+    /// history survives a mute/stop boundary. The conservation window also
+    /// resets: samples dropped while muted must never count against the
+    /// wall-time ratio after unmute (2026-10-05 review).
     func flushAndReset() {
         lock.lock()
         pipelineGeneration &+= 1
         pending.removeAll(keepingCapacity: false)
         converted8k.removeAll(keepingCapacity: false)
+        windowDeliveries.removeAll(keepingCapacity: false)
+        windowSamples = 0
         if sourceFormat.sampleRate != 8000 {
             converter = AVAudioConverter(from: sourceFormat, to: targetFormat)
         }
@@ -194,6 +223,36 @@ final class WSCapturePipeline: @unchecked Sendable {
     var tapFrameLengthMaxSnapshot: Int {
         lock.lock(); defer { lock.unlock() }
         return tapFrameLengthMax
+    }
+
+    /// Rolling-window capture-conservation snapshot: (delivered samples,
+    /// wall seconds across the window's first→last delivery, ratio).
+    /// nil while the window holds fewer than two deliveries. Healthy batch
+    /// capture of ANY cadence holds ratio ≈ 1; a starved render cycle (the
+    /// periodic 200-on/200-off uplink class) holds it persistently < 1.
+    /// The window ages out and resets at mute/flush boundaries, so a healthy
+    /// opening minute can never mask later starvation (2026-10-05 review).
+    var conservationSnapshot: (delivered: Int, elapsed: TimeInterval, ratio: Double)? {
+        lock.lock(); defer { lock.unlock() }
+        guard let first = windowDeliveries.first?.uptime,
+              let last = windowDeliveries.last?.uptime, last > first else { return nil }
+        let elapsed = last - first
+        let expected = elapsed * sourceFormat.sampleRate
+        guard expected > 0 else { return nil }
+        return (windowSamples, elapsed, Double(windowSamples) / expected)
+    }
+
+    /// Median of the recent inter-tap gaps (seconds), or nil before two
+    /// deliveries — diagnostics only; never a restart verdict (tap batching
+    /// is healthy and cadence-independent of the hardware I/O cycle).
+    var tapGapMedianSnapshot: TimeInterval? {
+        lock.lock(); defer { lock.unlock() }
+        guard recentTapGaps.count >= 2 else { return nil }
+        let sorted = recentTapGaps.sorted()
+        let middle = sorted.count / 2
+        return sorted.count % 2 == 1
+            ? sorted[middle]
+            : (sorted[middle - 1] + sorted[middle]) / 2
     }
 
     var convertedSnapshotCount: Int {

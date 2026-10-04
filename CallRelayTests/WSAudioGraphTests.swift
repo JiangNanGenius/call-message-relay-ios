@@ -238,6 +238,318 @@ extension WSAudioGraphTests {
         XCTAssertEqual(surface.events.filter { $0.kind == .startEngine }.count, 1,
                        "the engine must have started exactly once")
     }
+
+    // MARK: Capture-conservation evidence (periodic 200 ms-on/200 ms-off uplink class)
+    //
+    // 2026-10-05 design review: tap cadence alone is NOT a defect signal —
+    // healthy engines batch tap deliveries (100/200 ms) independently of
+    // the hardware I/O cycle, and NO synthetic repro showed the pipeline
+    // itself dropping audio (see WSCaptureContinuityTests). So conservation
+    // is recorded as PER-RUN EVIDENCE (never a restart trigger — restarts
+    // already hurt this user): a physical call that starves at capture
+    // records capMinPct ≪ 100; healthy batch capture records ≈100.
+
+    // MARK: Capture-conservation evidence (periodic 200 ms-on/200 ms-off uplink class)
+    //
+    // 2026-10-05 design review: tap cadence alone is NOT a defect signal —
+    // healthy engines batch tap deliveries (100/200 ms) independently of
+    // the hardware I/O cycle, and NO synthetic repro showed the pipeline
+    // itself dropping audio (see WSCaptureContinuityTests). So conservation
+    // is recorded as PER-RUN EVIDENCE (never a restart trigger — restarts
+    // already hurt this user): a physical call that starves at capture
+    // records capMinPct ≪ 100; healthy batch capture records ≈100.
+    //
+    // The injector matches the sample count to the ACTUAL elapsed wall time
+    // so scheduler jitter cannot skew the ratio.
+
+    /// Injects `rate × elapsed` samples since the last call (bounded to a
+    /// sane burst), keeping conservation ≈ 1 by construction.
+    private func injectWallMatched(_ graph: WSAudioGraph, lastInject: inout Date) {
+        let now = Date()
+        let elapsed = max(0.001, now.timeIntervalSince(lastInject))
+        lastInject = now
+        let count = min(Int(48000 * elapsed), 48000)
+        graph.injectCapturedSamplesForTest(Array(repeating: 0.25, count: count))
+    }
+
+    /// Healthy batched nonzero PCM must record ≈100% conservation and
+    /// restart NOTHING — regardless of the batch cadence.
+    func testHealthyBatchedSineRecordsFullConservation() async {
+        WSAudioGraph.resetRestartBudgetForTest()
+        let graph = WSAudioGraph()
+        let sink = RecordingPlaybackSink()
+        XCTAssertTrue(graph.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: sink, armTimer: true))
+        graph.configureHealthWindowForTest(grace: 0.1, stall: 3600, tapGrace: 3600)
+        var lastInject = Date()
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            injectWallMatched(graph, lastInject: &lastInject)
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        let diagnostics = graph.runDiagnosticsForTest
+        graph.stop()
+        XCTAssertEqual(diagnostics.restarts, 0,
+                       "healthy batch capture must never restart the engine")
+        XCTAssertGreaterThanOrEqual(diagnostics.capMinPct ?? 0, 85,
+                                    "healthy batch capture must conserve ~100% (got \(String(describing: diagnostics.capMinPct)))")
+    }
+
+    /// A STARVED source — only every other 100 ms wall window carries audio
+    /// (the field-reported duty cycle, ratio ≈ 0.5) — must RECORD the low
+    /// conservation as evidence WITHOUT restarting anything.
+    func testStarvedCaptureRecordsEvidenceWithoutRestart() async {
+        WSAudioGraph.resetRestartBudgetForTest()
+        let graph = WSAudioGraph()
+        let sink = RecordingPlaybackSink()
+        XCTAssertTrue(graph.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: sink, armTimer: true))
+        graph.configureHealthWindowForTest(grace: 0.1, stall: 3600, tapGrace: 3600)
+        // Half-rate delivery: HALF the wall-matched samples per wall time,
+        // alternating 100 ms windows (carry vs starved).
+        var lastInject = Date()
+        var carrying = true
+        let deadline = Date().addingTimeInterval(4)
+        while Date() < deadline {
+            let now = Date()
+            let elapsed = max(0.001, now.timeIntervalSince(lastInject))
+            lastInject = now
+            if carrying {
+                let count = min(Int(48000 * elapsed * 0.5), 48000)
+                graph.injectCapturedSamplesForTest(Array(repeating: 0.25, count: count))
+            }
+            carrying.toggle()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        let diagnostics = graph.runDiagnosticsForTest
+        graph.stop()
+        XCTAssertEqual(diagnostics.restarts, 0,
+                       "starvation evidence must never restart the engine (no proven repair)")
+        XCTAssertLessThanOrEqual(diagnostics.capMinPct ?? 100, 70,
+                                 "a 0.5 duty cycle must record low conservation (got \(String(describing: diagnostics.capMinPct)))")
+    }
+
+    /// ONE starved window inside an otherwise healthy run keeps the rolling
+    /// minimum near 100 and restarts nothing.
+    func testSingleStarvedWindowRecordsHighConservation() async {
+        WSAudioGraph.resetRestartBudgetForTest()
+        let graph = WSAudioGraph()
+        let sink = RecordingPlaybackSink()
+        XCTAssertTrue(graph.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: sink, armTimer: true))
+        graph.configureHealthWindowForTest(grace: 0.1, stall: 3600, tapGrace: 3600)
+        var lastInject = Date()
+        let deadline = Date().addingTimeInterval(3)
+        var paused = false
+        while Date() < deadline {
+            injectWallMatched(graph, lastInject: &lastInject)
+            if !paused, Date().timeIntervalSince(deadline) < -1.5 {
+                paused = true
+                try? await Task.sleep(nanoseconds: 300_000_000) // one starved window
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let diagnostics = graph.runDiagnosticsForTest
+        graph.stop()
+        XCTAssertEqual(diagnostics.restarts, 0)
+        XCTAssertGreaterThanOrEqual(diagnostics.capMinPct ?? 0, 75,
+                                    "one starved window must not dominate the rolling evidence (got \(String(describing: diagnostics.capMinPct)))")
+    }
+
+    // MARK: Downlink adaptive jitter + PLC (continuous nonzero PCM)
+
+    /// PLC: after recent NONZERO network audio, one underrun tick inserts an
+    /// attenuated repeat instead of hard silence; successive concealments
+    /// decay; a fresh real frame resets the chain (the next concealment
+    /// restarts at full gain).
+    func testPlaybackPLCConcealsUnderrunAfterRecentAudio() {
+        let graph = WSAudioGraph()
+        let sink = RecordingPlaybackSink()
+        XCTAssertTrue(graph.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: sink))
+        let real = [Int16](repeating: 8000, count: 160)
+        graph.pushPlayback(real)
+        XCTAssertEqual(sink.scheduledCount, 1)
+        // Rendered 48 kHz buffers are Float32; compare MID-BUFFER means so
+        // converter edge transients (the reused upsampler rings at buffer
+        // boundaries) cancel — the middle of a constant frame is exact.
+        func meanOfBuffer(_ index: Int) -> Float {
+            guard index < sink.scheduled.count,
+                  let data = sink.scheduled[index].buffer.floatChannelData else { return 0 }
+            let count = Int(sink.scheduled[index].buffer.frameLength)
+            guard count > 400 else { return 0 }
+            var sum: Float = 0
+            for i in 200..<(count - 200) { sum += abs(data[0][i]) }
+            return sum / Float(count - 400)
+        }
+        // Play everything that was scheduled, then underrun with the
+        // arrival still fresh (<0.5 s): PLC inserts begin.
+        while sink.fireNextCompletion() {}
+        graph.tickOnceForTest()   // schedule concealment #1 (gain 0.8)
+        XCTAssertEqual(graph.playbackConcealedForTest, 1)
+        guard sink.scheduledCount == 2 else { return XCTFail("concealment not scheduled") }
+        XCTAssertEqual(meanOfBuffer(1) / meanOfBuffer(0), 0.8, accuracy: 0.03,
+                       "first concealment must attenuate ~0.8 vs the real frame")
+        while sink.fireNextCompletion() {}
+        graph.tickOnceForTest()   // concealment #2 (gain 0.64, sign flipped)
+        XCTAssertEqual(graph.playbackConcealedForTest, 2)
+        XCTAssertEqual(meanOfBuffer(2) / meanOfBuffer(0), 0.64, accuracy: 0.03,
+                       "second concealment must decay to ~0.64")
+        // Fresh real audio resets the chain: the next concealment is back
+        // at ~0.8 gain, not continuing the old decay.
+        graph.pushPlayback(real)
+        while sink.fireNextCompletion() {}
+        graph.tickOnceForTest()
+        XCTAssertEqual(graph.playbackConcealedForTest, 3)
+        guard sink.scheduledCount == 5 else { return XCTFail("expected real + concealment") }
+        XCTAssertEqual(meanOfBuffer(4) / meanOfBuffer(0), 0.8, accuracy: 0.03,
+                       "concealment after real audio must restart at ~0.8 gain")
+        graph.stop()
+    }
+
+    /// Seed discipline: speech enters playback (seed = speech), then a REAL
+    /// silent frame plays (seed cleared); an underrun during that true
+    /// silence must NOT replay the old speech.
+    func testPlaybackSpeechThenSilenceUnderrunDoesNotReplaySpeech() {
+        let graph = WSAudioGraph()
+        let sink = RecordingPlaybackSink()
+        XCTAssertTrue(graph.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: sink))
+        graph.pushPlayback([Int16](repeating: 8000, count: 160))  // speech
+        graph.pushPlayback([Int16](repeating: 0, count: 160))     // true silence
+        while sink.fireNextCompletion() {}
+        graph.tickOnceForTest()   // underrun: seed was cleared by the silent frame
+        XCTAssertEqual(graph.playbackConcealedForTest, 0,
+                       "an underrun during true silence must never replay speech")
+        XCTAssertEqual(sink.scheduledCount, 2, "no concealment buffer may be scheduled")
+        graph.stop()
+    }
+
+    /// PLC must NOT fire for synthetic fill (the progress tone path) and
+    /// must NOT repeat genuine silence.
+    func testPlaybackPLCIgnoresTonePathAndSilence() {
+        let graph = WSAudioGraph()
+        let sink = RecordingPlaybackSink()
+        XCTAssertTrue(graph.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: sink))
+        // Synthetic fill path: no network-arrival marker → no PLC.
+        graph.pushSyntheticPlayback([Int16](repeating: 5000, count: 160))
+        while sink.fireNextCompletion() {}
+        graph.tickOnceForTest()
+        XCTAssertEqual(graph.playbackConcealedForTest, 0,
+                       "synthetic tone must never trigger PLC repeats")
+        // Real but SILENT network frame: nothing worth repeating.
+        graph.pushPlayback([Int16](repeating: 0, count: 160))
+        while sink.fireNextCompletion() {}
+        graph.tickOnceForTest()
+        XCTAssertEqual(graph.playbackConcealedForTest, 0,
+                       "silence must never be repeated as concealment")
+        graph.stop()
+    }
+
+    /// Adaptive high-water: a burst beyond the high-water mark trims back to
+    /// the target (bounded accumulated delay) and reports the trim count.
+    /// Every frame that survived the trim plays exactly once.
+    func testPlaybackBurstTrimsToTargetBoundsDelay() {
+        let graph = WSAudioGraph()
+        let sink = RecordingPlaybackSink()
+        XCTAssertTrue(graph.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: sink))
+        for index in 0..<40 {
+            graph.pushPlayback([Int16](repeating: Int16(1000 + index), count: 160))
+        }
+        XCTAssertLessThanOrEqual(graph.queuedPlaybackFrames, 25,
+                                 "burst must not accumulate beyond the high-water mark")
+        XCTAssertGreaterThan(graph.playbackTrimmedForTest, 0, "catch-up trim must be counted")
+        // Drain like real playback (one completion per tick) until the
+        // queue empties: what remained after the trim (queued + in flight)
+        // plays exactly once — the rest was caught up by the trim.
+        let remaining = graph.queuedPlaybackFrames + graph.framesInFlight
+        var played = 0
+        for _ in 0..<200 {
+            if sink.fireNextCompletion() { played += 1 }
+            graph.tickOnceForTest()
+            if graph.queuedPlaybackFrames == 0 && graph.framesInFlight == 0 { break }
+        }
+        while sink.fireNextCompletion() { played += 1 }
+        // PLC may add at most maxConcealmentFrames after the real audio
+        // ends; the REAL frames must all have played.
+        XCTAssertGreaterThanOrEqual(played, remaining)
+        XCTAssertLessThanOrEqual(graph.playbackConcealedForTest, 5)
+        XCTAssertEqual(remaining, 12, "40-frame burst trims to the adaptive target (4 queued + 8 in flight)")
+        graph.stop()
+    }
+
+    /// Loss pattern: continuous nonzero PCM with every 10th frame missing,
+    /// modeled at REAL playback cadence (one completion per 20 ms tick).
+    /// Concealment covers only the genuine underrun after the loss; the
+    /// accumulated delay stays bounded by the adaptive target.
+    func testPlaybackLossPatternBoundsConcealmentAndDelay() {
+        let graph = WSAudioGraph()
+        let sink = RecordingPlaybackSink()
+        XCTAssertTrue(graph.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: sink))
+        for tick in 0..<100 {
+            if tick % 10 != 9 {          // ~10% network loss
+                graph.pushPlayback([Int16](repeating: 6000, count: 160))
+            }
+            _ = sink.fireNextCompletion()   // one 20 ms playback tick
+            graph.tickOnceForTest()
+            XCTAssertLessThanOrEqual(graph.queuedPlaybackFrames, 25,
+                                     "latency unbounded at tick \(tick)")
+        }
+        // Genuine losses were concealed; the chain is bounded (≤1 per loss
+        // gap at this cadence) and silence was never manufactured from
+        // nothing (PLC seeds only from non-silent network frames).
+        XCTAssertGreaterThan(graph.playbackConcealedForTest, 0, "losses should be concealed")
+        XCTAssertLessThanOrEqual(graph.playbackConcealedForTest, 11,
+                                 "concealment must stay bounded per gap")
+        graph.stop()
+    }
+
+    /// Adaptive target: steady 20 ms arrivals hold a LOW target (~100 ms of
+    /// latency); bursty 100 ms arrivals raise it, bounded by maxTarget — the
+    /// delay bound follows the MEASURED jitter instead of a fixed 500 ms.
+    func testPlaybackAdaptiveTargetFollowsMeasuredJitter() {
+        // Steady stream: inter-arrival ≈20 ms → target ≈ minTarget (4).
+        let steady = WSAudioGraph()
+        let steadySink = RecordingPlaybackSink()
+        XCTAssertTrue(steady.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: steadySink))
+        for tick in 0..<30 {
+            steady.pushPlayback([Int16](repeating: 4000, count: 160))
+            _ = steadySink.fireNextCompletion()
+            steady.tickOnceForTest()
+            if tick > 5 {
+                XCTAssertLessThanOrEqual(steady.queuedPlaybackFrames, 5,
+                                         "steady stream must hold the low target")
+            }
+        }
+        steady.stop()
+
+        // Bursty stream: simulate ~100 ms network batching (5 frames per
+        // burst, 5 ticks apart). The target rises to absorb the burst but
+        // stays ≤ maxTarget (12 → 240 ms), and bursts are caught up by
+        // trims rather than unbounded growth.
+        let burst = WSAudioGraph()
+        let burstSink = RecordingPlaybackSink()
+        XCTAssertTrue(burst.startHeadless(
+            captureFormat: capture48k, playbackFormat: playback48k, sink: burstSink))
+        var delivered = 0
+        for tick in 0..<40 {
+            if tick % 5 == 0 {
+                for _ in 0..<5 where delivered < 200 {
+                    burst.pushPlayback([Int16](repeating: 4000, count: 160))
+                    delivered += 1
+                }
+            }
+            _ = burstSink.fireNextCompletion()
+            burst.tickOnceForTest()
+            XCTAssertLessThanOrEqual(burst.queuedPlaybackFrames, 13,
+                                     "burst latency must stay bounded by the adaptive target")
+        }
+        burst.stop()
+    }
 }
 
 // MARK: - Real data-flow tests for the WSS audio graph
@@ -265,18 +577,25 @@ final class WSAudioGraphTests: XCTestCase {
 
     // MARK: Playback: real scheduling, drain and completion refills
 
-    func testPushPlaybackActuallySchedulesRenderedBuffers() {
+    func testPushPlaybackActuallySchedulesRenderedBuffers() async {
         let (graph, sink) = makeHeadlessGraph()
         defer { graph.stop() }
         let loud = [Int16](repeating: 12000, count: 160)
-        for _ in 0..<20 { graph.pushPlayback(loud) }
+        // Deliver at REAL network cadence (one frame per 20 ms tick): the
+        // adaptive target holds the queue at the low bound, nothing trims,
+        // and every frame reaches the player.
+        for _ in 0..<8 { graph.pushPlayback(loud) }
+        XCTAssertGreaterThanOrEqual(sink.scheduledCount, 8)
+        XCTAssertLessThanOrEqual(graph.framesInFlight, 8)
+        for _ in 0..<12 {
+            if sink.fireNextCompletion() {}
+            graph.tickOnceForTest()
+            graph.pushPlayback(loud)
+        }
 
         // The drain schedules immediately up to the refill threshold,
         // rendering through the REAL 8k->48k converter. (AVAudioConverter
         // priming can shave the very first buffer; later buffers are 960.)
-        XCTAssertGreaterThanOrEqual(sink.scheduledCount, 8)
-        XCTAssertLessThanOrEqual(graph.framesInFlight, 8)
-        XCTAssertEqual(graph.framesInFlight + graph.queuedPlaybackFrames + sink.firedCount, 20)
         let buffers = sink.scheduled.map(\.buffer)
         XCTAssertTrue(buffers.allSatisfy { $0.format.sampleRate == 48000 })
         let steady = buffers.first { $0.frameLength == 960 }
@@ -297,13 +616,17 @@ final class WSAudioGraphTests: XCTestCase {
             RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.02))
         }
         // Drain the last in-flight completions (their hops land on the main
-        // queue asynchronously, exactly like real player callbacks).
+        // queue asynchronously, exactly like real player callbacks). The
+        // final pumps run AFTER the arrival-freshness window so PLC cannot
+        // inject concealment frames into this exact-count assertion.
+        try? await Task.sleep(nanoseconds: 600_000_000)
         var spins = 0
         while graph.framesInFlight > 0 && spins < 20 {
             sink.fireAllCompletions()
             RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.02))
             spins += 1
         }
+        graph.tickOnceForTest()
         XCTAssertEqual(sink.scheduledCount, 20)
         XCTAssertEqual(graph.queuedPlaybackFrames, 0, "all queued audio must drain into the player")
         XCTAssertEqual(graph.framesInFlight, 0)
@@ -315,14 +638,25 @@ final class WSAudioGraphTests: XCTestCase {
         for index in 0..<120 {
             graph.pushPlayback([Int16](repeating: Int16(index % 32), count: 160))
         }
-        XCTAssertLessThanOrEqual(graph.queuedPlaybackFrames, 50)
+        // 2026-10-05 adaptive buffer: bursts past the high-water mark (25)
+        // are caught up by trimming to the 16-frame target — accumulated
+        // delay stays bounded far below the old 50-frame cap.
+        XCTAssertLessThanOrEqual(graph.queuedPlaybackFrames, 25)
         XCTAssertLessThanOrEqual(graph.framesInFlight, 8)
-        // 120 pushed; at most 50 queued + 8 in flight survive — the rest
-        // were dropped as the oldest backlog, never buffered for seconds.
+        XCTAssertGreaterThan(graph.playbackTrimmedForTest, 0,
+                             "an over-target burst must be caught up by trimming")
         let survivors = graph.queuedPlaybackFrames + graph.framesInFlight + sink.firedCount
-        XCTAssertLessThanOrEqual(survivors, 58)
-        XCTAssertGreaterThan(graph.playbackDroppedFrames, 0, "over-cap backlog must drop OLDEST frames")
-        sink.fireAllCompletions()
+        XCTAssertLessThanOrEqual(survivors, 33)
+        // The hard cap remains as a safety bound: pin the adaptive target AT
+        // the cap so the cap binds before the adaptive high water.
+        let raw = WSPlaybackScheduler(maxQueuedFrames: 4, maxScheduledFrames: 2,
+                                      refillThreshold: 2, minTargetFrames: 4, maxTargetFrames: 4)
+        let rawSink = RecordingPlaybackSink()
+        raw.configure(sink: rawSink, format: playback48k)
+        raw.start()
+        for index in 0..<12 { raw.enqueue([Int16](repeating: Int16(index), count: 160)) }
+        XCTAssertGreaterThan(raw.droppedFrames, 0, "hard cap must drop the oldest backlog")
+        raw.flush()
     }
 
     func testLateCompletionsAfterStopRestartDoNotChurnNewRun() {

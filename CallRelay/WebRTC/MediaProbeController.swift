@@ -108,7 +108,7 @@ final class MediaProbeController: NSObject {
             }
         }
         let offer = try await pc.offer(for: constraints)
-        let munged = RTCSessionDescription(type: .offer, sdp: SDPCodecFilter.forcePCMUOnly(offer.sdp))
+        let munged = RTCSessionDescription(type: .offer, sdp: SDPCodecFilter.preferOpusWithPCMU(offer.sdp))
         try await pc.setLocalDescription(munged)
         try await waitForGatheringComplete(pc)
         guard let local = pc.localDescription else { throw MediaError.missingLocalDescription }

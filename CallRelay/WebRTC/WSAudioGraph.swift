@@ -60,7 +60,13 @@ private final class FeedState: @unchecked Sendable {
     /// in-flight buffers.
     var lastCompleted: Int?
     var progressStoppedSince: TimeInterval?
+    /// Total feed ticks this run (diagnostic seam for the watchdog tests).
+    var tickCount: UInt64 = 0
     var restartAttempted = false
+    /// Instance-local count of ACCEPTED health-restart requests (this run's
+    /// graph only — unlike the process-wide census this survives
+    /// `DiagnosticsStore.clear()` between tests).
+    var restartsRequested: Int = 0
     /// Bumped on EVERY start AND stop: a restart request queued before a
     /// stop/start cycle must never land on the NEW run.
     var generation: UInt64 = 0
@@ -94,6 +100,10 @@ private final class FeedState: @unchecked Sendable {
     /// misbehavior classically mutes the mic while the far end speaks); a
     /// low count means plain speech pauses. Bounded counters only.
     var runMicSilentDuringDownlink = 0
+    /// Per-run MINIMUM capture-conservation percentage (rolling window) —
+    /// the 200-on/200-off discriminator: a physical call that starves at
+    /// capture records ≪100 here; healthy batch capture records ≈100.
+    var runMinConservation: Int?
     var runPlayFrames = 0
     var runPlaySilent = 0
     var runTickLate = 0
@@ -215,6 +225,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.runMicSilent = 0
         feed.runMicPeak = 0
         feed.runMicSilentDuringDownlink = 0
+        feed.runMinConservation = nil
         feed.runPlayFrames = 0
         feed.runPlaySilent = 0
         feed.runTickLate = 0
@@ -261,6 +272,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.runMicSilent = 0
         feed.runMicPeak = 0
         feed.runMicSilentDuringDownlink = 0
+        feed.runMinConservation = nil
         feed.runPlayFrames = 0
         feed.runPlaySilent = 0
         feed.runTickLate = 0
@@ -290,6 +302,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
                    micSilentDL: feed.runMicSilentDuringDownlink,
                    play: feed.runPlayFrames, playSilent: feed.runPlaySilent,
                    tickLate: feed.runTickLate)
+        let feedMinConservation = feed.runMinConservation
         feed.lock.unlock()
         DiagnosticsCensus.shared.increment("audio.graphStop")
         let capDropped = pipeline?.droppedSamples ?? 0
@@ -299,9 +312,18 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         if tapGapMs > 0 {
             DiagnosticsCensus.shared.maximize("audio.tapGapMsMax", tapGapMs)
         }
+        if let feedMinConservation {
+            // Cross-run MINIMUM (the name means minimum): a maximize here
+            // would report the best window ever seen — the exact opposite
+            // of the starvation evidence.
+            DiagnosticsCensus.shared.minimize("audio.capConservationMinPct", feedMinConservation)
+        }
         let stopSummary = "graph stop capDropped=\(capDropped) "
-            + "playDropped=\(playback.droppedFrames) inFlight=\(playback.framesInFlight)"
+            + "playDropped=\(playback.droppedFrames) playTrimmed=\(playback.trimmedFrames)"
+            + " playConcealed=\(playback.concealedFrames)"
+            + " inFlight=\(playback.framesInFlight)"
             + " tapDeliveries=\(tapDeliveries) tapGapMsMax=\(tapGapMs) tapFramesMax=\(tapFramesMax)"
+            + (feedMinConservation.map { " capMinPct=\($0)" } ?? "")
         let runSummary = " mic=\(run.mic) micSilent=\(run.micSilent) micPeak=\(run.micPeak)"
             + " micSilentDL=\(run.micSilentDL)"
             + " play=\(run.play) playSilent=\(run.playSilent) tickLate=\(run.tickLate)"
@@ -358,7 +380,9 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.lastCompleted = nil
         feed.progressStoppedSince = nil
         feed.restartAttempted = false
+        feed.restartsRequested = 0
         feed.lastTickUptime = nil
+        feed.runMinConservation = nil
         feed.lock.unlock()
     }
 
@@ -428,6 +452,25 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
            now - start > tapGraceWindow {
             requestHealthRestart(reason: "tap-dead", now: now, generation: generation)
         }
+
+        // Capture-conservation EVIDENCE (2026-10-05 review: NOT a restart
+        // trigger — restarts already hurt this user once, and no synthetic
+        // repro proves a restart repairs this class). The rolling-window
+        // ratio (delivered samples vs wall time × source rate) is recorded
+        // per run so the next physical call discriminates capture
+        // starvation (ratio ≪ 1, upstream of the pipeline) from transport
+        // batching (ratio ≈ 1): the periodic 200-on/200-off uplink is
+        // diagnosed from evidence, not "fixed" by a risky heuristic.
+        if !muted, let capture, let conservation = capture.conservationSnapshot {
+            let pct = Int((conservation.ratio * 100).rounded())
+            feed.lock.lock()
+            if let existing = feed.runMinConservation {
+                feed.runMinConservation = min(existing, pct)
+            } else {
+                feed.runMinConservation = pct
+            }
+            feed.lock.unlock()
+        }
     }
 
     private nonisolated func requestHealthRestart(reason: String, now: TimeInterval,
@@ -441,6 +484,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             return
         }
         feed.restartAttempted = true
+        feed.restartsRequested += 1
         feed.lock.unlock()
 
         let budget = Self.restartBudget
@@ -555,6 +599,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     private nonisolated func tick() {
         feed.lock.lock()
         guard feed.running else { feed.lock.unlock(); return }
+        feed.tickCount &+= 1
         let pipeline = feed.capture
         let muted = feed.muted
         let emit = feed.onMicFrame
@@ -676,7 +721,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         DiagnosticsCensus.shared.increment("audio.playbackFrames")
         Self.recordLevel(frame, absSumKey: "audio.playAbsSum",
                          silentKey: "audio.playSilentFrames", peakKey: "audio.playPeakMax")
-        playback.enqueue(frame)
+        playback.enqueueNetwork(frame)
     }
 
     /// Queues one locally generated 160-sample frame (call-progress tone).
@@ -687,7 +732,14 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         let running = feed.running
         feed.lock.unlock()
         guard running else { return }
-        playback.enqueue(frame)
+        playback.enqueueSynthetic(frame)
+    }
+
+    /// Current playback-buffer depth in 20 ms frames; reported to the
+    /// gateway in the WSS ping so its downlink controller sees the freshest
+    /// end-to-end delay evidence.
+    nonisolated var playbackBufferedFrames: Int {
+        playback.queuedFrames
     }
 
     /// How long the real downlink has been silent (milliseconds); the call
@@ -703,13 +755,19 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     var queuedPlaybackFrames: Int { playback.queuedFrames }
     var framesInFlight: Int { playback.framesInFlight }
     var playbackDroppedFrames: Int { playback.droppedFrames }
+    /// Adaptive high-water catch-up trims this run (evidence).
+    var playbackTrimmedForTest: Int { playback.trimmedFrames }
+    /// PLC concealment inserts this run (evidence).
+    var playbackConcealedForTest: Int { playback.concealedFrames }
     /// Run-scoped diagnostics snapshot (tests assert the per-run counters
     /// behind the extended stop-log evidence).
     var runDiagnosticsForTest: (mic: Int, micSilent: Int, micPeak: Int,
-                                play: Int, playSilent: Int, tickLate: Int) {
+                                play: Int, playSilent: Int, tickLate: Int,
+                                capMinPct: Int?, restarts: Int) {
         feed.lock.lock()
         let value = (feed.runMicFrames, feed.runMicSilent, feed.runMicPeak,
-                     feed.runPlayFrames, feed.runPlaySilent, feed.runTickLate)
+                     feed.runPlayFrames, feed.runPlaySilent, feed.runTickLate,
+                     feed.runMinConservation, feed.restartsRequested)
         feed.lock.unlock()
         return value
     }
@@ -726,6 +784,20 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         let pipeline = feed.capture
         feed.lock.unlock()
         return pipeline?.pendingSnapshotCount ?? 0
+    }
+
+    /// Test seam: current median inter-tap gap of the live pipeline.
+    var tapGapMedianProbeForTest: TimeInterval? {
+        feed.lock.lock()
+        let pipeline = feed.capture
+        feed.lock.unlock()
+        return pipeline?.tapGapMedianSnapshot
+    }
+
+    /// Test seam: total feed ticks this run.
+    var tickCountProbeForTest: UInt64 {
+        feed.lock.lock(); defer { feed.lock.unlock() }
+        return feed.tickCount
     }
     var convertedCaptureCount: Int {
         feed.lock.lock()

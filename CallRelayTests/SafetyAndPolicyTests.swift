@@ -162,26 +162,59 @@ final class PushReceptionPolicyTests: XCTestCase {
 }
 
 final class SDPFilterTests: XCTestCase {
-    func testAudioSectionBecomesPCMUOnly() {
+    func testAudioSectionPrefersOpusWithPCMUFallback() {
         let offer = """
         v=0\r
-        m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8\r
+        m=audio 9 UDP/TLS/RTP/SAVPF 111 0 8 13\r
         a=rtpmap:111 opus/48000/2\r
+        a=fmtp:111 minptime=10\r
         a=rtpmap:0 PCMU/8000\r
+        a=rtpmap:8 PCMA/8000\r
+        a=rtpmap:13 CN/8000\r
         a=rtcp-fb:111 nack\r
+        a=rtcp-fb:111 transport-cc\r
+        a=rtcp-fb:0 nack\r
         a=sendrecv\r
         a=fingerprint:sha-256 AA\r
         m=video 9 UDP/TLS/RTP/SAVPF 96\r
         a=rtpmap:96 VP8/90000\r
         """
-        let result = SDPCodecFilter.forcePCMUOnly(offer)
-        XCTAssertTrue(result.contains("m=audio 9 UDP/TLS/RTP/SAVPF 0"))
+        let result = SDPCodecFilter.preferOpusWithPCMU(offer)
+        // Opus first, PCMU fallback; every other codec payload is dropped.
+        XCTAssertTrue(result.contains("m=audio 9 UDP/TLS/RTP/SAVPF 111 0"))
+        XCTAssertTrue(result.contains("a=rtpmap:111 opus/48000/2"))
         XCTAssertTrue(result.contains("a=rtpmap:0 PCMU/8000"))
-        XCTAssertFalse(result.contains("opus/48000"))
-        XCTAssertFalse(result.contains("a=rtcp-fb:111"))
+        XCTAssertFalse(result.contains("PCMA/8000"))
+        XCTAssertFalse(result.contains("CN/8000"))
+        // rtcp-fb preserved for the surviving codecs only.
+        XCTAssertTrue(result.contains("a=rtcp-fb:111 nack"))
+        XCTAssertTrue(result.contains("a=rtcp-fb:111 transport-cc"))
+        XCTAssertTrue(result.contains("a=rtcp-fb:0 nack"))
+        // Opus fmtp gains inband FEC advertisement when the SDK omitted it.
+        XCTAssertTrue(result.contains("a=fmtp:111 minptime=10;useinbandfec=1"))
         // Non-audio section and DTLS line are left intact.
         XCTAssertTrue(result.contains("a=rtpmap:96 VP8/90000"))
         XCTAssertTrue(result.contains("a=fingerprint:sha-256 AA"))
+    }
+
+    func testAudioSectionDegradesToPCMURowhenOpusAbsent() {
+        let offer = """
+        v=0\r
+        m=audio 9 UDP/TLS/RTP/SAVPF 0 8\r
+        a=rtpmap:0 PCMU/8000\r
+        a=rtpmap:8 PCMA/8000\r
+        """
+        let result = SDPCodecFilter.preferOpusWithPCMU(offer)
+        XCTAssertTrue(result.contains("m=audio 9 UDP/TLS/RTP/SAVPF 0"))
+        XCTAssertFalse(result.contains("111"))
+    }
+
+    func testFilterKeepsSingleCRLFTermination() {
+        let offer = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111 0\r\na=rtpmap:111 opus/48000/2\r\na=rtpmap:0 PCMU/8000\r\n"
+        let result = SDPCodecFilter.preferOpusWithPCMU(offer)
+        XCTAssertTrue(result.hasSuffix("\r\n"))
+        XCTAssertFalse(result.hasSuffix("\r\n\r\n"))
+        XCTAssertFalse(result.contains("\r\n\r\n"))
     }
 }
 

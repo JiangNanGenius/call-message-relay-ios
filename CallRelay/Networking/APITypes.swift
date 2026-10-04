@@ -101,9 +101,20 @@ protocol GatewayAPI: Sendable {
     /// v2: atomically promotes the measured probe onto the live media path.
     /// The negotiated peer connection becomes the call's host transport; the
     /// healthy path is only touched after the candidate proved reachable.
-    func commitMediaProbe(callId: String) async throws
+    /// A non-nil preflightId adopts the caller's device-scoped preflight
+    /// candidate (fresh foreground measurement) instead of a call probe.
+    func commitMediaProbe(callId: String, preflightId: String?) async throws
     /// v2: cancels the call's probe (safe no-op when absent).
     func discardMediaProbe(callId: String) async throws
+    /// v2: ICE configuration WITHOUT a call, for foreground direct-path
+    /// preflight before dialing.
+    func iceConfiguration() async throws -> ICEConfiguration
+    /// v2: attaches a DEVICE-SCOPED, call-independent detached probe. It
+    /// creates no call and captures no audio; the returned id can later be
+    /// committed into a call via `commitMediaProbe(callId:preflightId:)`.
+    func attachMediaPreflight(sdp: String) async throws -> V2PreflightAnswer
+    /// v2: discards the device-scoped preflight probe (safe no-op).
+    func discardMediaPreflight(preflightId: String) async throws
     func sync(after: Int64, limit: Int) async throws -> SyncResponse
     func registerPush(registration: PushRegistration, idempotencyKey: String) async throws
 
@@ -131,6 +142,9 @@ protocol GatewayAPI: Sendable {
     func dial(to: String, lineId: String?, clientCallId: String, idempotencyKey: String) async throws -> CallRecord
     func sendMessage(to: String, body: String, lineId: String?, idempotencyKey: String) async throws -> MessageRecord
     func listThreads(lineId: String?) async throws -> [MessageThread]
+    /// Deletes one SMS conversation for every device: the gateway records a
+    /// tombstone, hides history at list time and broadcasts `thread.deleted`.
+    func deleteThread(threadKey: String) async throws
     func decline(callId: String, idempotencyKey: String) async throws
     func hold(callId: String, idempotencyKey: String) async throws
     func resume(callId: String, idempotencyKey: String) async throws
@@ -434,6 +448,14 @@ struct VoicemailDeleteEvent: Decodable, Equatable, Sendable {
     let lineId: String?
 }
 
+/// `thread.deleted` event payload: the conversation tombstone other paired
+/// devices apply to drop the thread (and pre-tombstone history) locally.
+struct ThreadDeletionPayload: Decodable, Equatable, Sendable {
+    let key: String
+    let lineId: String?
+    let deletedAt: Int64?
+}
+
 /// Unified-gateway-only surface. Defaults keep the demo/v1 transports
 /// compiling; the HTTP transport implements them for apiVersion v2.
 extension GatewayAPI {
@@ -465,6 +487,10 @@ extension GatewayAPI {
 
     func listThreads(lineId: String?) async throws -> [MessageThread] {
         try await listThreads()
+    }
+
+    func deleteThread(threadKey: String) async throws {
+        throw APIError.notReady("当前配对不支持删除对话。")
     }
 
     func decline(callId: String, idempotencyKey: String) async throws {
@@ -519,11 +545,23 @@ extension GatewayAPI {
         throw APIError.notReady("当前配对不支持媒体探测。")
     }
 
-    func commitMediaProbe(callId: String) async throws {
+    func commitMediaProbe(callId: String, preflightId: String?) async throws {
         throw APIError.notReady("当前配对不支持媒体探测。")
     }
 
     func discardMediaProbe(callId: String) async throws {
+        throw APIError.notReady("当前配对不支持媒体探测。")
+    }
+
+    func iceConfiguration() async throws -> ICEConfiguration {
+        throw APIError.notReady("当前配对不支持媒体探测。")
+    }
+
+    func attachMediaPreflight(sdp: String) async throws -> V2PreflightAnswer {
+        throw APIError.notReady("当前配对不支持媒体探测。")
+    }
+
+    func discardMediaPreflight(preflightId: String) async throws {
         throw APIError.notReady("当前配对不支持媒体探测。")
     }
 

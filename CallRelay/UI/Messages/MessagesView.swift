@@ -41,6 +41,9 @@ private struct MessageInboxView: View {
     @State private var filter: MessageFilter = .all
     @State private var showCompose = false
     @State private var composeRecipient = ""
+    /// Conversation awaiting the native delete confirmation.
+    @State private var pendingDeleteKey: String?
+    @State private var pendingDeletePeer = ""
 
     var body: some View {
         NavigationStack {
@@ -108,6 +111,26 @@ private struct MessageInboxView: View {
                 .sheet(isPresented: $showCompose) {
                     ComposeMessageView(inbox: inbox, initialRecipient: composeRecipient)
                         .environmentObject(model)
+                }
+                // Native delete confirmation for swipe-to-delete: the gateway
+                // tombstones the conversation (history hidden on every
+                // device, never destroyed); new messages reopen it.
+                .confirmationDialog(
+                    String(localized: "删除与 \(pendingDeletePeer) 的对话？"),
+                    isPresented: Binding(
+                        get: { pendingDeleteKey != nil },
+                        set: { if !$0 { pendingDeleteKey = nil } }
+                    ),
+                    titleVisibility: .visible
+                ) {
+                    Button(String(localized: "删除对话"), role: .destructive) {
+                        guard let key = pendingDeleteKey else { return }
+                        pendingDeleteKey = nil
+                        Task { await model.deleteThread(key) }
+                    }
+                    Button(String(localized: "取消"), role: .cancel) { pendingDeleteKey = nil }
+                } message: {
+                    Text(String(localized: "删除后所有设备将不再显示这段对话历史。"))
                 }
                 .onChange(of: model.pendingComposePeer) { _, peer in
                     guard let peer, !peer.isEmpty else { return }
@@ -183,6 +206,15 @@ private struct MessageInboxView: View {
                         .accessibilityIdentifier("thread-\(thread.key)")
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         .listRowSeparator(.automatic)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                pendingDeleteKey = thread.key
+                                pendingDeletePeer = model.contacts.name(forPeer: thread.peer) ?? thread.peer
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                            .accessibilityIdentifier("delete-thread-\(thread.key)")
+                        }
                     }
                 }
                 .listStyle(.plain)

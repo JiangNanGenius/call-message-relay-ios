@@ -4,22 +4,26 @@ import AVFoundation
 /// Coordinates Auto/Direct/Relay routing for ONE call.
 ///
 /// The guaranteed WSS relay establishes first (staged audio ownership).
-/// This controller then:
-/// * **auto** — detached candidate probe; promotes to direct only on
-///   sustained, materially-better FRESH comparable echo RTT, and restores WSS
-///   on sustained degradation OR when the relay becomes materially better.
-/// * **direct** — probes/commits as soon as the candidate is connected; no
-///   silent fallback: failures or later faults are reported truthfully with
-///   explicit recovery choices while the call stays alive.
-/// * **relay** — never promotes; switching back performs a staged,
-///   ready-confirmed WSS handover and only then retires the direct peer.
+/// At call start the route is CHOSEN ONCE from the freshest available
+/// measurements (a foreground preflight handoff plus the freshly connected
+/// relay's ping RTT — P2P is not always faster), then PINNED for the whole
+/// call:
+/// * **auto** — direct only when the preflight's fresh echo RTT is
+///   materially better than the fresh relay RTT; otherwise the relay stays.
+/// * **direct** — adopts the preflight candidate when fresh, else probes and
+///   commits; failures are reported truthfully (no silent fallback).
+/// * **relay** — never promotes.
+///
+/// 2026-10-05 routing policy: NO quality-driven mid-call handover. Once
+/// pinned, the route changes ONLY on an actual path failure (transport
+/// failure, ICE disconnect, server reconciliation); a manual mode change
+/// during the call updates the PERSISTED preference and applies to the NEXT
+/// call (the UI says so), never hijacking the live call.
 ///
 /// Invariants:
 /// * The DETACHED candidate is a different object from the ADOPTED peer.
-/// * ALL route transactions (auto commit, manual direct, relay handover,
-///   server reconciliation, policy application) run through ONE async
-///   transaction gate: no second probe/attach can start before the previous
-///   outcome reconciles, and the latest user mode always wins afterwards.
+/// * ALL route transactions (start selection, manual direct, relay handover,
+///   server reconciliation) run through ONE async transaction gate.
 /// * From the moment a commit request is sent until adoption reconciles, the
 ///   expected server-side close of the OLD WSS socket can never trip the
 ///   call's media-recovery grace.
@@ -39,6 +43,9 @@ final class CallRouteController {
         /// with nil when no local peer was adopted (server reconciliation /
         /// unknown-outcome recovery) — staged audio must ALWAYS start.
         let promoteStagedRelay: (DirectProbeControlling?) -> Void
+        /// Releases a declined preflight candidate: closes the peer and tells
+        /// the gateway to drop its device-scoped probe entry.
+        let discardPreflight: (RoutePreflightController.Handoff) -> Void
         let fetchTransport: () async -> String?
         let relaySamples: () async -> [TimeInterval]
         /// Most recent measured relay round-trip with its arrival date, so the
@@ -76,7 +83,17 @@ final class CallRouteController {
     /// never cancelled through this (its server-side outcome must reconcile).
     private var selectionEpoch: UInt64 = 0
     private var tearingDown = false
+    /// True once the call-start selection settled: the route is pinned and
+    /// quality-driven switching is disabled for the rest of the call.
+    private var pinned = false
+    /// Fresh foreground preflight handed over by the coordinator at call
+    /// start, consumed by the initial selection (commit-adopt or discard).
+    private var preflight: RoutePreflightController.Handoff?
     private var connectedAt = Date()
+    /// When the active direct peer was adopted: echo sampling needs a
+    /// bounded warm-up (the 1 s echo cadence) before "no fresh samples" may
+    /// count as a failure signal.
+    private var adoptedAt = Date()
     private var state = CallRouteState()
 
     /// ONE serialization gate for every route transaction. FIFO waiters, so
@@ -109,6 +126,7 @@ final class CallRouteController {
          api: GatewayAPI,
          ice: ICEConfiguration,
          callbacks: Callbacks,
+         preflight: RoutePreflightController.Handoff? = nil,
          probeFactory: @escaping @MainActor () -> DirectProbeControlling = { MediaProbeController() },
          cadence: Cadence = Cadence(),
          advisorFactory: @escaping () -> MediaRouteAdvisor = {
@@ -122,6 +140,7 @@ final class CallRouteController {
         self.api = api
         self.ice = ice
         self.callbacks = callbacks
+        self.preflight = preflight
         self.probeFactory = probeFactory
         self.cadence = cadence
         self.makeAdvisor = advisorFactory
@@ -233,15 +252,33 @@ final class CallRouteController {
         }
         Task { [weak self] in
             guard let self else { return }
-            await self.withTransaction { await self.performApplyCurrentMode() }
+            await self.withTransaction { await self.performInitialSelection() }
         }
     }
 
     func setMode(_ newMode: MediaRouteMode) async {
         guard newMode != mode, !tearingDown else { return }
+        // Pinned state is captured at ENTRY: a mode change issued while the
+        // call-start selection is still in flight (e.g. during a commit)
+        // applies to that selection's outcome, whereas one issued after the
+        // route pinned only marks the persisted next-call preference.
+        let applyToSelection = !pinned
         mode = newMode
         advisor = makeAdvisor()
         selectionEpoch &+= 1
+        if !applyToSelection {
+            // 2026-10-05 policy: the route is pinned for THIS call. The new
+            // preference is persisted by the caller (per-gateway store) and
+            // applies to the NEXT call; the live transport is never
+            // hijacked mid-call by a quality-driven or manual switch.
+            publish {
+                $0.mode = newMode
+                $0.pendingModeChange = true
+                $0.notice = nil
+                $0.offersAutoFallback = false
+            }
+            return
+        }
         publish {
             $0.mode = newMode
             $0.notice = nil
@@ -258,35 +295,126 @@ final class CallRouteController {
             abortPreCommitAttach()
         }
         await withTransaction { [weak self] in
-            await self?.performApplyCurrentMode()
+            await self?.performInitialSelection(reselection: true)
         }
     }
 
-    /// Applies the current policy to the current transport. Must run inside
-    /// a transaction (all nested operations are the `perform*` variants).
-    private func performApplyCurrentMode() async {
+    /// The ONE call-start route selection. Must run inside a transaction.
+    /// Chooses the best available path from FRESH measurements (foreground
+    /// preflight handoff + the freshly connected relay's ping RTT), commits
+    /// or declines exactly once, then pins the route for the whole call.
+    /// `reselection` is true when a mode change issued before pinning is
+    /// applied after the in-flight selection completes — it must run even
+    /// though `pinned` flipped meanwhile.
+    private func performInitialSelection(reselection: Bool = false) async {
         guard !tearingDown else { return }
+        if pinned && !reselection { return }
         guard !callbacks.isConference() else {
             publish { $0.conferenceLocked = true }
+            pinned = true
+            publish { $0.pinned = true }
             return
         }
-        switch (mode, transport) {
-        case (.relay, .relay):
-            // Only a detached candidate may be dropped; a committing probe is
-            // never touched here.
-            if committingProbe == nil { cancelCandidate() }
-            policyTask?.cancel()
-        case (.relay, .direct):
-            await performRelayHandover(trigger: .user)
-        case (.direct, .direct):
-            startDirectMonitoring(autoFallback: false)
-        case (.direct, .relay):
-            await performRequestDirect()
-        case (.auto, .direct):
-            startDirectMonitoring(autoFallback: true)
-        case (.auto, .relay):
-            autoLoopOnceChain()
+        let handoff = preflight
+        preflight = nil
+        // The handoff probe's ownership moved here; if this selection
+        // declines it, the caller discards it server-side after we return.
+        var adoptedHandoff: RoutePreflightController.Handoff?
+        defer {
+            if let handoff, adoptedHandoff == nil {
+                callbacks.discardPreflight(handoff)
+            }
         }
+        if transport == .direct {
+            // Pre-pin mode change while a commit already adopted direct
+            // (e.g. the user picked another mode during the commit): keep or
+            // hand back according to the NEW mode, then pin.
+            switch mode {
+            case .relay:
+                await performRelayHandover(trigger: .user)
+            case .direct, .auto:
+                startDirectMonitoring(autoFallback: mode == .auto)
+            }
+            pinned = true
+            publish { $0.pinned = true }
+            return
+        }
+        switch mode {
+        case .relay:
+            break
+        case .direct:
+            if let handoff, handoff.probe.connected, handoff.probe.mediaReady {
+                adoptedHandoff = handoff
+                await performAdoptPreflight(handoff, forced: true)
+            } else {
+                await performRequestDirect()
+            }
+        case .auto:
+            if let handoff, handoff.probe.connected, handoff.probe.mediaReady,
+               await shouldPreferDirect(preflightSamples: handoff.samples) {
+                adoptedHandoff = handoff
+                await performAdoptPreflight(handoff, forced: false)
+            }
+            // Otherwise the relay stays: P2P is not always faster, and the
+            // policy forbids promoting later from a cold measurement.
+        }
+        pinned = true
+        publish { $0.pinned = true }
+        // Start failure-only monitoring on the adopted direct peer.
+        if transport == .direct {
+            startDirectMonitoring(autoFallback: mode == .auto)
+        }
+    }
+
+    /// Compares the preflight's fresh echo RTT against the freshly connected
+    /// relay's ping RTT. Direct wins only with enough fresh samples on BOTH
+    /// sides and a materially better (>=20%) median.
+    private func shouldPreferDirect(preflightSamples: [TimeInterval]) async -> Bool {
+        let direct = preflightSamples.suffix(6)
+        guard direct.count >= 2 else { return false }
+        let relay = await callbacks.relaySamples()
+        guard relay.count >= 2 else { return false }
+        let dMedian = median(Array(direct)), rMedian = median(relay)
+        return rMedian > 0 && dMedian > 0 && dMedian < rMedian * (1 - 0.2)
+    }
+
+    /// Commit-adopts a preflight candidate for this call. The candidate was
+    /// measured while idle; the live relay keeps carrying audio until the
+    /// gateway's atomic ready-first adoption confirms the peer.
+    private func performAdoptPreflight(_ handoff: RoutePreflightController.Handoff,
+                                       forced: Bool) async {
+        let gen = epoch
+        let sel = selectionEpoch
+        guard handoff.probe.connected, handoff.probe.mediaReady else {
+            if forced { notice(String(localized: "直连不可用，继续使用中继。"), offersAuto: true) }
+            return
+        }
+        publish { $0.switching = true }
+        committingProbe = handoff.probe
+        expectingRelayClose = true
+        do {
+            try await api.commitMediaProbe(callId: callId, preflightId: handoff.preflightId)
+        } catch APIError.http(let status, let code, _) {
+            committingProbe = nil
+            expectingRelayClose = false
+            await handleExplicitCommitFailure(probe: handoff.probe, gen: gen,
+                                              status: status, code: code, forced: forced)
+            return
+        } catch {
+            committingProbe = nil
+            await handleUnknownCommitOutcome(probe: handoff.probe, gen: gen, forced: forced)
+            return
+        }
+        committingProbe = nil
+        guard sel == selectionEpoch, !tearingDown else {
+            // A newer selection superseded the adoption; close the peer and
+            // keep the relay (the queued transaction applies the new mode).
+            handoff.probe.cancel()
+            expectingRelayClose = false
+            publish { $0.switching = false }
+            return
+        }
+        await adopt(probe: handoff.probe, gen: gen)
     }
 
     func setConferenceLocked(_ locked: Bool) {
@@ -485,69 +613,6 @@ final class CallRouteController {
         return .unavailable(String(localized: "直连候选在限定时间内未连通。"))
     }
 
-    // MARK: Auto
-
-    private func autoLoopOnceChain() {
-        guard !tearingDown, committingProbe == nil, transport == .relay,
-              !callbacks.isConference() else {
-            if callbacks.isConference() { publish { $0.conferenceLocked = true } }
-            return
-        }
-        policyTask?.cancel()
-        let gen = epoch
-        let sel = selectionEpoch
-        policyTask = Task { [weak self] in await self?.autoLoop(gen: gen, selection: sel) }
-    }
-
-    private func autoLoop(gen: UInt64, selection: UInt64) async {
-        guard case .ready(let probe) = await establishCandidate(gen, selection: selection) else {
-            publish { $0.probing = false }
-            return
-        }
-        while !Task.isCancelled, gen == epoch, selection == selectionEpoch, !tearingDown,
-              committingProbe == nil, transport == .relay, candidate === probe {
-            try? await Task.sleep(nanoseconds: UInt64(cadence.autoInterval * 1_000_000_000))
-            guard !Task.isCancelled, gen == epoch, !tearingDown else { return }
-            if callbacks.isConference() {
-                publish { $0.conferenceLocked = true }
-                cancelCandidate()
-                return
-            }
-            let duration = Date().timeIntervalSince(connectedAt)
-            let direct = probe.freshQualitySamples(within: 30, now: Date())
-            let baseline = await callbacks.relaySamples()
-            let metrics = MediaRouteAdvisor.Metrics(
-                candidateRTT: direct,
-                baselineRTT: baseline,
-                candidateJitter: MediaRouteAdvisor.jitter(of: direct),
-                samplesFresh: !direct.isEmpty,
-                stalls: probe.echoStallCount,
-                candidateStable: probe.connected && probe.mediaReady,
-                candidateLost: !probe.connected)
-            publish {
-                // The detached candidate is not the active transport (the
-                // relay still carries audio), so its echo RTT must NOT be
-                // written into rttSeconds — it feeds the advisor only.
-                $0.probing = true
-            }
-            if advisor.decide(metrics, callDuration: duration, baselineHealthy: true) == .promote {
-                // A newer selection supersedes this promotion: retire the
-                // probe silently; the queued transaction applies latest mode.
-                guard selection == selectionEpoch, !tearingDown else {
-                    if candidate === probe { cancelCandidate() }
-                    publish { $0.probing = false }
-                    return
-                }
-                // Serialize the auto commit with every other transaction; a
-                // queued mode change applies afterwards (latest mode wins).
-                await withTransaction { [weak self] in
-                    await self?.performCommit(probe, gen: gen, forced: false)
-                }
-                return
-            }
-        }
-    }
-
     // MARK: Forced direct
 
     private func performRequestDirect() async {
@@ -595,7 +660,7 @@ final class CallRouteController {
         // HTTP call returns: that EOF is expected from here on.
         expectingRelayClose = true
         do {
-            try await api.commitMediaProbe(callId: callId)
+            try await api.commitMediaProbe(callId: callId, preflightId: nil)
         } catch APIError.http(let status, let code, _) {
             committingProbe = nil
             expectingRelayClose = false
@@ -648,18 +713,20 @@ final class CallRouteController {
                 notice(String(localized: "切换失败，继续使用中继。"), offersAuto: true)
             }
         default:
-            // Truly unknown: never claim either route. Converge on a KNOWN
-            // local transport. In forced direct, report truthfully and let an
-            // explicit user choice decide; otherwise attach the relay.
+            // Truly unknown: never claim either route. The relay is the
+            // known-good transport (it still carries audio when the commit
+            // outcome never confirmed), so converge on it through a LOCAL
+            // staged attach in EVERY mode — an unconfirmed direct attempt is
+            // exactly the "actual path failure" the 2026-10-05 policy allows
+            // falling back from. Forced direct still gets the truthful
+            // notice.
             expectingRelayClose = false
             if candidate === probe { cancelCandidate() }
             if mode == .direct {
-                publish { $0.switching = false }
-                notice(String(localized: "直连状态未知，请改用自动或中继。"), offersAuto: true)
-            } else {
-                // Already inside a transaction: use the perform variant.
-                await performRelayHandover(trigger: .recovery)
+                notice(String(localized: "直连状态未知，已恢复中继。"), offersAuto: true)
             }
+            // Already inside a transaction: use the perform variant.
+            await performRelayHandover(trigger: .recovery)
         }
     }
 
@@ -675,6 +742,7 @@ final class CallRouteController {
         activeDirect?.closeTransport()
         activeDirect = probe
         transport = .direct
+        adoptedAt = Date()
         callbacks.retireRelay()
         probe.adopt(activatedSession: callbacks.activatedAudioSession())
         probe.setMuted(callbacks.isMuted())
@@ -752,34 +820,35 @@ final class CallRouteController {
                 }
                 guard gen == self.epoch else { return }
 
+                // 2026-10-05 policy: failure-only failover. "The relay
+                // measures better" is NOT a failover reason; only an actual
+                // path fault (lost peer, echo stalls, extreme jitter, or
+                // samples that stay stale well past the post-adoption echo
+                // warm-up) may move the pinned call back to the relay.
+                let samplesTrulyStale = metrics.samplesFresh == false
+                    && Date().timeIntervalSince(self.adoptedAt) > 5
                 let absoluteBad = metrics.candidateLost
                     || metrics.stalls >= 2
                     || (metrics.candidateJitter.map { $0 > 0.15 } ?? false)
-                    || metrics.samplesFresh == false
-                let relayBetter: Bool = {
-                    guard autoFallback, direct.count >= 4, relay.count >= 4 else { return false }
-                    let dMedian = self.median(direct), rMedian = self.median(relay)
-                    return rMedian > 0 && dMedian > 0 && rMedian < dMedian * (1 - 0.2)
-                }()
+                    || samplesTrulyStale
 
-                if absoluteBad || relayBetter {
+                if absoluteBad {
                     badRounds += 1
                 } else {
                     badRounds = 0
                 }
                 guard badRounds >= 2 else { continue }
 
-                if autoFallback && self.advisor.canFallback {
+                // Actual path failure in ANY mode: fall back to the relay so
+                // the call survives; the notice keeps it truthful (never
+                // silent). Quality-driven switching does not exist anymore.
+                if autoFallback, self.advisor.canFallback {
                     _ = self.advisor.considerFallback()
-                    await self.withTransaction { [weak self] in
-                        await self?.performRelayHandover(trigger: .degraded)
-                    }
-                    return
-                } else {
-                    // STRICT forced direct: never silently switch.
-                    self.notice(String(localized: "直连质量差，可手动切换中继。"), offersAuto: true)
-                    badRounds = 0
                 }
+                await self.withTransaction { [weak self] in
+                    await self?.performRelayHandover(trigger: .degraded)
+                }
+                return
             }
         }
     }
@@ -827,7 +896,8 @@ final class CallRouteController {
         if case .degraded = trigger {
             notice(String(localized: "直连质量下降，已恢复中继。"), offersAuto: false)
         }
-        if mode == .auto { autoLoopOnceChain() }
+        // No auto re-promotion: the route stays pinned to the relay for the
+        // rest of the call (2026-10-05 policy).
     }
 
     // MARK: Candidate teardown / errors

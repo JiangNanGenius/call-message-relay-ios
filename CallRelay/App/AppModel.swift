@@ -116,6 +116,8 @@ final class AppModel: ObservableObject {
 
     private var api: GatewayAPI?
     private var eventStream: EventStream?
+    /// Foreground direct-path preflight (created per gateway binding).
+    private var routePreflight: RoutePreflightController?
     private var driver: CallDriver?
     private var demoGateway: DemoGatewayAPI?
     private var pushRegistry: PushRegistry?
@@ -128,6 +130,7 @@ final class AppModel: ObservableObject {
     let contacts: ContactsService
     private(set) var cloudSync: CloudSyncEngine?
     private var foregroundObserver: NSObjectProtocol?
+    private var backgroundObserver: NSObjectProtocol?
     private var rulesChangeObserver: NSObjectProtocol?
     private var contactChangeObserver: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
@@ -401,6 +404,10 @@ final class AppModel: ObservableObject {
             forName: UIApplication.willEnterForegroundNotification,
             object: nil, queue: .main
         ) { [weak self] _ in Task { @MainActor in self?.handleForeground() } }
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in Task { @MainActor in self?.routePreflight?.appDidEnterBackground() } }
     }
 
     private func handleForeground() {
@@ -412,6 +419,8 @@ final class AppModel: ObservableObject {
         eventStream?.kick()
         lineRunner?.kick()
         recentsRunner?.kick()
+        // Idle direct-path measurement resumes (no-op while a call is live).
+        routePreflight?.appDidEnterForeground()
         Task {
             await refreshLine()
             await reconcileAfterGap()
@@ -947,6 +956,20 @@ final class AppModel: ObservableObject {
         live.onAnswerFailed = { [weak self] message in self?.lastError = message }
         bindDriver(live)
 
+        // Foreground direct-path preflight (no call, no mic, no audio
+        // session): keeps fresh reachability/RTT measurements so dial and
+        // answer start from evidence instead of a cold probe. Never runs
+        // during calls or when the user pinned the relay preference.
+        let gatewayID = binding.gatewayId
+        let preflight = RoutePreflightController(api: http, eligible: { [weak live] in
+            guard let live else { return false }
+            return !live.hasLiveCall
+                && MediaRoutePreferenceStore.shared.mode(for: gatewayID) != .relay
+        })
+        routePreflight = preflight
+        live.routePreflight = preflight
+        preflight.appDidEnterForeground()
+
         let outboxStore = OutboxStore(scopeIdentifier: binding.gatewayId)
         let messages = MessageInbox(api: http, filter: spamFilter, outboxStore: outboxStore)
         messages.lineReady = { [weak self] in self?.isSMSLineUsable ?? false }
@@ -1078,6 +1101,9 @@ final class AppModel: ObservableObject {
                 self.quality = nil
                 self.routeState = nil
                 self.routeNotice = nil
+                // The call is over: idle direct-path measurement may resume
+                // (eligibility re-checks foreground/no-call state).
+                self.routePreflight?.appDidEnterForeground()
                 await self.refreshRecents()
             }
         }
@@ -1446,6 +1472,11 @@ final class AppModel: ObservableObject {
             if let message = event.message() {
                 inbox?.apply(eventMessage: message)
                 enqueueCloudMessage(message)
+            }
+        case .threadDeleted:
+            // Another device deleted the conversation: converge locally.
+            if let deletion = event.threadDeletion() {
+                inbox?.applyThreadDeleted(key: deletion.key, deletedAt: deletion.deletedAt)
             }
         case .callIncoming:
             if let call = event.call() { handleIncoming(call, eventCreatedAt: event.createdDate) }
@@ -1860,6 +1891,24 @@ final class AppModel: ObservableObject {
             return true
         } catch {
             voicemailDeleteError = "删除留言失败，请下拉刷新后重试。"
+            DiagnosticsStore.shared.log("voicemail", "delete failed id=\(id): \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Deletes one SMS conversation for every paired device: the gateway
+    /// records a tombstone (history hidden, never destroyed), broadcasts
+    /// `thread.deleted`, and this device drops its local copy immediately.
+    @discardableResult
+    func deleteThread(_ key: String) async -> Bool {
+        guard let api else { return false }
+        do {
+            try await api.deleteThread(threadKey: key)
+            inbox?.applyThreadDeleted(key: key)
+            return true
+        } catch {
+            DiagnosticsStore.shared.log("messages", "thread delete failed key=\(key): \(error.localizedDescription)")
+            lastError = String(localized: "删除对话失败，请稍后重试。")
             return false
         }
     }
@@ -2406,6 +2455,10 @@ extension AppModel: VoIPPushHandling {
                 + "handleEmpty=\(target.handle.isEmpty) "
                 + "mustReport=\(mustReport)")
             reservedCallIds.insert(target.gatewayCallId)
+            // Incoming wake: start (or refresh) the bounded direct-path
+            // selection alongside the Apple report — it never delays the
+            // report and never waits for user answer.
+            routePreflight?.revalidate()
             // Cold start: a VoIP push can be delivered before the async
             // gateway-identity verification has produced the live driver.
             // Wait a short, bounded moment for it so a real ringing call is

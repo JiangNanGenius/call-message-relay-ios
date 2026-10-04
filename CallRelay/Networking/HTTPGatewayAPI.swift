@@ -345,8 +345,19 @@ final class HTTPGatewayAPI: GatewayAPI {
         )
     }
 
-    func commitMediaProbe(callId: String) async throws {
+    func commitMediaProbe(callId: String, preflightId: String?) async throws {
         guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
+        if let preflightId {
+            // Adopting a device-scoped preflight candidate: the id is the
+            // body, not a new route; 404 means it expired — the caller
+            // re-probes call-scoped and retries.
+            try await authorizedVoidAction(
+                "calls/\(callId)/media/probe/commit",
+                body: V2CommitProbeRequest(preflightId: preflightId),
+                idempotencyKey: UUID().uuidString
+            )
+            return
+        }
         try await authorizedVoidAction(
             "calls/\(callId)/media/probe/commit", idempotencyKey: UUID().uuidString
         )
@@ -356,6 +367,36 @@ final class HTTPGatewayAPI: GatewayAPI {
         guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
         try await authorizedVoidAction(
             "calls/\(callId)/media/probe", method: "DELETE",
+            body: Optional<Data>.none, idempotencyKey: UUID().uuidString
+        )
+    }
+
+    func iceConfiguration() async throws -> ICEConfiguration {
+        guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
+        let config: V2ICEConfiguration = try await authorizedGet("ice")
+        let servers = config.iceServers.map {
+            ICEServer(urls: $0.urls, username: $0.username ?? "", credential: $0.credential ?? "")
+        }
+        let expires = RFC3339Date.formatter.string(from: Date().addingTimeInterval(3600))
+        return ICEConfiguration(
+            policy: config.policy, iceServers: servers, expiresAt: expires,
+            mediaTransports: config.mediaTransports
+        )
+    }
+
+    func attachMediaPreflight(sdp: String) async throws -> V2PreflightAnswer {
+        guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
+        let body = V2WebRTCOfferRequest(sdp: sdp, type: "offer")
+        return try await authorizedPost(
+            "media/probe", body: body, idempotencyKey: UUID().uuidString
+        )
+    }
+
+    func discardMediaPreflight(preflightId: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
+        let escaped = preflightId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? preflightId
+        try await authorizedVoidAction(
+            "media/probe?preflightId=\(escaped)", method: "DELETE",
             body: Optional<Data>.none, idempotencyKey: UUID().uuidString
         )
     }
@@ -487,6 +528,17 @@ final class HTTPGatewayAPI: GatewayAPI {
         guard isV2, let lineId else { return try await listThreads() }
         return try await authorizedGet(
             "threads", queryItems: [URLQueryItem(name: "line", value: lineId)]
+        )
+    }
+
+    func deleteThread(threadKey: String) async throws {
+        guard isV2 else { throw APIError.notReady("当前配对不支持删除对话。") }
+        // Global keys are "lineId:workerKey"; phone-number keys contain no
+        // slashes, so a single escaped path value is safe.
+        let escaped = threadKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? threadKey
+        try await authorizedVoidAction(
+            "threads/\(escaped)", method: "DELETE",
+            body: Optional<Data>.none, idempotencyKey: UUID().uuidString
         )
     }
 

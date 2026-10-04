@@ -4,36 +4,75 @@ import AVFoundation
 
 // MARK: - SDP codec negotiation
 
-/// CellBridge v2.0.6 registers exactly one audio codec: PCMU/8000 (payload
-/// type 0). We offer only PCMU so both sides converge immediately. This munges
-/// a locally generated Unified Plan offer: it rewrites the audio m-section's
-/// payload-type list to `0` and drops every rtpmap/rtcp-fb/fmtp line that
-/// references another payload type. It never edits ICE/DTLS lines.
+/// Build-26 network-hop codec policy: offer Opus (RFC 7587, payload type
+/// 111) with PCMU (G.711, payload type 0) as the fallback. The gateway
+/// (build 26+) registers both and answers Opus when offered; build ≤25
+/// gateways register only PCMU and answer PCMU — the PCMU line below keeps
+/// those calls working with zero client-side negotiation logic. The modem
+/// leg stays fixed-rate G.711 at the gateway regardless.
+///
+/// The filter rewrites a locally generated Unified Plan offer: the audio
+/// m-section's payload list becomes `111 0`, and every
+/// rtpmap/rtcp-fb/fmtp line referencing any other payload type is dropped.
+/// If the local SDK ever stops offering Opus, the offer degrades to pure
+/// PCMU (`0`). ICE/DTLS/extmap/ssrc lines are never edited.
 enum SDPCodecFilter {
-    static func forcePCMUOnly(_ sdp: String) -> String {
+    static let opusPT = 111
+    static let pcmuPT = 0
+
+    static func preferOpusWithPCMU(_ sdp: String) -> String {
         var output: [String] = []
         var inAudioSection = false
+        var sawOpus = false
 
         for rawLine in sdp.components(separatedBy: "\n") {
             let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
             if line.hasPrefix("m=") {
                 let isAudio = line.hasPrefix("m=audio")
                 inAudioSection = isAudio
-                output.append(isAudio ? rewriteAudioMediaLine(line) : line)
+                output.append(line)
                 continue
             }
             guard inAudioSection else {
                 output.append(line)
                 continue
             }
-            // Drop only codec description lines that reference a payload type
-            // other than PCMU (0). Everything else (ICE/DTLS, extmap, setup,
-            // ssrc, rtcp, directions) is preserved untouched.
-            if ["a=rtpmap:", "a=rtcp-fb:", "a=fmtp:"].contains(where: { line.hasPrefix($0) }) {
-                if payloadType(of: line) == 0 { output.append(line) }
+            if line.hasPrefix("a=rtpmap:") {
+                guard let pt = payloadType(of: line) else { continue }
+                if pt == opusPT && line.contains("opus/48000") {
+                    sawOpus = true
+                    output.append(line)
+                } else if pt == pcmuPT {
+                    output.append(line)
+                }
+                continue
+            }
+            if line.hasPrefix("a=rtcp-fb:") || line.hasPrefix("a=fmtp:") {
+                if let pt = payloadType(of: line), pt == opusPT || pt == pcmuPT {
+                    output.append(line)
+                }
                 continue
             }
             output.append(line)
+        }
+        // Rewrite the audio m-line payload list now that we know whether
+        // Opus was actually offered.
+        output = output.map { line in
+            guard line.hasPrefix("m=audio") else { return line }
+            let parts = line.split(separator: " ", maxSplits: 3).map(String.init)
+            guard parts.count >= 4 else { return line }
+            let fmts = sawOpus ? "\(opusPT) \(pcmuPT)" : "\(pcmuPT)"
+            return "\(parts[0]) \(parts[1]) \(parts[2]) \(fmts)"
+        }
+        // Ensure the Opus fmtp advertises inband FEC when Opus is offered
+        // and the SDK's own fmtp omitted it (older SDK profiles).
+        if sawOpus && !output.contains(where: { $0.hasPrefix("a=fmtp:\(opusPT) ") && $0.contains("useinbandfec=1") }) {
+            output = output.flatMap { line -> [String] in
+                if line.hasPrefix("a=fmtp:\(opusPT) ") && !line.contains("useinbandfec") {
+                    return [line + ";useinbandfec=1"]
+                }
+                return [line]
+            }
         }
         // SDP must end in exactly one CRLF line terminator. The split above
         // yields a final empty component for the input's own trailing CRLF;
@@ -48,13 +87,6 @@ enum SDPCodecFilter {
         guard let afterColon = line.split(separator: ":", maxSplits: 1).last else { return nil }
         let token = afterColon.split(separator: " ", maxSplits: 1).first.map(String.init) ?? ""
         return Int(token)
-    }
-
-    private static func rewriteAudioMediaLine(_ line: String) -> String {
-        // m=<media> <port> <proto> <fmt...>
-        let parts = line.split(separator: " ", maxSplits: 3).map(String.init)
-        guard parts.count >= 4 else { return line }
-        return "\(parts[0]) \(parts[1]) \(parts[2]) 0"
     }
 }
 
@@ -109,7 +141,7 @@ protocol CallMediaSession: AnyObject {
     var onState: ((MediaState) -> Void)? { get set }
     var onQuality: ((MediaQuality) -> Void)? { get set }
     /// Builds the PC, adds the local audio track and returns a fully gathered,
-    /// PCMU-only nontrickle offer SDP.
+    /// Opus-preferred (PCMU fallback) nontrickle offer SDP.
     func makeOffer(ice: ICEConfiguration, relayOnly: Bool) async throws -> String
     /// Applies the gateway nontrickle answer.
     func applyAnswer(_ sdp: String) async throws
@@ -220,7 +252,7 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
         pc.add(track, streamIds: ["cellbridge"])
 
         let offer = try await pc.offer(for: pcConstraints)
-        let munged = RTCSessionDescription(type: .offer, sdp: SDPCodecFilter.forcePCMUOnly(offer.sdp))
+        let munged = RTCSessionDescription(type: .offer, sdp: SDPCodecFilter.preferOpusWithPCMU(offer.sdp))
         try await pc.setLocalDescription(munged)
         currentState = .localOffer
 

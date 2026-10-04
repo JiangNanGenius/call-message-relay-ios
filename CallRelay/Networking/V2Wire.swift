@@ -42,6 +42,23 @@ struct V2WebRTCOfferRequest: Encodable, Equatable {
     let type: String
 }
 
+/// Device-scoped (call-independent) preflight probe answer: a normal SDP
+/// answer plus the id a later call commit uses to adopt this exact peer
+/// connection, and the server TTL bounding the probe's life.
+struct V2PreflightAnswer: Decodable, Equatable {
+    let sdp: String
+    let type: String
+    let iceMode: String
+    let preflightId: String
+    let ttlMs: Int64
+}
+
+/// Optional commit body: adopt a device-scoped preflight candidate instead
+/// of the call's own probe.
+struct V2CommitProbeRequest: Encodable, Equatable {
+    let preflightId: String?
+}
+
 struct V2DevicePreferencesRequest: Encodable, Equatable {
     let defaultLineId: String
 }

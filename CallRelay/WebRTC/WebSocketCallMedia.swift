@@ -1,18 +1,28 @@
 import Foundation
 import AVFoundation
 
-/// WSS PCMU audio transport: 20 ms G.711 μ-law binary frames over the
-/// authorized WebSocket — the media path reachable on cellular networks
-/// where the gateway's ICE candidates are LAN-only. It honors the same
-/// AVAudioSession/CallKit activation contract as ``WebRTCCallMedia``.
+/// WSS audio transport: 20 ms binary frames over the authorized WebSocket —
+/// the media path reachable on cellular networks where the gateway's ICE
+/// candidates are LAN-only. Build 27 negotiates Opus (RFC 7587, inband FEC)
+/// with PCMU as the wire-compatible fallback (the attach URL carries
+/// `codec=opus`; the gateway's `ready` control announces the negotiated
+/// codec; old gateways answer without the field and the socket stays PCMU).
+/// It honors the same AVAudioSession/CallKit activation contract as
+/// ``WebRTCCallMedia``.
 ///
 /// Wire protocol (mirrors the worker's internal media socket):
-///   server -> client: {"type":"ready"} text control, then binary frames
-///   client -> server: binary frames, plus optional {"type":"ping"}
-/// Each binary message is exactly 160 bytes (20 ms @ 8 kHz PCMU). Outbound
-/// frames go through ONE serial writer with a bounded, drop-stale queue so a
-/// stalled tunnel can never accumulate latency; every awaited socket
-/// operation is cancelable and fenced by a generation counter.
+///   server -> client: {"type":"ready","codec":"opus"?} text, then binary
+///   client -> server: binary frames, plus {"type":"ping","buf":n,"gap":ms}
+///   server -> client: {"type":"pong","t":n,"buf":n,"ugap":ms}
+/// Each binary message is one 20 ms frame: exactly 160 bytes for PCMU, a
+/// variable-length Opus payload otherwise. The ping carries the app's
+/// playback-buffer depth and worst downlink inter-arrival gap (the freshest
+/// delay evidence the TCP path produces); the pong answers with the
+/// gateway's uplink evidence and both sides' Opus encoders adapt from it
+/// (bounded, hold-on-stale). Outbound frames go through ONE serial writer
+/// with a bounded, drop-stale queue so a stalled tunnel can never
+/// accumulate latency; every awaited socket operation is cancelable and
+/// fenced by a generation counter.
 @MainActor
 final class WebSocketCallMedia: NSObject {
     var onState: ((MediaState) -> Void)?
@@ -35,6 +45,10 @@ final class WebSocketCallMedia: NSObject {
         func pushSyntheticPlayback(_ frame: [Int16])
         /// Real-downlink silence age (ms); `.max` when never played.
         var playbackIdleMilliseconds: Int { get }
+        /// Current playback-buffer depth in 20 ms frames (0 when unknown);
+        /// reported to the gateway in the ping so its downlink controller
+        /// sees the freshest end-to-end delay evidence.
+        var playbackBufferedFrames: Int { get }
     }
 
     /// Test seam over URLSessionWebSocketTask.
@@ -116,6 +130,15 @@ final class WebSocketCallMedia: NSObject {
 
     private let handshakeTimeout: TimeInterval
 
+    // MARK: WSS codec (build 27: Opus with PCMU fallback)
+    //
+    // The negotiated codec is fixed by the gateway's ready control before
+    // the audio graph starts (connect() returns first; activateAudio() is
+    // the handover), so the mic callback never races a codec swap. The
+    // state is lock-owned: the receive and mic-feed paths are nonisolated
+    // (they must never hop to the main executor per packet).
+    private let wssCodec = WSSCodecState()
+
     init(socketFactory: SocketFactory? = nil,
          audioGraph: WSAudioGraphing? = nil,
          handshakeTimeout: TimeInterval = 15) {
@@ -126,9 +149,36 @@ final class WebSocketCallMedia: NSObject {
         self.audioIO = audioGraph ?? WSAudioGraph()
         super.init()
         audioIO.onMicFrame = { [weak self] frame in
-            guard let self else { return }
-            self.outbound.enqueue(PCMUCodec.encode(frame))
+            guard let self, let encoded = self.encodeOutbound(frame) else { return }
+            self.outbound.enqueue(encoded)
         }
+    }
+
+    /// Encode one outbound frame in the negotiated codec. A transient Opus
+    /// failure drops the frame (returns nil): the gateway decodes per the
+    /// negotiated codec, so no substitute format is possible mid-stream, and
+    /// a dropped frame is honestly concealed by the gateway's PLC.
+    private nonisolated func encodeOutbound(_ frame: [Int16]) -> Data? {
+        wssCodec.lock.lock()
+        let encoder = wssCodec.encoder
+        let opus = wssCodec.usesOpus
+        let framed = wssCodec.framed
+        let seq = wssCodec.seqOut
+        wssCodec.seqOut &+= 1
+        wssCodec.lock.unlock()
+        if opus, let encoder {
+            do {
+                let payload = try encoder.encode(frame)
+                return framed ? WSSFrameCodec.frame(seq: seq, payload: payload) : Data(payload)
+            } catch {
+                DiagnosticsCensus.shared.increment("audio.wsOpusEncodeFailed")
+                // The seq was consumed above: the receiver sees the hole and
+                // conceals this slot — dropping silently without a seq gap
+                // would misalign its decoder timeline.
+                return nil
+            }
+        }
+        return PCMUCodec.encode(frame)
     }
 
     // MARK: Test seams
@@ -146,6 +196,23 @@ final class WebSocketCallMedia: NSObject {
         } else {
             handle(message)
         }
+    }
+
+    var usesOpusForTest: Bool {
+        wssCodec.lock.lock(); defer { wssCodec.lock.unlock() }
+        return wssCodec.usesOpus
+    }
+    var framedForTest: Bool {
+        wssCodec.lock.lock(); defer { wssCodec.lock.unlock() }
+        return wssCodec.framed
+    }
+    var uplinkBitrateForTest: Int {
+        wssCodec.lock.lock(); defer { wssCodec.lock.unlock() }
+        return wssCodec.controller.bitrate
+    }
+    var uplinkFECForTest: Bool {
+        wssCodec.lock.lock(); defer { wssCodec.lock.unlock() }
+        return wssCodec.controller.fecEnabled
     }
 
     func audioActivatedForTest(_ session: AVAudioSession) {
@@ -212,6 +279,17 @@ final class WebSocketCallMedia: NSObject {
         config.timeoutIntervalForRequest = 30
         let urlSession = URLSession(configuration: config)
         session = urlSession
+        // Offer Opus on the attach URL; a build-26 gateway ignores the
+        // parameter and answers PCMU, so this is safe against old servers.
+        var request = request
+        if let url = request.url, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            var items = components.queryItems ?? []
+            if !items.contains(where: { $0.name == "codec" }) {
+                items.append(URLQueryItem(name: "codec", value: "opus"))
+            }
+            components.queryItems = items
+            request.url = components.url
+        }
         let socket = makeSocket(request, urlSession)
         self.socket = socket
         socket.resume()
@@ -297,6 +375,8 @@ final class WebSocketCallMedia: NSObject {
                 if let data = text.data(using: .utf8),
                    let control = try? JSONDecoder().decode(WSMediaControl.self, from: data),
                    control.type == "ready" {
+                    try adoptCodec(control.codec == "opus" ? .opus : .pcmu,
+                                   framed: control.fmt == "seq16")
                     return true
                 }
             case .data:
@@ -306,6 +386,39 @@ final class WebSocketCallMedia: NSObject {
             }
         }
         return false
+    }
+
+    private enum WSSCodec: String {
+        case pcmu, opus
+    }
+
+    /// Create the codec machinery for the negotiated wire codec. The gateway
+    /// decided from the attach URL, so when it announced Opus the socket IS
+    /// Opus — a local codec-creation failure must fail the connection
+    /// honestly (throw) rather than limp with a PCMU decoder on an Opus
+    /// stream. `framed` (fmt=seq16) enables the gap-aware wire protocol.
+    private func adoptCodec(_ codec: WSSCodec, framed: Bool) throws {
+        wssCodec.lock.lock()
+        defer { wssCodec.lock.unlock() }
+        wssCodec.usesOpus = codec == .opus
+        wssCodec.framed = framed && wssCodec.usesOpus
+        wssCodec.seqOut = 0
+        wssCodec.depacketizer = WSSFrameCodec.Depacketizer()
+        guard wssCodec.usesOpus else { return }
+        do {
+            wssCodec.encoder = try OpusCodec.Encoder()
+            wssCodec.decoder = try OpusCodec.Decoder()
+            let negotiatedFmt = wssCodec.framed ? "seq16" : "bare"
+            AppLog.media.debug("wss codec negotiated: opus fmt=\(negotiatedFmt)")
+            DiagnosticsStore.shared.log("audio", "wss codec: opus fmt=\(negotiatedFmt)")
+        } catch {
+            wssCodec.usesOpus = false
+            wssCodec.framed = false
+            wssCodec.encoder = nil
+            wssCodec.decoder = nil
+            DiagnosticsStore.shared.log("audio", "wss opus unavailable: \(error.localizedDescription)")
+            throw MediaError.audioActivationFailed
+        }
     }
 
     private func startReceiveLoop() {
@@ -342,8 +455,55 @@ final class WebSocketCallMedia: NSObject {
     private nonisolated func handle(_ message: URLSessionWebSocketTask.Message) {
         switch message {
         case .data(let frame):
-            guard frame.count == 160, let pcm = PCMUCodec.decode(frame) else { return }
-            audioIO.pushPlayback(pcm)
+            wssCodec.recordDownlinkGap()
+            wssCodec.lock.lock()
+            let decoder = wssCodec.decoder
+            let opus = wssCodec.usesOpus
+            let framed = wssCodec.framed
+            wssCodec.lock.unlock()
+            if opus, let decoder {
+                if framed {
+                    guard let parsed = WSSFrameCodec.parse(frame) else { return }
+                    let slots: [WSSFrameCodec.Slot]
+                    wssCodec.lock.lock()
+                    slots = wssCodec.depacketizer.arrivals(seq: parsed.seq, payload: parsed.payload)
+                    wssCodec.lock.unlock()
+                    for slot in slots {
+                        switch slot {
+                        case .decode(let payload):
+                            if let pcm = try? decoder.decode(payload) {
+                                audioIO.pushPlayback(pcm)
+                            }
+                        case .plc:
+                            if let pcm = try? decoder.decode(nil) {
+                                audioIO.pushPlayback(pcm)
+                            }
+                        case .fecRecover(let carrier):
+                            // One-slot gap: recover the predecessor from the
+                            // carrier's RFC 7587 inband FEC; the carrier is
+                            // decoded exactly once by its own .decode slot.
+                            // libopus degrades gracefully when no FEC data is
+                            // embedded.
+                            if let recovered = try? decoder.decodeFEC(carrier) {
+                                audioIO.pushPlayback(recovered)
+                            } else if let pcm = try? decoder.decode(nil) {
+                                audioIO.pushPlayback(pcm)
+                            }
+                        }
+                    }
+                    return
+                }
+                // Bare Opus (build-26 gateway): no framing, no gap detection —
+                // decode what arrives; sender drops shift the timeline
+                // undetectably, which is exactly what the framed negotiation
+                // fixes when both sides are build 27.
+                guard !frame.isEmpty, frame.count <= OpusCodec.maxFrameBytes else { return }
+                guard let pcm = try? decoder.decode(Array(frame)) else { return }
+                audioIO.pushPlayback(pcm)
+            } else {
+                guard frame.count == 160, let pcm = PCMUCodec.decode(frame) else { return }
+                audioIO.pushPlayback(pcm)
+            }
         case .string(let text):
             Task { @MainActor in self.handleControl(text) }
         @unknown default:
@@ -365,6 +525,31 @@ final class WebSocketCallMedia: NSObject {
             if rtt.isFinite, rtt >= 0, rtt <= 30 {
                 pingSampleLog.append(PingSample(rtt: rtt, at: Date()))
                 if pingSampleLog.count > 120 { pingSampleLog.removeFirst(pingSampleLog.count - 120) }
+            }
+            // Uplink closed loop: the gateway answers with the depth of the
+            // host buffer this socket feeds and the worst uplink gap it saw.
+            // Fresh evidence drives bounded encoder adaptation; stale or
+            // absent evidence holds (never raises into the unknown).
+            wssCodec.lock.lock()
+            let encoder = wssCodec.encoder
+            let opus = wssCodec.usesOpus
+            wssCodec.lock.unlock()
+            if opus, let encoder {
+                let now = Date()
+                wssCodec.lock.lock()
+                let settings = wssCodec.controller.adapt(
+                    now: now,
+                    hostBufFrames: control.buf ?? 0,
+                    uplinkGapMs: control.ugap ?? 0
+                )
+                wssCodec.lock.unlock()
+                if let settings {
+                    try? encoder.setBitrate(settings.bitrate)
+                    try? encoder.setInbandFEC(settings.fec)
+                    // Inband FEC is only embedded when the encoder expects
+                    // loss; drive the expectation from the same hysteresis.
+                    try? encoder.setPacketLossPerc(settings.fec ? 10 : 0)
+                }
             }
         }
     }
@@ -437,8 +622,14 @@ final class WebSocketCallMedia: NSObject {
         pendingPings[pingSequence] = Date()
         if pendingPings.count > 8 { pendingPings.removeAll() }
         let tag = pingSequence
+        // Downlink evidence for the gateway's controller: playback-buffer
+        // depth (frames) and the worst inter-arrival gap over the last
+        // second. Rotating the gap window here (main actor) keeps the
+        // nonisolated receive path lock-free.
+        let bufFrames = audioIO.playbackBufferedFrames
+        let gap = wssCodec.consumeDownlinkGapForPing()
         let generation = receiveGeneration
-        socket.send(.string("{\"type\":\"ping\",\"t\":\(tag)}")) { [weak self] error in
+        socket.send(.string("{\"type\":\"ping\",\"t\":\(tag),\"buf\":\(bufFrames),\"gap\":\(gap)}")) { [weak self] error in
             guard error != nil else { return }
             Task { @MainActor in
                 guard let self, self.receiveGeneration == generation else { return }
@@ -574,6 +765,14 @@ final class WebSocketCallMedia: NSObject {
         socket = nil
         session?.invalidateAndCancel()
         session = nil
+        wssCodec.lock.lock()
+        wssCodec.encoder?.close()
+        wssCodec.decoder?.close()
+        wssCodec.encoder = nil
+        wssCodec.decoder = nil
+        wssCodec.usesOpus = false
+        wssCodec.framed = false
+        wssCodec.lock.unlock()
         audioIO.stop()
         deactivateAudioWithoutCallKit()
         currentState = .closed
@@ -741,10 +940,65 @@ private final class OutboundFrameGate: @unchecked Sendable {
     }
 }
 
+/// Lock-owned WSS codec state: the receive loop and the mic feed are
+/// nonisolated (they must never hop to the main executor per packet), and
+/// the negotiated codec is chosen once at ready time before the graph
+/// starts, so a plain NSLock box is sufficient and cheaper than an actor.
+final class WSSCodecState: @unchecked Sendable {
+    let lock = NSLock()
+    var usesOpus = false
+    /// Framed Opus (fmt=seq16 announced in the ready control). Build-26
+    /// gateways speak bare Opus: the app still decodes (no gap detection —
+    /// honestly bounded), so mixed-version pairs keep working.
+    var framed = false
+    /// Outbound media-slot sequence: incremented per 20 ms capture tick even
+    /// when the frame is dropped (encode failure or bounded-queue stale
+    /// drop), so the receiver sees the hole and conceals it.
+    var seqOut: UInt16 = 0
+    var depacketizer = WSSFrameCodec.Depacketizer()
+    var encoder: OpusCodec.Encoder?
+    var decoder: OpusCodec.Decoder?
+    var controller = WSSBitrateController()
+    var lastFrameArrival: Date?
+    var worstDownlinkGapMs = 0
+
+    /// Downlink inter-arrival evidence for the ping: worst gap observed
+    /// since the last read (sendPing rotates the window on the main actor).
+    func recordDownlinkGap() {
+        lock.lock()
+        defer { lock.unlock() }
+        let now = Date()
+        if let last = lastFrameArrival {
+            let gap = Int(now.timeIntervalSince(last) * 1000)
+            if gap > worstDownlinkGapMs { worstDownlinkGapMs = gap }
+        }
+        lastFrameArrival = now
+    }
+
+    func consumeDownlinkGapForPing() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        let gap = worstDownlinkGapMs
+        worstDownlinkGapMs = 0
+        return gap
+    }
+}
+
 struct WSMediaControl: Decodable {
     let type: String
     /// Echoed ping tag (pong only).
     let t: UInt64?
+    /// Negotiated codec announced in the ready control ("opus" when the
+    /// gateway accepted codec=opus; absent = PCMU fallback).
+    let codec: String?
+    /// Wire framing for Opus ("seq16" = sequence-stamped media slots,
+    /// enabling receiver-side gap detection/PLC; absent = bare Opus as
+    /// shipped in build 26).
+    let fmt: String?
+    /// Gateway evidence in the pong: depth of the host buffer this socket
+    /// feeds (frames) and the worst uplink inter-arrival gap (ms).
+    let buf: Int?
+    let ugap: Int?
 }
 
 // Default implementations keep lightweight test fakes conforming without
@@ -753,6 +1007,7 @@ struct WSMediaControl: Decodable {
 extension WebSocketCallMedia.WSAudioGraphing {
     func pushSyntheticPlayback(_ frame: [Int16]) { pushPlayback(frame) }
     var playbackIdleMilliseconds: Int { .max }
+    var playbackBufferedFrames: Int { 0 }
 }
 
 extension WebSocketCallMedia.MediaSocket {

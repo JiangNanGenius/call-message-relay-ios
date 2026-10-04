@@ -78,6 +78,12 @@ struct CallRouteState: Equatable {
     /// True once the gateway reported a merged conference (routing is fixed
     /// to the conference host transport).
     var conferenceLocked: Bool = false
+    /// True once the call-start selection settled: the route is pinned for
+    /// this call and only an actual path failure may move it.
+    var pinned: Bool = false
+    /// True when the user changed the route preference DURING a pinned call:
+    /// the new mode is persisted and applies to the NEXT call only.
+    var pendingModeChange: Bool = false
     /// Latest fresh comparable RTT in seconds (direct candidate or active).
     var rttSeconds: Double?
     /// One-shot, user-facing notice (a failed forced selection, a rollback).
@@ -89,6 +95,20 @@ struct CallRouteState: Equatable {
     /// Compact status string near the call status, e.g. "直连 · 28ms".
     var statusLine: String {
         if conferenceLocked { return String(localized: "会议线路") }
+        if pinned {
+            // Once pinned, quality-driven switching is off: show the chosen
+            // route without implying any ongoing re-evaluation.
+            switch active {
+            case .direct:
+                if let ms = rttMilliseconds { return String(localized: "直连 · \(ms)ms") }
+                return MediaRouteKind.direct.shortLabel
+            case .relay:
+                if let ms = rttMilliseconds { return String(localized: "中继 · \(ms)ms") }
+                return MediaRouteKind.relay.shortLabel
+            case .none:
+                return ""
+            }
+        }
         switch active {
         case .none:
             return switching ? String(localized: "正在切换线路…") : ""

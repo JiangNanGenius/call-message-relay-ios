@@ -109,7 +109,7 @@ final class FakeMediaSocket: WebSocketCallMedia.MediaSocket, @unchecked Sendable
 }
 
 @MainActor
-private final class FakeAudioGraph: WebSocketCallMedia.WSAudioGraphing {
+final class FakeAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     var onMicFrame: (([Int16]) -> Void)?
     let startResult: Bool
     private(set) var startCount = 0

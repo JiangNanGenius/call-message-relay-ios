@@ -35,6 +35,15 @@ final class DiagnosticsCensus: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Keeps the minimum observed value (e.g. worst conservation window).
+    func minimize(_ name: String, _ value: Int) {
+        lock.lock()
+        if value < values[name, default: Int.max] {
+            values[name] = value
+        }
+        lock.unlock()
+    }
+
     func snapshot() -> [String: Int] {
         lock.lock()
         let copy = values

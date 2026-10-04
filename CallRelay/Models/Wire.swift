@@ -582,6 +582,7 @@ enum EventType: String, Decodable, Equatable {
     case lineUpdated = "line.updated"
     case messageCreated = "message.created"
     case messageUpdated = "message.updated"
+    case threadDeleted = "thread.deleted"
     case callIncoming = "call.incoming"
     case callUpdated = "call.updated"
     case callEnded = "call.ended"
@@ -643,6 +644,12 @@ struct GatewayEvent: Decodable, Equatable {
             return nil
         }
         return try? JSONDecoder().decode(MessageRecord.self, from: data)
+    }
+
+    /// `thread.deleted` payload: the gateway's conversation tombstone event.
+    func threadDeletion() -> ThreadDeletionPayload? {
+        guard let data, type == .threadDeleted else { return nil }
+        return try? JSONDecoder().decode(ThreadDeletionPayload.self, from: data)
     }
 }
 

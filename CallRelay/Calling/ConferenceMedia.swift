@@ -5,7 +5,8 @@ import Foundation
 /// this as a protocol extension lets the existing `WebRTCCallMedia` (and the
 /// test fakes) serve both without a second implementation.
 extension CallMediaSession {
-    /// Builds a fully gathered, PCMU-only offer for the conference host leg.
+    /// Builds a fully gathered, Opus-preferred offer for the conference
+    /// host leg (same codec policy as per-call offers).
     func makeConferenceOffer(ice: ICEConfiguration, relayOnly: Bool) async throws -> String {
         try await makeOffer(ice: ice, relayOnly: relayOnly)
     }

@@ -256,6 +256,30 @@ final class MessageInbox: ObservableObject {
 
     // MARK: Threads
 
+    /// Conversation tombstones this device has applied (local deletes and
+    /// `thread.deleted` events from other devices). A tombstoned thread stays
+    /// hidden until a NEWER gateway message reopens it; its pre-delete
+    /// history is not re-shown by cloud restores either.
+    private var tombstonedThreadKeys: [String: Int64] = [:]
+
+    /// Applies a conversation delete locally (optimistic, after the gateway
+    /// accepted it): drops the thread row, prunes its cached messages and
+    /// marks the tombstone so cloud restores cannot resurrect it.
+    func applyThreadDeleted(key: String, deletedAt: Int64? = nil) {
+        threads.removeAll { $0.key == key }
+        threadCache.removeValue(forKey: key)
+        hasMoreThreads.remove(key)
+        tombstonedThreadKeys[key] = deletedAt ?? Date().unixMilliseconds
+        reevaluateAll()
+    }
+
+    /// True when `key` was deleted and no newer gateway message has
+    /// reopened the conversation.
+    private func isTombstoned(_ key: String, newestMessageAt: Int64) -> Bool {
+        guard let horizon = tombstonedThreadKeys[key] else { return false }
+        return newestMessageAt <= horizon
+    }
+
     @discardableResult
     func refreshThreads() async -> Bool {
         guard isValid else { return false }
@@ -263,7 +287,12 @@ final class MessageInbox: ObservableObject {
         do {
             let loaded = try await api.listThreads(lineId: lineFilter)
             guard captured == generation else { return false }
-            threads = loaded.sorted { $0.lastMessage.createdAt > $1.lastMessage.createdAt }
+            // Server-side tombstones hide pre-delete threads (a newer
+            // message reopens the conversation; the gateway already filters,
+            // this covers the local-delete race before the next fetch).
+            threads = loaded
+                .filter { !isTombstoned($0.key, newestMessageAt: $0.lastMessage.createdAt) }
+                .sorted { $0.lastMessage.createdAt > $1.lastMessage.createdAt }
             rebuildCloudThreads()
             reevaluateAll()
             listPhase = .loaded
@@ -533,7 +562,12 @@ final class MessageInbox: ObservableObject {
     /// Merge into the per-thread cache (also used by reconciliation).
     private func mergeMessages(_ incoming: [MessageRecord]) {
         var perThread: [String: [MessageRecord]] = [:]
-        for message in incoming { perThread[message.threadKey, default: []].append(message) }
+        for message in incoming {
+            // A message at/before the conversation's tombstone is history:
+            // never re-merge it (a NEWER message reopens the thread).
+            if isTombstoned(message.threadKey, newestMessageAt: message.createdAt) { continue }
+            perThread[message.threadKey, default: []].append(message)
+        }
         for (key, messages) in perThread {
             var byID: [String: MessageRecord] = [:]
             for message in threadCache[key] ?? [] { byID[message.id] = message }
@@ -912,11 +946,13 @@ final class MessageInbox: ObservableObject {
     private func rebuildCloudThreads() {
         // Restored history only contributes threads the live gateway does not
         // already provide; mixed threads are owned by the gateway fetch.
+        // Tombstoned conversations stay hidden regardless of source.
         let liveKeys = Set(threads.map(\.key))
         var built: [MessageThread] = []
         for (key, records) in threadCache where !liveKeys.contains(key) {
             let restored = records.filter { cloudMessageIDs.contains($0.id) }
             guard let last = restored.max(by: { $0.createdAt < $1.createdAt }) else { continue }
+            if isTombstoned(key, newestMessageAt: last.createdAt) { continue }
             built.append(MessageThread(key: key, peer: last.peer, unreadCount: 0, lastMessage: last))
         }
         cloudThreads = built.sorted { $0.lastMessage.createdAt > $1.lastMessage.createdAt }
