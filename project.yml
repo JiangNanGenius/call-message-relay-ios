@@ -29,7 +29,7 @@ configs:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.9"
+    MARKETING_VERSION: "0.3.10"
     # v0.3.5 public build 9 stays immutable. Build 12 (0.3.5) was the
     # TestFlight CloudKit/WSS/LCK repair; build 13 ships the build-12 crash,
     # iCloud, push-environment and audio fixes in BOTH editions and adds the
@@ -41,7 +41,7 @@ settings:
     # self-hosted PWA Web Push path (gateway serves an installable PWA over
     # its own HTTPS domain, owns its VAPID key and sends Web Push itself) and
     # keeps the pure native edition untouched.
-    CURRENT_PROJECT_VERSION: "16"
+    CURRENT_PROJECT_VERSION: "17"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.

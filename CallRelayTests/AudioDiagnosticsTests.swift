@@ -4,9 +4,12 @@ import AVFoundation
 
 /// Minimal sink for headless graph tests (the one in WSAudioGraphTests is
 /// file-private).
+/// Never completes inline: the scheduler now renders and schedules while
+/// holding its state lock, so a synchronous completion would deadlock.
 final class DiagnosticsRecordingSink: WSPlaybackScheduler.WSPlaybackScheduling {
+    private(set) var scheduledBuffers = 0
     func schedule(buffer: AVAudioPCMBuffer, completion: @escaping () -> Void) {
-        completion()
+        scheduledBuffers += 1
     }
     func startPlaying() {}
     func stopPlaying() {}

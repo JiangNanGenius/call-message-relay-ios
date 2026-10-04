@@ -246,6 +246,8 @@ final class FakeGatewayAPI: GatewayAPI {
     var threadPages: [String: [MessageRecord]] = [:]
     var threadHasMore = false
     var sentMessages: [SentSMS] = []
+    /// Parallel to `sentMessages`: the line each send requested.
+    var sentLineIDs: [String?] = []
     var sendResult: Result<MessageRecord, Error> = .failure(APIError.notReady("send not configured"))
     var idempotentReplays: [String: MessageRecord] = [:]
     var readMarked: [String] = []
@@ -508,8 +510,15 @@ final class FakeGatewayAPI: GatewayAPI {
     }
 
     func sendMessage(to: String, body: String, idempotencyKey: String) async throws -> MessageRecord {
+        try await sendMessage(to: to, body: body, lineId: nil, idempotencyKey: idempotencyKey)
+    }
+
+    /// Captures the requested line so tests can prove per-line send/retry
+    /// behavior (a retry must reuse the entry's captured line).
+    func sendMessage(to: String, body: String, lineId: String?, idempotencyKey: String) async throws -> MessageRecord {
         if let replay = idempotentReplays[idempotencyKey] { return replay }
         sentMessages.append(SentSMS(to: to, body: body, key: idempotencyKey))
+        sentLineIDs.append(lineId)
         onSendEntered?(idempotencyKey)
         if autoResumeSend {
             return try sendResult.get()

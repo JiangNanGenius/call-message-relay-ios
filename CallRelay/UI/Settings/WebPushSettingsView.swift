@@ -17,6 +17,7 @@ struct WebPushSettingsView: View {
     @State private var status: WebPushDeviceStatus?
     @State private var vapidEnabled = true
     @State private var bindToken: WebPushBindToken?
+    @State private var clientScope = false
     @State private var loadError: String?
     @State private var statusLine: String?
     @State private var isMinting = false
@@ -127,6 +128,13 @@ struct WebPushSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
+                Toggle(WebPushL10n.text("允许浏览器拨打/短信（网页客户端）"), isOn: $clientScope)
+                    .font(.callout)
+                Text(WebPushL10n.text(clientScope
+                    ? "开：绑定码可在浏览器里直接拨打、接听和收发短信（权限与本设备一致，可随时在网关吊销）。"
+                    : "关：绑定码只开启来电网页通知。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Button(isMinting ? WebPushL10n.text("生成中…") : WebPushL10n.text("生成绑定码")) {
                     Task { await mint() }
                 }
@@ -215,7 +223,7 @@ struct WebPushSettingsView: View {
         isMinting = true
         defer { isMinting = false }
         do {
-            let token = try await model.webPushBindToken()
+            let token = try await model.webPushBindToken(scope: clientScope ? "client" : "push")
             if let issue = WebPushValidation.bindURLProblem(token.bindUrl, expectedCode: token.code) {
                 statusLine = issue
                 bindToken = nil

@@ -66,6 +66,16 @@ enum MessageRow: Identifiable, Equatable {
 /// A local SMS submission. `idempotencyKey` is generated once for the logical
 /// message and reused on every retry, so a transport failure can never create
 /// a duplicate SMS on the gateway (which dedupes on Idempotency-Key).
+///
+/// `lineID` is captured ONCE at creation from the conversation's line
+/// preference and reused by every retry: a retry must never silently switch
+/// to another line/number — only an explicit user change (new submission)
+/// may use a different line.
+///
+/// `needsConfirmation` is set for entries recovered from disk after a
+/// process restart: their gateway outcome is ambiguous, so a gateway
+/// restart/migration must never auto-send them; only an explicit user
+/// retry (which reuses the stable idempotency key) may submit them.
 struct MessageOutboxEntry: Identifiable, Equatable, Codable {
     let id: String
     let threadKey: String
@@ -73,13 +83,17 @@ struct MessageOutboxEntry: Identifiable, Equatable, Codable {
     let body: String
     let idempotencyKey: String
     let sourceMessageID: String?
+    /// The line this submission belongs to; immutable across retries.
+    let lineID: String?
     var status: MessageStatus
     var isSending: Bool
     var errorText: String?
     var serverMessageID: String?
+    var needsConfirmation: Bool
     let createdAt: Date
 
-    init(threadKey: String, to: String, body: String, now: Date = Date(), sourceMessageID: String? = nil) {
+    init(threadKey: String, to: String, body: String, now: Date = Date(), sourceMessageID: String? = nil,
+         lineID: String? = nil) {
         let key = UUID().uuidString
         self.id = "local-\(key)"
         self.threadKey = threadKey
@@ -87,9 +101,33 @@ struct MessageOutboxEntry: Identifiable, Equatable, Codable {
         self.body = body
         self.idempotencyKey = key
         self.sourceMessageID = sourceMessageID
+        self.lineID = lineID
         self.status = .queued
         self.isSending = true
+        self.needsConfirmation = false
         self.createdAt = now
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, threadKey, to, body, idempotencyKey, sourceMessageID, lineID
+        case status, isSending, errorText, serverMessageID, needsConfirmation, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        threadKey = try c.decode(String.self, forKey: .threadKey)
+        to = try c.decode(String.self, forKey: .to)
+        body = try c.decode(String.self, forKey: .body)
+        idempotencyKey = try c.decode(String.self, forKey: .idempotencyKey)
+        sourceMessageID = try c.decodeIfPresent(String.self, forKey: .sourceMessageID)
+        lineID = try c.decodeIfPresent(String.self, forKey: .lineID)
+        status = try c.decodeIfPresent(MessageStatus.self, forKey: .status) ?? .queued
+        isSending = try c.decodeIfPresent(Bool.self, forKey: .isSending) ?? false
+        errorText = try c.decodeIfPresent(String.self, forKey: .errorText)
+        serverMessageID = try c.decodeIfPresent(String.self, forKey: .serverMessageID)
+        needsConfirmation = try c.decodeIfPresent(Bool.self, forKey: .needsConfirmation) ?? true
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
     }
 }
 
@@ -133,14 +171,23 @@ final class MessageInbox: ObservableObject {
 
     private let api: GatewayAPI
     private let filter: SpamFilterStore?
-    private let outboxStore: OutboxStore?
+    private var outboxStore: OutboxStore?
     /// Owner-controlled contact whitelist hook (contacts never enter the
     /// spam engine otherwise).
     var isTrustedContact: ((String) -> Bool)?
     /// Updated by AppModel with real SMS-line readiness.
     var lineReady: () -> Bool = { true }
-    /// Unified gateway: line used for outgoing sends and thread filtering.
+    /// Per-entry readiness: whether the line CAPTURED in an outbox entry
+    /// can send right now. A healthy second line must not be blocked just
+    /// because the app default is offline, and vice versa.
+    var lineReadyForEntry: ((String?) -> Bool)?
+    /// Unified gateway: default line used when a conversation has no
+    /// explicit per-thread preference.
     var lineIdProvider: (() -> String?)?
+    /// Per-conversation outgoing line preference (threadKey -> lineId).
+    /// New submissions capture it into the entry; retries reuse the
+    /// captured line and never silently fall back to another number.
+    var lineIdForThread: ((String) -> String?)?
     private var lineFilter: String?
 
     private var generation: UInt64 = 0
@@ -461,8 +508,20 @@ final class MessageInbox: ObservableObject {
         return nil
     }
 
+    /// The line a NEW submission to this thread will use: the per-thread
+    /// preference when set, otherwise the app default. Retries never
+    /// re-resolve — they reuse the line captured in the entry.
+    func preferredLine(for threadKey: String) -> String? {
+        lineIdForThread?(threadKey) ?? lineIdProvider?()
+    }
+
+    /// - Parameter lineId: Explicit line for this submission (compose view's
+    ///   "From" choice). When nil the per-thread preference/app default
+    ///   applies. Either way the value is CAPTURED into the entry and every
+    ///   retry reuses it — never a silent fallback to another number.
     @discardableResult
-    func send(to rawRecipient: String, body rawBody: String, isLineReady: Bool) -> MessageOutboxEntry? {
+    func send(to rawRecipient: String, body rawBody: String, isLineReady: Bool,
+              lineId: String? = nil) -> MessageOutboxEntry? {
         guard isValid else { return nil }
         let recipient = rawRecipient.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = rawBody.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -472,13 +531,16 @@ final class MessageInbox: ObservableObject {
         if let pending = outbox.first(where: { $0.isSending && $0.to == recipient && $0.body == body }) {
             return pending
         }
-        let entry = MessageOutboxEntry(threadKey: recipient, to: recipient, body: body, now: now())
+        let entry = MessageOutboxEntry(threadKey: recipient, to: recipient, body: body, now: now(),
+                                       lineID: lineId ?? preferredLine(for: recipient))
         outbox.append(entry)
         persistOutbox()
         performSend(entry)
         return entry
     }
 
+    /// Explicit user retry: clears the restart quarantine and re-submits
+    /// with the ORIGINAL line and idempotency key.
     func retry(_ entry: MessageOutboxEntry) {
         guard isValid else { return }
         guard let index = outbox.firstIndex(where: { $0.id == entry.id }),
@@ -486,6 +548,7 @@ final class MessageInbox: ObservableObject {
         outbox[index].isSending = true
         outbox[index].status = .queued
         outbox[index].errorText = nil
+        outbox[index].needsConfirmation = false
         persistOutbox()
         performSend(outbox[index])
     }
@@ -493,33 +556,57 @@ final class MessageInbox: ObservableObject {
     /// Re-sends a message the gateway truthfully persisted as failed. This is
     /// a NEW logical submission (new idempotency key): replaying the old key
     /// would only replay the gateway's stored failure, never resend the SMS.
+    ///
+    /// The retry MUST originate from the record's original line: re-resolving
+    /// the current preference could silently move the resend to another SIM
+    /// after the user changed the conversation line. Records that carry no
+    /// line (legacy unified history) fail explicitly instead of guessing.
     func resendFailed(_ record: MessageRecord) {
         guard isValid, record.isOutbound, record.status == .failed,
               !outbox.contains(where: { $0.isSending && $0.sourceMessageID == record.id }) else { return }
+        guard let originalLine = record.lineID else {
+            var entry = MessageOutboxEntry(threadKey: record.threadKey, to: record.peer, body: record.body,
+                                           now: now(), sourceMessageID: record.id, lineID: nil)
+            entry.isSending = false
+            entry.status = .failed
+            entry.errorText = String(localized: "无法确定原发送线路，请重新编辑内容后发送。")
+            outbox.append(entry)
+            persistOutbox()
+            return
+        }
         let entry = MessageOutboxEntry(threadKey: record.threadKey, to: record.peer, body: record.body,
-                                       now: now(), sourceMessageID: record.id)
+                                       now: now(), sourceMessageID: record.id,
+                                       lineID: originalLine)
         outbox.append(entry)
         persistOutbox()
         performSend(entry)
     }
 
-    /// Retry durable queued entries once the SMS line becomes ready (foreground
-    /// /reconnect). Stable idempotency keys make this safe after ambiguity.
+    /// Retry durable queued entries once the line CAPTURED IN EACH ENTRY is
+    /// ready (foreground/reconnect). Stable idempotency keys make this safe
+    /// after ambiguity. Entries quarantined after an app restart
+    /// (`needsConfirmation`) are NEVER auto-sent: only an explicit user
+    /// retry submits them.
     func flushReadyOutbox() {
-        guard lineReady() else { return }
-        for entry in outbox where !entry.isSending && entry.status != .failed {
+        for entry in outbox where !entry.isSending && entry.status != .failed && !entry.needsConfirmation {
+            guard entryReadiness(entry) else { continue }
             guard let index = outbox.firstIndex(where: { $0.id == entry.id }) else { continue }
             outbox[index].isSending = true
             performSend(outbox[index])
         }
     }
 
+    private func entryReadiness(_ entry: MessageOutboxEntry) -> Bool {
+        lineReadyForEntry?(entry.lineID) ?? lineReady()
+    }
+
     private func performSend(_ entry: MessageOutboxEntry) {
         let captured = generation
         Task {
-            // Hold the message when the line isn't ready yet; AppModel flushes
-            // the queue when registration/SMS readiness returns.
-            guard self.lineReady() else {
+            // Hold the message when its captured line isn't ready yet;
+            // AppModel flushes the queue when that line's readiness returns.
+            // A healthy second line is never blocked by the default line.
+            guard self.entryReadiness(entry) else {
                 guard captured == self.generation else { return }
                 self.markWaiting(entryID: entry.id)
                 return
@@ -527,8 +614,11 @@ final class MessageInbox: ObservableObject {
             guard isValid, captured == generation else { return }
             let message: MessageRecord
             do {
+                // The entry's captured line is authoritative: a retry uses
+                // the same line the user originally sent from, never a
+                // silent fallback to another number.
                 message = try await api.sendMessage(
-                    to: entry.to, body: entry.body, lineId: lineIdProvider?(),
+                    to: entry.to, body: entry.body, lineId: entry.lineID,
                     idempotencyKey: entry.idempotencyKey
                 )
             } catch {
@@ -545,7 +635,9 @@ final class MessageInbox: ObservableObject {
         guard let index = outbox.firstIndex(where: { $0.id == entryID }) else { return }
         outbox[index].isSending = false
         outbox[index].status = .queued
-        outbox[index].errorText = "等待线路恢复后自动发送"
+        outbox[index].errorText = outbox[index].needsConfirmation
+            ? String(localized: "应用重启后待确认，点“重试”发送")
+            : String(localized: "等待所选线路恢复后自动发送")
         persistOutbox()
     }
 
@@ -589,15 +681,18 @@ final class MessageInbox: ObservableObject {
 
     private func recoverPersistedOutbox() {
         guard let persisted = outboxStore?.load(), !persisted.isEmpty else { return }
-        // The process died mid-flight: the gateway outcome is ambiguous. Keep
-        // the stable key and let the owner/line-flush resend safely; gateway
-        // idempotency dedupes any message it already accepted.
+        // The process died mid-flight: the gateway outcome is ambiguous.
+        // Quarantine every recovered entry: it is never auto-sent (a line
+        // recovery or gateway restart must not submit old records); the
+        // stable idempotency key makes an explicit user retry safe, and
+        // gateway idempotency dedupes any message it already accepted.
         outbox = persisted.map { entry in
             var entry = entry
             entry.isSending = false
+            entry.needsConfirmation = true
             if entry.status != .failed {
                 entry.status = .queued
-                entry.errorText = "应用重启后待确认，将在线路恢复时发送"
+                entry.errorText = String(localized: "应用重启后待确认，点“重试”发送")
             }
             return entry
         }
@@ -764,6 +859,15 @@ final class MessageInbox: ObservableObject {
     // MARK: Test support
 
     var generationValue: UInt64 { generation }
+
+    /// Injects a durable store after init and runs the recovery path, so
+    /// restart-quarantine behavior is testable.
+    #if DEBUG
+    func setOutboxStoreForTest(_ store: OutboxStore) {
+        outboxStore = store
+        recoverPersistedOutbox()
+    }
+    #endif
 
     private func friendly(_ error: Error) -> String {
         (error as? APIError)?.friendlyMessage ?? "无法连接网关，请稍后重试。"

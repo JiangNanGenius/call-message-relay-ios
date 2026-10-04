@@ -173,6 +173,9 @@ final class AppModel: ObservableObject {
     var eventAuthRetryDelay: TimeInterval = 5
     /// Current gateway scope id for history isolation in optional sync.
     private var currentGatewayScope: String?
+    /// Per-conversation outgoing line preference, scoped to the paired
+    /// gateway (nil in demo/unpaired state).
+    private var threadLineStore: ThreadLinePreferenceStore?
 
     private let defaults: UserDefaults
     private enum DefaultsKey {
@@ -255,6 +258,57 @@ final class AppModel: ObservableObject {
         case .unpaired:
             return "尚未配对网关。"
         }
+    }
+
+    // MARK: Per-conversation line (dual-SIM style)
+
+    /// The line a conversation sends from: the explicit per-thread choice
+    /// when one exists, otherwise the app default. Never silently resolves
+    /// to a different number mid-submission: the outbox entry captures this
+    /// value once and retries reuse the capture.
+    func preferredLine(for threadKey: String) -> String? {
+        threadLineStore?.lineID(for: threadKey) ?? defaultLineId
+    }
+
+    /// An explicit user choice (or nil to follow the default again).
+    func setPreferredLine(_ lineID: String?, for threadKey: String) {
+        threadLineStore?.setLineID(lineID, for: threadKey)
+        objectWillChange.send()
+    }
+
+    func line(for lineID: String?) -> AuthorizedLine? {
+        guard let lineID else { return nil }
+        return authorizedLines.first(where: { $0.id == lineID })
+    }
+
+    /// Whether the given line can originate SMS right now. Narrow and
+    /// explicit — a line that merely exists is never silently used. A
+    /// gateway SMS test mode (`smsLive == false`) still lets submissions
+    /// through (they are stored, not sent): see ``lineSMSTestModeWarning``.
+    func lineCanSendSMS(_ lineID: String?) -> Bool {
+        guard let line = line(for: lineID) else { return false }
+        return line.enabled && line.online && line.permissions.sendSms
+            && line.sim == .ready && line.registration == .registered && line.sms == .ready
+    }
+
+    /// Warning (never a hard blocker): the gateway currently stores
+    /// outgoing SMS instead of sending them (SMS test/dry-run mode).
+    func lineSMSTestModeWarning(_ lineID: String?) -> String? {
+        guard let line = line(for: lineID), lineCanSendSMS(lineID), !line.smsLive else { return nil }
+        return String(localized: "网关当前为短信测试模式，短信会保存但不会真正发出。")
+    }
+
+    /// Truthful user-facing reason a line cannot send SMS right now.
+    func lineSMSUnavailableReason(_ lineID: String?) -> String? {
+        if isDemo { return nil }
+        guard let line = line(for: lineID) else { return String(localized: "所选线路不可用或已取消授权。") }
+        if !line.enabled { return String(localized: "线路已停用。") }
+        if !line.online { return String(localized: "线路离线。") }
+        if !line.permissions.sendSms { return String(localized: "没有该线路的发短信权限。") }
+        if line.sim != .ready { return String(localized: "SIM 未就绪，暂时不能发送短信。") }
+        if line.registration != .registered { return String(localized: "线路尚未注册到移动网络。") }
+        if line.sms != .ready { return String(localized: "网关短信能力当前不可用。") }
+        return nil
     }
 
     init(
@@ -876,7 +930,10 @@ final class AppModel: ObservableObject {
         let outboxStore = OutboxStore(scopeIdentifier: binding.gatewayId)
         let messages = MessageInbox(api: http, filter: spamFilter, outboxStore: outboxStore)
         messages.lineReady = { [weak self] in self?.isSMSLineUsable ?? false }
+        messages.lineReadyForEntry = { [weak self] lineID in self?.lineCanSendSMS(lineID) ?? false }
         messages.lineIdProvider = { [weak self] in self?.defaultLineId }
+        threadLineStore = ThreadLinePreferenceStore.shared.scope(for: binding.gatewayId)
+        messages.lineIdForThread = { [weak self] threadKey in self?.preferredLine(for: threadKey) }
         messages.isTrustedContact = { [weak self] peer in self?.isTrustedContact(peer) ?? false }
         inbox = messages
         messages.setLineFilter(selectedLineFilter)
@@ -2102,9 +2159,9 @@ final class AppModel: ObservableObject {
     }
 
     /// Mints the short-lived, single-use bind code shown on the setup screen.
-    func webPushBindToken() async throws -> WebPushBindToken {
+    func webPushBindToken(scope: String = "push") async throws -> WebPushBindToken {
         guard let api else { throw APIError.notReady("尚未连接网关。") }
-        return try await api.webPushBindToken()
+        return try await api.webPushBindToken(scope: scope)
     }
 
     @discardableResult

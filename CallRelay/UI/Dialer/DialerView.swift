@@ -8,9 +8,21 @@ struct DialerView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var number = ""
+    @State private var expandedContactID: String?
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
     private let keys: [String] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
+
+    /// Keypad-fragment contact matches (compact rows above the pad). Never
+    /// pops the system keyboard; selection fills the number like a dialed
+    /// digit. Multi-number contacts expand to per-number rows first.
+    private var suggestions: [ContactSuggestion] {
+        ContactAutocomplete.suggestions(contacts: model.contacts.contacts, query: number, limit: 4)
+    }
+
+    private var showSuggestions: Bool {
+        ContactSuggestionList.shouldShowSuggestions(suggestions: suggestions, query: number)
+    }
 
     var body: some View {
         NavigationStack {
@@ -35,6 +47,25 @@ struct DialerView: View {
                     Text(" ")
                         .font(.subheadline)
                         .padding(.top, 2)
+                }
+
+                if showSuggestions {
+                    ContactSuggestionList(
+                        suggestions: suggestions,
+                        expandedNumbers: expandedContactID.map {
+                            ContactAutocomplete.numbers(for: $0, in: model.contacts.contacts)
+                        },
+                        onFill: { suggestion in
+                            number = suggestion.phone
+                            expandedContactID = nil
+                        },
+                        onExpand: { contactID in
+                            expandedContactID = expandedContactID == contactID ? nil : contactID
+                        }
+                    )
+                    .padding(.horizontal, 40)
+                    .padding(.bottom, 6)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 Spacer(minLength: 10)
@@ -136,7 +167,10 @@ struct DialerView: View {
     }
 
     private func append(_ key: String) {
-        if number.count < 32 { number.append(key) }
+        if number.count < 32 {
+            number.append(key)
+            expandedContactID = nil
+        }
     }
 }
 

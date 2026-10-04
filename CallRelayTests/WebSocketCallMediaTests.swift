@@ -4,13 +4,17 @@ import AVFoundation
 
 // MARK: - Deterministic fakes
 
-@MainActor
-final class FakeMediaSocket: WebSocketCallMedia.MediaSocket {
+/// Lock-owned (nonisolated) fake: the transport loops run detached from
+/// the main executor, so the socket must be drivable from any queue —
+/// including while the main thread is deliberately stalled in the
+/// concurrency regression tests.
+final class FakeMediaSocket: WebSocketCallMedia.MediaSocket, @unchecked Sendable {
     enum Scripted {
         case message(Result<URLSessionWebSocketTask.Message, Error>)
         case park   // receive stays pending until cancelled/delivered manually
     }
 
+    private let lock = NSLock()
     private var receiveHandler: ((Result<URLSessionWebSocketTask.Message, Error>) -> Void)?
     var scripted: [Scripted] = [.park]
     private(set) var resumed = false
@@ -23,60 +27,85 @@ final class FakeMediaSocket: WebSocketCallMedia.MediaSocket {
     /// can deliver a late failure after the socket has been replaced.
     var holdSendCompletions = false
 
-    func resume() { resumed = true }
+    func resume() {
+        lock.lock(); resumed = true; lock.unlock()
+    }
 
     func cancel() {
-        guard !cancelled else { return }
+        lock.lock()
+        guard !cancelled else { lock.unlock(); return }
         cancelled = true
         cancelCount += 1
         // A real URLSessionWebSocketTask resumes a parked receive with an
         // error when the task is cancelled.
-        receiveHandler?(.failure(URLError(.cancelled)))
+        let handler = receiveHandler
         receiveHandler = nil
+        lock.unlock()
+        handler?(.failure(URLError(.cancelled)))
     }
 
     func send(_ message: URLSessionWebSocketTask.Message,
               completionHandler: @escaping (Error?) -> Void) {
+        lock.lock()
         sends.append((message, completionHandler))
-        if !holdSendCompletions { completionHandler(nil) }
+        let hold = holdSendCompletions
+        lock.unlock()
+        if !hold { completionHandler(nil) }
     }
 
     /// Fails the completion of the first held text (ping) send.
     func failHeldTextSend(at index: Int = 0) {
+        lock.lock()
         let textSends = sends.enumerated().filter {
             if case .string = $0.element.message { return true } else { return false }
         }
         guard textSends.indices.contains(index) else {
+            lock.unlock()
             XCTFail("no held text send at \(index)")
             return
         }
-        textSends[index].element.completion(URLError(.networkConnectionLost))
+        let completion = textSends[index].element.completion
+        lock.unlock()
+        completion(URLError(.networkConnectionLost))
     }
 
     func receive(completionHandler: @escaping (Result<URLSessionWebSocketTask.Message, Error>) -> Void) {
+        lock.lock()
         guard !scripted.isEmpty else {
             receiveHandler = completionHandler // park like a live socket
+            lock.unlock()
             return
         }
-        switch scripted.removeFirst() {
+        let next = scripted.removeFirst()
+        lock.unlock()
+        switch next {
         case .park:
+            lock.lock()
             receiveHandler = completionHandler
+            lock.unlock()
         case .message(let result):
             completionHandler(result)
         }
     }
 
-    /// Test driver: resumes a parked receive exactly once.
+    /// Test driver: resumes a parked receive exactly once. Callable from
+    /// ANY queue (the concurrency tests deliver while main is stalled).
     func deliver(_ result: Result<URLSessionWebSocketTask.Message, Error>) {
+        lock.lock()
         guard let handler = receiveHandler else {
+            lock.unlock()
             XCTFail("no parked receive to deliver")
             return
         }
         receiveHandler = nil
+        lock.unlock()
         handler(result)
     }
 
-    var isParked: Bool { receiveHandler != nil }
+    var isParked: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return receiveHandler != nil
+    }
 }
 
 @MainActor
@@ -222,8 +251,11 @@ final class WebSocketCallMediaLifecycleTests: XCTestCase {
             allFrames.firstIndex(of: data).map { $0 + 1 }
         }
         XCTAssertEqual(positions.count, sentFrames.count, "all sent payloads are burst frames")
-        XCTAssertEqual(positions, Array(23...30),
-                       "only the newest bounded window may go out; got \(positions)")
+        // The wire set is exactly the frame already in flight when the
+        // tunnel stalled (position 1) plus the newest bounded window
+        // (positions 23...30); the 21 stale frames in between were dropped.
+        XCTAssertEqual(positions, [1] + Array(23...30),
+                       "only the in-flight frame plus the newest bounded window may go out; got \(positions)")
         XCTAssertTrue(media.connectedForTest())
         media.close()
     }

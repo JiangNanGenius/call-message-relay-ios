@@ -452,10 +452,14 @@ final class HTTPGatewayAPI: GatewayAPI {
         return try await authorizedGet("devices/\(deviceId)/webpush/status")
     }
 
-    func webPushBindToken() async throws -> WebPushBindToken {
+    /// scope: "push"（仅网页通知，历史默认）或 "client"（完整网页客户端：
+    /// 浏览器内拨打/接听/短信，仍受本设备线路权限约束）。
+    func webPushBindToken(scope: String = "push") async throws -> WebPushBindToken {
         guard isV2 else { throw APIError.notReady("当前配对不是统一网关。") }
         let deviceId = try webPushDeviceId()
-        return try await authorizedPost("devices/\(deviceId)/webpush/bind-token")
+        return try await authorizedPost(
+            "devices/\(deviceId)/webpush/bind-token",
+            body: ["scope": scope] as [String: String])
     }
 
     @discardableResult

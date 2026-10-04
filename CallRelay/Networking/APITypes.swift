@@ -157,7 +157,8 @@ protocol GatewayAPI: Sendable {
     /// Redacted device status: subscription count + notify mode only.
     func webPushStatus() async throws -> WebPushDeviceStatus
     /// Mints the short-lived, single-use browser bind code.
-    func webPushBindToken() async throws -> WebPushBindToken
+    /// scope: "push"（仅网页通知）或 "client"（完整网页客户端）。
+    func webPushBindToken(scope: String) async throws -> WebPushBindToken
     /// Changes this device's notification mode; returns the updated status.
     @discardableResult
     func updateNotifyMode(_ mode: WebPushNotifyMode) async throws -> WebPushDeviceStatus
@@ -558,7 +559,7 @@ extension GatewayAPI {
         throw APIError.notReady("当前配对不是统一网关，无法使用网页推送。")
     }
 
-    func webPushBindToken() async throws -> WebPushBindToken {
+    func webPushBindToken(scope: String) async throws -> WebPushBindToken {
         throw APIError.notReady("当前配对不是统一网关，无法使用网页推送。")
     }
 

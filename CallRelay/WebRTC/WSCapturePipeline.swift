@@ -35,6 +35,10 @@ final class WSCapturePipeline: @unchecked Sendable {
 
     /// Samples dropped by the backlog caps (diagnostics/tests).
     private(set) var droppedSamples: Int = 0
+    /// Tap callbacks that delivered at least one sample (health watchdog:
+    /// distinguishes a dead engine render cycle — zero tap deliveries —
+    /// from a merely quiet microphone).
+    private(set) var tapDeliveryCount: Int = 0
 
     init(sourceFormat: AVAudioFormat,
          pendingCaptureMax: Int = 48000 * 2,
@@ -65,6 +69,7 @@ final class WSCapturePipeline: @unchecked Sendable {
         guard !samples.isEmpty else { return }
         lock.lock()
         guard accepting else { lock.unlock(); return }
+        tapDeliveryCount += 1
         pending.append(contentsOf: samples)
         if pending.count > pendingCaptureMax {
             let overflow = pending.count - pendingCaptureMax
@@ -155,6 +160,11 @@ final class WSCapturePipeline: @unchecked Sendable {
     var pendingSnapshotCount: Int {
         lock.lock(); defer { lock.unlock() }
         return pending.count
+    }
+
+    var tapDeliverySnapshotCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return tapDeliveryCount
     }
 
     var convertedSnapshotCount: Int {

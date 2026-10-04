@@ -111,6 +111,144 @@ final class MessageInboxTests: XCTestCase {
         await waitUntil { inbox.outbox.isEmpty }
     }
 
+    // MARK: Per-line capture and retry (dual-SIM correctness)
+
+    private func makeSendInbox(api: FakeGatewayAPI, readiness: [String?: Bool] = [:],
+                               defaultLine: String? = nil) -> MessageInbox {
+        let inbox = MessageInbox(api: api)
+        inbox.lineIdProvider = { defaultLine }
+        inbox.lineReadyForEntry = { lineID in readiness[lineID] ?? false }
+        return inbox
+    }
+
+    func testRetryReusesOriginalRecordLineAfterPreferenceChange() async {
+        let api = FakeGatewayAPI()
+        api.sendResult = .success(makeMessage(id: "srv-1", thread: "555", direction: .outbound,
+                                              body: "hi", status: .sent))
+        let inbox = makeSendInbox(api: api, readiness: ["line1": true])
+        // The failed record originated from line1.
+        let record = MessageRecord(
+            id: "srv-1", gatewayID: "gw", lineID: "line1", threadKey: "555",
+            direction: .outbound, peer: "555", body: "hi", encoding: nil,
+            status: .failed, createdAt: 2)
+        api.threadPages["555"] = [record]
+
+        // The user has since changed the conversation preference to line2;
+        // a resend must STILL originate from the record's original line.
+        inbox.lineIdForThread = { _ in "line2" }
+        inbox.resendFailed(record)
+        await waitUntil { !api.sentMessages.isEmpty }
+        XCTAssertEqual(api.sentLineIDs.first ?? "missing", "line1",
+            "resend must reuse the record's original line, never the current preference")
+    }
+
+    func testResendWithoutOriginalLineFailsExplicitlyInsteadOfGuessing() async {
+        let api = FakeGatewayAPI()
+        let inbox = makeSendInbox(api: api, defaultLine: "line9")
+        let legacy = MessageRecord(
+            id: "srv-old", gatewayID: "gw", lineID: nil, threadKey: "555",
+            direction: .outbound, peer: "555", body: "hi", encoding: nil,
+            status: .failed, createdAt: 1)
+        inbox.resendFailed(legacy)
+        await pumpMainActor(5)
+        XCTAssertTrue(api.sentMessages.isEmpty,
+            "a legacy record without a line must never be sent from a guessed line")
+        guard let entry = inbox.outbox.first else {
+            return XCTFail("an explicit failure entry must explain the situation")
+        }
+        XCTAssertEqual(entry.status, .failed)
+        XCTAssertNotNil(entry.errorText)
+    }
+
+    func testHealthySecondLineSendsWhileDefaultLineOffline() async {
+        let api = FakeGatewayAPI()
+        api.sendResult = .success(makeMessage(id: "srv-2", thread: "555", direction: .outbound,
+                                              body: "hi", status: .sent))
+        let inbox = makeSendInbox(api: api, readiness: ["line2": true], defaultLine: "line1")
+        // line1 (default) is offline; line2 is healthy. An explicit choice
+        // of line2 must send, and the entry must capture line2.
+        let entry = inbox.send(to: "555", body: "hi", isLineReady: true, lineId: "line2")
+        XCTAssertNotNil(entry)
+        await waitUntil { !api.sentMessages.isEmpty }
+        XCTAssertEqual(api.sentLineIDs.first ?? "missing", "line2")
+        // Even after line2 goes offline and line1 returns, a retry must not
+        // silently switch lines.
+        api.sendResult = .failure(APIError.network(URLError(.timedOut)))
+        let failing = inbox.send(to: "556", body: "hey", isLineReady: true, lineId: "line2")
+        XCTAssertNotNil(failing)
+        await waitUntil { inbox.outbox.contains(where: { $0.status == .failed }) }
+        api.sendResult = .success(makeMessage(id: "srv-3", thread: "556", direction: .outbound,
+                                              body: "hey", status: .sent))
+        inbox.retry(inbox.outbox.first(where: { $0.to == "556" })!)
+        await waitUntil { api.sentLineIDs.count == 2 }
+        XCTAssertEqual(api.sentLineIDs[1] ?? "missing", "line2",
+            "retry must reuse the captured line even after readiness flips")
+    }
+
+    /// Mutable per-line readiness shared with the inbox closure.
+    private final class ReadinessBox: @unchecked Sendable {
+        var values: [String?: Bool]
+        init(_ values: [String?: Bool]) { self.values = values }
+    }
+
+    func testRevokedCapturedLineNeverFallsBack() async {
+        let api = FakeGatewayAPI()
+        api.sendResult = .success(makeMessage(id: "srv-1", thread: "555", direction: .outbound,
+                                              body: "hi", status: .sent))
+        let readiness = ReadinessBox(["line1": true])
+        let inbox = makeSendInbox(api: api, defaultLine: "line2")
+        inbox.lineReadyForEntry = { readiness.values[$0] ?? false }
+        // Captured on line1; first attempt fails on the network.
+        api.sendResult = .failure(APIError.network(URLError(.timedOut)))
+        _ = inbox.send(to: "556", body: "hey", isLineReady: true, lineId: "line1")
+        await waitUntil { inbox.outbox.contains { $0.to == "556" && $0.status == .failed } }
+        // line1 is revoked/offline; line2 (the default) is healthy. A retry
+        // must HOLD — never silently switch to another SIM.
+        let sendsBeforeRevoke = api.sentMessages.count
+        readiness.values = ["line1": false, "line2": true]
+        guard let entry = inbox.outbox.first(where: { $0.to == "556" }) else {
+            return XCTFail("entry exists")
+        }
+        inbox.retry(entry)
+        await waitUntil { inbox.outbox.contains { $0.to == "556" && $0.status == .queued } }
+        XCTAssertEqual(api.sentMessages.count, sendsBeforeRevoke,
+            "a revoked captured line must hold the message, never switch to another SIM")
+        // line1 recovers -> the retry sends from its captured line.
+        api.sendResult = .success(makeMessage(id: "srv-2", thread: "556", direction: .outbound,
+                                              body: "hey", status: .sent))
+        readiness.values = ["line1": true, "line2": true]
+        inbox.retry(inbox.outbox.first(where: { $0.to == "556" })!)
+        await waitUntil { api.sentMessages.contains { $0.to == "556" } }
+        XCTAssertEqual(api.sentLineIDs.last ?? "missing", "line1")
+    }
+
+    func testQuarantinedRecoveredOutboxNeverAutoSends() async {
+        let store = OutboxStore(scopeIdentifier: nil,
+                                explicitURL: FileManager.default.temporaryDirectory
+                                    .appendingPathComponent("outbox-quarantine-test.json"))!
+        store.clear()
+        var entry = MessageOutboxEntry(threadKey: "555", to: "555", body: "hi", lineID: "line1")
+        entry.isSending = true
+        store.save([entry])
+        let api = FakeGatewayAPI()
+        api.sendResult = .success(makeMessage(id: "srv-q", thread: "555", direction: .outbound,
+                                              body: "hi", status: .sent))
+        let inbox = makeSendInbox(api: api, readiness: ["line1": true], defaultLine: "line1")
+        inbox.setOutboxStoreForTest(store)
+        // A line recovery must NOT auto-send the quarantined entry.
+        inbox.flushReadyOutbox()
+        await pumpMainActor(6)
+        XCTAssertTrue(api.sentMessages.isEmpty,
+            "entries recovered after an app restart must never auto-send")
+        // An explicit user retry does send, on the captured line.
+        guard let pending = inbox.outbox.first else { return XCTFail("entry survived recovery") }
+        XCTAssertTrue(pending.needsConfirmation)
+        inbox.retry(pending)
+        await waitUntil { !api.sentMessages.isEmpty }
+        XCTAssertEqual(api.sentLineIDs.first ?? "missing", "line1")
+        store.clear()
+    }
+
     func testFailedServerMessageOn502SurfacesRetryableFailure() async {
         let api = FakeGatewayAPI()
         let failed = makeMessage(id: "srv-f", thread: "555", direction: .outbound,

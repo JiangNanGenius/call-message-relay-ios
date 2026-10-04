@@ -104,6 +104,9 @@ final class CallCoordinator: NSObject {
     private var activeGatewayId: String?
     private var latestGateway: CallRecord?
     private var latestMedia: MediaState = .idle
+    /// Direction of the active call (true = outgoing). Tracked locally so
+    /// the progress tone knows a connecting phase is the remote ringing.
+    private var activeCallIsOutgoing = false
     private var muted = false
     private var speaker = false
     private var monitorTask: Task<Void, Never>?
@@ -111,6 +114,15 @@ final class CallCoordinator: NSObject {
     /// Bounded grace window after an ICE `disconnected` before ending.
     private var mediaRecoveryTask: Task<Void, Never>?
     private var ended = false
+    /// Local call-progress tones (ringback while the remote rings; bounded
+    /// busy burst on busy-class ends). Fills silence only — never layered
+    /// over real early media, and dies with the call/media lifecycle.
+    private let progressTone = CallProgressToneController()
+    /// Media session kept alive briefly after a busy-class end so the
+    /// bounded busy burst remains audible through the shared engine. The
+    /// session is fully detached from routing; it is closed (idempotently)
+    /// after the hold and never touches a newer call's media.
+    private var busyToneSession: WebSocketCallMedia?
 
     /// Every gateway call this device owns, keyed by gateway call id.
     private var tracked: [String: TrackedCall] = [:]
@@ -149,6 +161,34 @@ final class CallCoordinator: NSObject {
         self.routeGatewayID = gatewayID
         super.init()
         callKit.director = self
+        // Call-progress tone seams read the CURRENT media session every
+        // invocation (the session object changes across handovers), plus a
+        // busy-class hold session after teardown.
+        progressTone.engineRunning = { [weak self] in
+            guard let self else { return false }
+            if let ws = self.wsMedia, ws.isGraphRunning { return true }
+            if let conf = self.wsConferenceMedia, conf.isGraphRunning { return true }
+            if let held = self.busyToneSession, held.isGraphRunning { return true }
+            return false
+        }
+        progressTone.playbackIdleMs = { [weak self] in
+            guard let self else { return .max }
+            let idle = self.wsMedia?.playbackIdleMilliseconds
+                ?? self.wsConferenceMedia?.playbackIdleMilliseconds
+                ?? self.busyToneSession?.playbackIdleMilliseconds
+                ?? .max
+            return idle
+        }
+        progressTone.emitFrame = { [weak self] frame in
+            guard let self else { return }
+            if let ws = self.wsMedia {
+                ws.pushSyntheticTone(frame)
+            } else if let conf = self.wsConferenceMedia {
+                conf.pushSyntheticTone(frame)
+            } else if let held = self.busyToneSession {
+                held.pushSyntheticTone(frame)
+            }
+        }
         // Forward activation to EVERY live media session. The WSS relay
         // (wsMedia / wsConferenceMedia) is a different object from the ICE
         // session (media); a CallKit answer usually activates the audio
@@ -290,6 +330,7 @@ final class CallCoordinator: NSObject {
             return
         }
         beginCall()
+        activeCallIsOutgoing = true
         let clientCallId = uuid.uuidString.lowercased()
         activeGatewayId = clientCallId
         latestGateway = nil
@@ -406,6 +447,7 @@ final class CallCoordinator: NSObject {
     ) async throws {
         try await api.answer(callId: gatewayId, idempotencyKey: UUID().uuidString)
         guard gen == generation else { throw CancellationError() }
+        activeCallIsOutgoing = false
         knownUUIDs[uuid] = gatewayId
         var entry = tracked[gatewayId] ?? TrackedCall(record: nil, held: false, muted: false)
         entry.held = false
@@ -426,6 +468,7 @@ final class CallCoordinator: NSObject {
             return
         }
         beginCall()
+        activeCallIsOutgoing = false
         activeGatewayId = gatewayId
         latestGateway = record
         latestMedia = .idle
@@ -1489,7 +1532,14 @@ final class CallCoordinator: NSObject {
 
     private func handleRemoteEnd(reason: String?) {
         guard let gatewayId = activeGatewayId else { return }
-        finishLocalCall(gatewayId: gatewayId, reason: .remoteEnded)
+        // A busy-class end earns a bounded busy burst; keep the media
+        // session alive briefly so it stays audible through the shared
+        // engine (CallKit may still cut it on deactivate — graceful).
+        let holdForBusyTone = CallProgressToneController.isBusyClassEndReason(reason)
+            && (wsMedia?.isGraphRunning == true || wsConferenceMedia?.isGraphRunning == true)
+        progressTone.callEnded(reason: reason)
+        finishLocalCall(gatewayId: gatewayId, reason: .remoteEnded,
+                        deferMediaClose: holdForBusyTone)
         Task {
             if let uuid = await registry.uuid(for: gatewayId) {
                 await callKit.reportEnded(uuid: uuid, reason: .remoteEnded)
@@ -1606,8 +1656,11 @@ final class CallCoordinator: NSObject {
 
     /// Clear local ownership before any network or actor suspension. Delayed
     /// responses can never restart audio after a hangup or clear a newer call.
-    private func finishLocalCall(gatewayId: String, reason: EndedCallReason) {
-        _ = invalidateGeneration()
+    /// `deferMediaClose` keeps the retired WSS session alive for the bounded
+    /// busy-tone hold (it is detached from routing and closed afterwards).
+    private func finishLocalCall(gatewayId: String, reason: EndedCallReason,
+                                 deferMediaClose: Bool = false) {
+        _ = invalidateGeneration(deferMediaClose: deferMediaClose)
         activeGatewayId = nil
         latestGateway = nil
         latestMedia = .idle
@@ -1635,6 +1688,9 @@ final class CallCoordinator: NSObject {
         mediaTask?.cancel()
         mediaRecoveryTask?.cancel()
         mediaRecoveryTask = nil
+        // A new call kills any lingering progress tone (ringback or the
+        // bounded busy burst from a previous call).
+        progressTone.stopAll()
     }
 
     @discardableResult
@@ -1643,7 +1699,7 @@ final class CallCoordinator: NSObject {
         return generation
     }
 
-    private func invalidateGeneration() -> UInt64 {
+    private func invalidateGeneration(deferMediaClose: Bool = false) -> UInt64 {
         generation += 1
         monitorTask?.cancel()
         mediaTask?.cancel()
@@ -1651,14 +1707,32 @@ final class CallCoordinator: NSObject {
         mediaRecoveryTask = nil
         media?.close()
         media = nil
-        wsMedia?.close()
+        let closing = wsMedia
         wsMedia = nil
+        if deferMediaClose, let closing {
+            holdForBusyToneBurst(closing)
+        } else {
+            closing?.close()
+        }
         stagedPreviousRelay?.closeWithoutAudio()
         stagedPreviousRelay = nil
         route?.teardown()
         route = nil
         monitorStarted = false
         return generation
+    }
+
+    /// Keeps the just-retired WSS session alive for the bounded busy-tone
+    /// hold so the burst stays audible through the shared engine, then
+    /// closes it. The session is routing-detached; `close()` is idempotent,
+    /// and a newer call's media is a different object entirely.
+    private func holdForBusyToneBurst(_ session: WebSocketCallMedia) {
+        busyToneSession = session
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(1.2 * 1_000_000_000))
+            session.close()
+            if self.busyToneSession === session { self.busyToneSession = nil }
+        }
     }
 
     private var lifecycleTask: Task<Void, Never>?
@@ -1673,6 +1747,10 @@ final class CallCoordinator: NSObject {
     private func publishPhase() {
         guard let gatewayId = activeGatewayId else { return }
         let phase = CallPhaseResolver.resolve(gateway: latestGateway, media: latestMedia)
+        progressTone.update(
+            phase: phase,
+            isOutgoing: activeCallIsOutgoing,
+            routeSwitching: route?.routeState.switching ?? false)
         if phase != lastLoggedPhase {
             lastLoggedPhase = phase
             DiagnosticsStore.shared.log(
