@@ -11,21 +11,11 @@
    "bundleIdentifier": "com.jiangnangenius.callrelay",
    "developerName": "JiangNanGenius",
    "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
-   "localizedDescription": "CallRelay 0.3.13（build 20）纯原生版：修复 0.3.12(19) 授权系统通讯录时立即崩溃的问题（姓名格式化读取了未请求的通讯录字段）。其余同 19：配合网关修复上行语音（抖动缓冲游标修复，通话更稳定）、恢复原生来电推送（VoIP）、修复短信“threadKey 格式错误”、拨号盘固定布局（号码/键盘/拨打键不再被联想列表推动）并新增拼音/首字母/T9 号码联想。真机通话音质与后台响铃仍需实测确认。未签名 IPA，需自行使用证书与描述文件签名后安装。",
+   "localizedDescription": "CallRelay 0.3.10（build 17）纯原生版：不含任何网页推送桥接。未签名 IPA，需自行使用证书与描述文件签名后安装。",
    "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
    "tintColor": "135CDC",
    "beta": true,
    "versions": [
-    {
-     "version": "0.3.13",
-     "buildVersion": "20",
-     "date": "2026-10-04T13:01:02Z",
-     "minOSVersion": "17.0",
-     "size": 13222387,
-     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.13/CallRelay-Feather-Native-0.3.13-20-unsigned.ipa",
-     "localizedDescription": "CallRelay 0.3.13（build 20）纯原生版：修复 0.3.12(19) 授权系统通讯录时立即崩溃的问题（姓名格式化读取了未请求的通讯录字段）。其余同 19：配合网关修复上行语音（抖动缓冲游标修复，通话更稳定）、恢复原生来电推送（VoIP）、修复短信“threadKey 格式错误”、拨号盘固定布局（号码/键盘/拨打键不再被联想列表推动）并新增拼音/首字母/T9 号码联想。真机通话音质与后台响铃仍需实测确认。未签名 IPA，需自行使用证书与描述文件签名后安装。",
-     "sha256": "e0fe410e4d2ea25a553aaea1da4244a951b2793584bab78773a4f33f6edfe477"
-    },
     {
      "version": "0.3.10",
      "buildVersion": "17",
@@ -157,10 +147,10 @@
      "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
     }
    ],
-   "version": "0.3.13",
-   "versionDate": "2026-10-04T13:01:02Z",
-   "size": 13222387,
-   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.13/CallRelay-Feather-Native-0.3.13-20-unsigned.ipa",
+   "version": "0.3.10",
+   "versionDate": "2026-10-04T06:44:51Z",
+   "size": 13173515,
+   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.10/CallRelay-Feather-Native-0.3.10-17-unsigned.ipa",
    "appPermissions": {
     "entitlements": [
      "aps-environment"
