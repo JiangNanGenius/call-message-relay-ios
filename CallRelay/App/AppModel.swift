@@ -2310,22 +2310,31 @@ final class AppModel: ObservableObject {
 
     /// Minimal compliant placeholder: report a short-lived incoming call and
     /// end it, awaiting both so the push completion is only called afterwards.
-    /// Uses a THROWAWAY system-call manager that is never cached in `callKit`:
-    /// caching here (build 19/20) could leave the placeholder's manager as the
-    /// live one, so the real incoming conversation got reported to a second
-    /// manager and the system showed/answered the wrong conversation (unknown
-    /// caller id, no audio activation). The placeholder conversation is
-    /// intentionally generic — the real call surfaces via the normal flow.
+    /// The BOUND manager is reused when one exists (never replaced); only a
+    /// cold start with no binding yet uses a throwaway manager, which is
+    /// invalidated afterwards so two managers never overlap for long. Caching
+    /// a placeholder-created manager into `callKit` (build 19/20) could leave
+    /// the placeholder's manager as the live one and the real incoming then
+    /// reported to a second manager (unknown caller id, no activation).
     func reportPlaceholderCall() async {
-        DiagnosticsStore.shared.log("push", "placeholder reported (transient manager)")
-        let manager = Self.makeSystemCallManager()
+        DiagnosticsStore.shared.log("push", "placeholder reported (transient)")
+        let transient: CallKitControlling?
+        let manager: CallKitControlling
+        if let bound = callKit {
+            manager = bound
+            transient = nil
+        } else {
+            let created = Self.makeSystemCallManager()
+            manager = created
+            transient = created
+        }
         let uuid = UUID()
         let reported = await manager.reportIncoming(uuid: uuid, handle: "未知来电", isVideo: false)
         if reported {
             try? await Task.sleep(nanoseconds: 200_000_000)
             await manager.reportEnded(uuid: uuid, reason: .failed)
         }
-        manager.invalidate()
+        transient?.invalidate()
     }
 }
 

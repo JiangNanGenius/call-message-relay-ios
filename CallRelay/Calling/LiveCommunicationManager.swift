@@ -16,6 +16,11 @@ final class LiveCommunicationManager: NSObject, CallKitControlling {
     private let manager: ConversationManager
     /// Conversation UUIDs reported and not yet ended (mirror of knownUUIDs).
     private var knownUUIDs: Set<UUID> = []
+    /// Caller-id updates that arrived before the matching conversation was
+    /// reported (race between a handle refresh and the system report). The
+    /// newest handle per UUID is applied as soon as that conversation exists.
+    private var pendingHandleUpdates: [UUID: String] = [:]
+    private let pendingHandleUpdatesMax = 8
     private(set) var lastIncomingReportError: String?
 
     weak var director: CallDirecting?
@@ -60,6 +65,10 @@ final class LiveCommunicationManager: NSObject, CallKitControlling {
             try await manager.reportNewIncomingConversation(uuid: uuid, update: update)
             knownUUIDs.insert(uuid)
             lastIncomingReportError = nil
+            if let pending = pendingHandleUpdates.removeValue(forKey: uuid) {
+                DiagnosticsStore.shared.log("call", "lck applied pending caller-id update")
+                updateIncoming(uuid: uuid, handle: pending)
+            }
             return true
         } catch {
             lastIncomingReportError = "\((error as NSError).domain) \((error as NSError).code)"
@@ -72,14 +81,17 @@ final class LiveCommunicationManager: NSObject, CallKitControlling {
 
     func updateIncoming(uuid: UUID, handle: String) {
         guard knownUUIDs.contains(uuid) else {
-            // Silent drops here are a caller-id failure class: log WHY so a
-            // future export can distinguish "never reported" from
-            // "reported to a different manager instance".
+            // The handle refresh raced the system report: retain it (bounded)
+            // and apply it the moment the conversation exists, instead of
+            // silently dropping the caller-id improvement.
+            if pendingHandleUpdates.count >= pendingHandleUpdatesMax {
+                pendingHandleUpdates.removeAll()
+            }
+            pendingHandleUpdates[uuid] = handle
             DiagnosticsStore.shared.log("call",
-                "lck updateIncoming dropped: unknown uuid (reported=\(knownUUIDs.count))")
+                "lck caller-id update pending: conversation not reported yet")
             return
         }
-        DiagnosticsStore.shared.log("call", "lck updateIncoming handle set")
         let member = Handle(
             type: CallKitManager.handleType(for: handle) == .phoneNumber ? .phoneNumber : .generic,
             value: handle
@@ -88,7 +100,13 @@ final class LiveCommunicationManager: NSObject, CallKitControlling {
         update.members = [member]
         update.activeRemoteMembers = [member]
         update.capabilities = [.pausing, .merging, .unmerging, .playingTones]
-        conversation(for: uuid).map { manager.reportConversationEvent(.conversationUpdated(update), for: $0) }
+        if let conversation = conversation(for: uuid) {
+            manager.reportConversationEvent(.conversationUpdated(update), for: conversation)
+            DiagnosticsStore.shared.log("call", "lck caller-id update applied")
+        } else {
+            DiagnosticsStore.shared.log("call",
+                "lck caller-id update dropped: conversation lookup nil after known uuid")
+        }
     }
 
     // MARK: Outgoing
@@ -192,6 +210,7 @@ extension LiveCommunicationManager: ConversationManagerDelegate {
     func conversationManagerDidReset(_ manager: ConversationManager) {
         actionCore.reset()
         knownUUIDs.removeAll()
+        pendingHandleUpdates.removeAll()
         DiagnosticsStore.shared.log("call", "lck manager reset")
         Task { @MainActor in self.director?.handleProviderReset() }
     }

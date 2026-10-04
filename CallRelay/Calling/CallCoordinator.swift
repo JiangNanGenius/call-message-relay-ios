@@ -478,24 +478,35 @@ final class CallCoordinator: NSObject {
         publishPhase()
     }
 
-    /// Bounded recovery for a lost system-side audio activation: when the
-    /// call is still active and no AVAudioSession is active, self-activate
-    /// the current transport. `activateAudioWithoutCallKit` is a no-op when a
-    /// session already exists, so a healthy system activation is untouched.
+    /// Bounded recovery for a lost system-side audio activation. Polls while
+    /// media is still attaching (the one-shot timer in build 21 could expire
+    /// before the socket existed), fires once a transport is live, and is a
+    /// no-op when the system owns the session. Self-activation failure is
+    /// logged so a silent call can never hide behind an unchecked Bool.
     private func armActivationFallback(callId: String, gen: UInt64) {
         Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
-            guard let self, gen == self.generation,
-                  self.activeGatewayId == callId, !self.ended else { return }
-            guard AudioSessionBridge.shared.activeSession == nil else { return }
-            guard self.wsMedia?.isGraphRunning != true else { return }
-            guard self.wsMedia != nil || self.media != nil else { return }
-            DiagnosticsStore.shared.log("audio",
-                "answer activation fallback: no system session after answer; self-activating")
-            if let ws = self.wsMedia {
-                _ = ws.activateAudioWithoutCallKit()
-            } else {
-                _ = self.media?.activateAudioWithoutCallKit()
+            guard let self else { return }
+            // Poll up to ~9 s: media attach is normally sub-second, but a
+            // slow tunnel must not permanently disable the recovery.
+            for _ in 0..<6 {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard gen == self.generation,
+                      self.activeGatewayId == callId, !self.ended else { return }
+                if AudioSessionBridge.shared.activeSession != nil { return }
+                if self.wsMedia?.isGraphRunning == true { return }
+                let activated: Bool
+                if let ws = self.wsMedia {
+                    activated = ws.activateAudioWithoutCallKit()
+                } else if let media = self.media {
+                    activated = media.activateAudioWithoutCallKit()
+                } else {
+                    continue // media still attaching; retry on the next tick
+                }
+                DiagnosticsStore.shared.log("audio",
+                    activated
+                        ? "answer activation fallback: self-activation started"
+                        : "answer activation fallback FAILED: self-activation returned false")
+                if activated { return }
             }
         }
     }
