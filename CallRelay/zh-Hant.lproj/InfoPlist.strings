@@ -5,7 +5,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>掃描網關上顯示的配對 QR 圖碼時需要使用相機；也可以選擇貼上配對內容。</string>
 	<key>NSContactsUsageDescription</key>
-	<string>用於在聯絡人中選擇號碼撥號或發簡訊、在最近通話/簡訊中顯示聯絡人姓名，並可按你的選擇將通訊錄號碼視為可信發件人。App 不會上傳或備份你的通訊錄。</string>
+	<string>用於在聯絡人中選擇號碼撥號或發簡訊、在最近通話/簡訊中顯示聯絡人姓名，並可按你的選擇將通訊錄號碼視為可信寄件人。只有你主動點「同步到閘道」時，聯絡人會透過加密連線儲存到你自己的閘道，供同一配對金鑰的裝置使用；App 不會修改或刪除系統通訊錄，也不會傳送給第三方。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>通話時需要使用麥克風，將你的語音經網關傳送到對方。</string>
 </dict>

@@ -46,6 +46,19 @@ enum MediaRouteMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// One measured telemetry sample for a media transport. All fields are
+/// measured from the existing stack at sample time; nil is genuinely unknown
+/// (never coerced to zero).
+struct RouteTransportTelemetry: Equatable {
+    var rttSeconds: Double?
+    var jitterSeconds: Double?
+    var lossFraction: Double?
+    var localBufferSeconds: Double?
+    var gatewayBufferSeconds: Double?
+
+    static let unknown = RouteTransportTelemetry()
+}
+
 /// The transport actually carrying audio, independent of the chosen mode.
 enum MediaRouteKind: String, Equatable, Sendable {
     case none
@@ -86,6 +99,17 @@ struct CallRouteState: Equatable {
     var pendingModeChange: Bool = false
     /// Latest fresh comparable RTT in seconds (direct candidate or active).
     var rttSeconds: Double?
+    // MARK: Continuous in-call telemetry (measured, never synthesized)
+    /// Inter-sample network jitter of the RTT samples (seconds).
+    var jitterSeconds: Double?
+    /// Transport packet loss 0...1 (direct WebRTC only; TCP relay leaves nil).
+    var lossFraction: Double?
+    /// LOCAL playback-buffer delay on this device (seconds).
+    var localBufferSeconds: Double?
+    /// Gateway-side host buffer depth (seconds, relay only).
+    var gatewayBufferSeconds: Double?
+    /// When the telemetry sample above was measured.
+    var telemetryAt: Date?
     /// One-shot, user-facing notice (a failed forced selection, a rollback).
     /// Cleared by the UI after presenting.
     var notice: String?

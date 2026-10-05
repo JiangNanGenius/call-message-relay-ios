@@ -65,13 +65,23 @@ final class LiveCommunicationManager: NSObject, CallKitControlling {
             try await manager.reportNewIncomingConversation(uuid: uuid, update: update)
             knownUUIDs.insert(uuid)
             lastIncomingReportError = nil
+            // Exportable acceptance evidence. "accepted" means the system took
+            // the report; it does NOT prove the incoming UI was presented.
+            DiagnosticsStore.shared.log("call", "lck report accepted handleEmpty=\(handle.isEmpty)")
             if let pending = pendingHandleUpdates.removeValue(forKey: uuid) {
                 DiagnosticsStore.shared.log("call", "lck applied pending caller-id update")
                 updateIncoming(uuid: uuid, handle: pending)
             }
             return true
         } catch {
-            lastIncomingReportError = "\((error as NSError).domain) \((error as NSError).code)"
+            let nsError = error as NSError
+            lastIncomingReportError = "\(nsError.domain) \(nsError.code)"
+            // Exportable rejection evidence (domain/code only; no caller data):
+            // the previous build exported neither this nor the acceptance, so a
+            // "no system UI" field report could not distinguish a rejected
+            // report from a presented one.
+            DiagnosticsStore.shared.log("call",
+                "lck report rejected domain=\(nsError.domain) code=\(nsError.code)")
             AppLog.callKit.error("reportNewIncomingConversation rejected")
             return false
         }
@@ -160,6 +170,11 @@ final class LiveCommunicationManager: NSObject, CallKitControlling {
         }
         if let ended, let conversation = conversation(for: uuid) {
             manager.reportConversationEvent(ended, for: conversation)
+        } else if ended != nil {
+            // A reported conversation that can no longer be found is a stale
+            // ghost; export the fact so a capacity/reporting regression is
+            // diagnosable from the next field log.
+            DiagnosticsStore.shared.log("call", "lck end skipped: conversation not found")
         }
     }
 

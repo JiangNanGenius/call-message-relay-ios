@@ -60,10 +60,18 @@ private final class MockAudioSurface: AudioSurfaceProviding {
     /// surface's ordered log so tests can assert cross-object call order.
     func append(_ event: Event) { events.append(event) }
 
+    /// Engines created by `prepare`, in order: lets a test change the LIVE
+    /// input format (voice-processing reconfiguration) after start.
+    private(set) var engines: [MockEngine] = []
+    func changeHardwareInputFormat(to format: AVAudioFormat) {
+        engines.last?.inputFormat = format
+    }
+
     func prepare(enableVoiceProcessing: Bool) throws -> AudioSurfaceSetup {
         events.append(.init(kind: .prepare, voiceProcessing: enableVoiceProcessing))
         requestedVoiceProcessing.append(enableVoiceProcessing)
         let engine = MockEngine(eventLog: self)
+        engines.append(engine)
         let player = MockPlayer()
         return AudioSurfaceSetup(
             engine: engine, player: player,
@@ -81,10 +89,12 @@ private final class MockAudioSurface: AudioSurfaceProviding {
 @MainActor
 private final class MockEngine: AudioEngineControlling {
     private let eventLog: MockAudioSurface
+    /// Live input-bus format; a test may replace it after start to model a
+    /// voice-processing reconfiguration.
+    var inputFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
     init(eventLog: MockAudioSurface) { self.eventLog = eventLog }
-    var hardwareInputFormat: AVAudioFormat {
-        AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 1, interleaved: false)!
-    }
+    var hardwareInputFormat: AVAudioFormat { inputFormat }
     func installInputTap(bufferSize: AVAudioFrameCount, format: AVAudioFormat, callback: @escaping (AVAudioPCMBuffer) -> Void) {
         eventLog.append(.init(kind: .installTap, voiceProcessing: nil))
     }
@@ -220,6 +230,159 @@ extension WSAudioGraphTests {
                        "the FIRST health restart must keep the SAME configuration (same-config rebuild)")
         XCTAssertEqual(surface.requestedVoiceProcessing[2], false,
                        "the SECOND dead render is the measured fallback: degraded processing VP OFF")
+    }
+
+    /// Cold-start first stage: a zero-delivery tap triggers a TAP REINSTALL
+    /// (remove + re-attach while the engine runs) before the 3 s engine
+    /// restart. The reinstall must not spend the restart budget, change
+    /// voice processing, or stop/start the engine.
+    func testTapReinstallFiresBeforeEngineRestart() async {
+        WSAudioGraph.resetRestartBudgetForTest()
+        let surface = MockAudioSurface()
+        let graph = WSAudioGraph(audioSurface: surface)
+        graph.configureHealthWindowForTest(
+            grace: 0.2, stall: 3600, tapGrace: 1.5, tapReinstallGrace: 0.2)
+        XCTAssertTrue(graph.startIfNeeded())
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        let formatChanged = graph.lastReinstallFormatChangedForTest
+        let sourceRate = graph.captureSourceRateForTest
+        graph.stop()
+        let kinds = surface.events.map(\.kind)
+        XCTAssertEqual(kinds.filter { $0 == .installTap }.count, 2,
+                       "cold dead tap must be re-attached exactly once before any restart")
+        // One remove is the reinstall; the final remove is graph.stop().
+        XCTAssertEqual(kinds.filter { $0 == .removeTap }.count, 2)
+        guard let firstRemove = kinds.firstIndex(of: .removeTap),
+              let secondInstall = kinds.lastIndex(of: .installTap),
+              let onlyStart = kinds.firstIndex(of: .startEngine) else {
+            return XCTFail("expected reinstall events, got \(kinds)")
+        }
+        // The reinstall remove+install happen AFTER the only engine start —
+        // i.e. while the engine was already running, not as a restart.
+        XCTAssertGreaterThan(firstRemove, onlyStart)
+        XCTAssertGreaterThan(secondInstall, firstRemove)
+        XCTAssertEqual(kinds.filter { $0 == .startEngine }.count, 1,
+                       "the first-stage recovery must NOT restart the engine")
+        XCTAssertEqual(surface.requestedVoiceProcessing, [true],
+                       "a tap reinstall must never change voice processing")
+        XCTAssertEqual(formatChanged, false,
+                       "an unchanged input format must report formatChanged=false")
+        XCTAssertEqual(sourceRate, 48000,
+                       "an unchanged input format must not rebuild the pipeline")
+    }
+
+    /// The reinstall's `formatChanged` must compare the format the tap was
+    /// ACTUALLY installed with against the live one (a two-read before/after
+    /// can never see a change that happened earlier), and a rate change must
+    /// rebuild the pipeline for the new rate instead of converting
+    /// wrong-rate samples through the old converter.
+    func testTapReinstallRebuildsPipelineWhenInputRateChanges() async {
+        WSAudioGraph.resetRestartBudgetForTest()
+        let surface = MockAudioSurface()
+        let graph = WSAudioGraph(audioSurface: surface)
+        graph.configureHealthWindowForTest(
+            grace: 0.2, stall: 3600, tapGrace: 1.5, tapReinstallGrace: 0.2)
+        XCTAssertTrue(graph.startIfNeeded())
+        XCTAssertEqual(graph.captureSourceRateForTest, 48000)
+        // The voice-processing input bus reconfigures after installation.
+        surface.changeHardwareInputFormat(to: AVAudioFormat(
+            commonFormat: .pcmFormatFloat32, sampleRate: 24000, channels: 1, interleaved: false)!)
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        let rebuiltRate = graph.captureSourceRateForTest
+        let formatChanged = graph.lastReinstallFormatChangedForTest
+        graph.stop()
+        XCTAssertEqual(rebuiltRate, 24000,
+                       "a rate-changing reinstall must rebuild the capture pipeline for the live rate")
+        XCTAssertEqual(formatChanged, true,
+                       "formatChanged must describe the change since the tap was installed")
+    }
+
+    /// Rate fence at the pipeline door: a tap buffer whose rate differs from
+    /// the converter's source format is dropped (never pitch-shifted) and
+    /// flagged; the watchdog then rebuilds the pipeline for the live format.
+    func testRateMismatchIsRejectedAndRebuilt() async {
+        let format24k = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32, sampleRate: 24000, channels: 1, interleaved: false)!
+        // Pipeline-level fence: wrong-rate buffers never enter the converter.
+        let pipeline = WSCapturePipeline(sourceFormat: capture48k)
+        guard let mismatched = AVAudioPCMBuffer(pcmFormat: format24k, frameCapacity: 240) else {
+            return XCTFail("buffer")
+        }
+        mismatched.frameLength = 240
+        for index in 0..<240 { mismatched.floatChannelData![0][index] = 0.5 }
+        pipeline.appendTap(buffer: mismatched)
+        XCTAssertEqual(pipeline.tapRateMismatchSnapshotCount, 1)
+        XCTAssertTrue(pipeline.hasRateMismatch)
+        XCTAssertEqual(pipeline.pendingSnapshotCount, 0,
+                       "wrong-rate samples must never enter the converter")
+        XCTAssertEqual(pipeline.tapDeliverySnapshotCount, 0)
+        guard let sameRate = AVAudioPCMBuffer(pcmFormat: capture48k, frameCapacity: 480) else {
+            return XCTFail("buffer")
+        }
+        sameRate.frameLength = 480
+        pipeline.appendTap(buffer: sameRate)
+        XCTAssertEqual(pipeline.tapDeliverySnapshotCount, 1,
+                       "same-rate buffers still flow through the same pipeline")
+
+        // Graph-level loop: mismatch flagged on the live pipeline → watchdog
+        // rebuilds for the live (changed) input format without an engine
+        // restart.
+        WSAudioGraph.resetRestartBudgetForTest()
+        let surface = MockAudioSurface()
+        let graph = WSAudioGraph(audioSurface: surface)
+        // Long tap-reinstall grace so ONLY the rate-mismatch path can fire.
+        graph.configureHealthWindowForTest(
+            grace: 0.05, stall: 3600, tapGrace: 1.5, tapReinstallGrace: 1.5)
+        XCTAssertTrue(graph.startIfNeeded())
+        surface.changeHardwareInputFormat(to: format24k)
+        guard let liveMismatch = AVAudioPCMBuffer(pcmFormat: format24k, frameCapacity: 240) else {
+            graph.stop()
+            return XCTFail("buffer")
+        }
+        liveMismatch.frameLength = 240
+        for index in 0..<240 { liveMismatch.floatChannelData![0][index] = 0.5 }
+        graph.injectTapBufferForTest(liveMismatch)
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        let rebuiltRate = graph.captureSourceRateForTest
+        graph.stop()
+        XCTAssertEqual(rebuiltRate, 24000,
+                       "the rate-mismatch watchdog must rebuild for the live input rate")
+    }
+
+    /// Build-33 cross-call regression: the first tap-dead restart of a NEW
+    /// call must keep voice processing ON even when a PREVIOUS call already
+    /// restarted twice (process-wide budget). The degraded VP-off fallback
+    /// applies only to a second dead render of the SAME call/session.
+    func testSecondCallFirstRestartDoesNotInheritDegradedFallback() async {
+        WSAudioGraph.resetRestartBudgetForTest()
+        // First call: one restart, VP stays ON.
+        let firstSurface = MockAudioSurface()
+        let first = WSAudioGraph(audioSurface: firstSurface)
+        first.configureHealthWindowForTest(
+            grace: 0.1, stall: 3600, tapGrace: 0.1, tapReinstallGrace: 3600)
+        XCTAssertTrue(first.startIfNeeded())
+        let firstDeadline = Date().addingTimeInterval(5)
+        while Date() < firstDeadline && firstSurface.requestedVoiceProcessing.count < 2 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        first.stop()
+        XCTAssertEqual(firstSurface.requestedVoiceProcessing, [true, true],
+                       "first call's first restart keeps VP ON")
+
+        // Second call (new graph instance): its FIRST restart must also keep
+        // VP ON — not inherit the degraded fallback from call 1.
+        let secondSurface = MockAudioSurface()
+        let second = WSAudioGraph(audioSurface: secondSurface)
+        second.configureHealthWindowForTest(
+            grace: 0.1, stall: 3600, tapGrace: 0.1, tapReinstallGrace: 3600)
+        XCTAssertTrue(second.startIfNeeded())
+        let secondDeadline = Date().addingTimeInterval(5)
+        while Date() < secondDeadline && secondSurface.requestedVoiceProcessing.count < 2 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        second.stop()
+        XCTAssertEqual(secondSurface.requestedVoiceProcessing, [true, true],
+                       "a new call's first recovery must not inherit the previous call's VP-off fallback")
     }
 
     /// A run that stops before the watchdog fires must never restart or

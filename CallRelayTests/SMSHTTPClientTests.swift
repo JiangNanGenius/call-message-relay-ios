@@ -29,6 +29,39 @@ final class SMSHTTPClientTests: XCTestCase {
         return HTTPGatewayAPI(origin: origin, tokens: store, configuration: server.configuration)
     }
 
+    private func makeV2Client() throws -> HTTPGatewayAPI {
+        guard case .success(let origin) = GatewayOrigin.validate(
+            "http://127.0.0.1:\(server.port)", allowLoopbackHTTP: true, apiVersion: "v2"
+        ) else { throw NSError(domain: "test", code: 1) }
+        let store = TokenStore(keychain: DictionaryKeychain())
+        try store.save(TokenSet(accessToken: "a", refreshToken: "r", deviceId: "dev"))
+        return HTTPGatewayAPI(origin: origin, tokens: store, configuration: server.configuration)
+    }
+
+    /// Regression: the conversation key is "lineId:peer" and must reach the
+    /// gateway EXACTLY once-encoded. Builds 25-27 pre-encoded it here, the
+    /// URL builder escaped the `%` again and the gateway's split found no
+    /// colon (CB-V2-400 "threadKey 格式错误") — every delete silently failed.
+    func testDeleteThreadUsesRawQualifiedKeyExactlyOnce() async throws {
+        server.respond(with: 200, body: #"{"key":"line1:+8613003132132","deleted":true}"#)
+        let client = try makeV2Client()
+        try await client.deleteThread(threadKey: "line1:+8613003132132")
+        XCTAssertEqual(server.lastMethod, "DELETE")
+        XCTAssertEqual(server.lastPath, "/api/v2/threads/line1:+8613003132132")
+        XCTAssertNotNil(server.lastIdempotencyKey)
+    }
+
+    func testDeleteThreadRefusesOnV1Binding() async throws {
+        let client = try makeClient()
+        do {
+            try await client.deleteThread(threadKey: "line1:555")
+            XCTFail("v1 delete must not be attempted")
+        } catch {
+            // Expected: the v1 origin is not a unified gateway.
+        }
+        XCTAssertNil(server.lastMethod)
+    }
+
     func testListThreadsUsesExactPathAndBareArray() async throws {
         server.respond(
             with: 200,

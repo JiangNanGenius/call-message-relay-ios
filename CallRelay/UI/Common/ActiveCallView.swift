@@ -28,6 +28,17 @@ struct ActiveCallView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                // Honest temporary state while audio ownership is unavailable
+                // (another app holds the session, interruption pending, or
+                // the audio server is resetting). Cleared on real activation.
+                if let audioStatus = model.audioStatus {
+                    Text(audioStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("call.audioStatus")
+                }
+
                 if conference == nil, !heldCalls.isEmpty {
                     heldSection
                 }
@@ -354,6 +365,11 @@ struct InCallKeypad: View {
             LazyVGrid(columns: columns, spacing: 18) {
                 ForEach(keys, id: \.self) { key in
                     Button {
+                        // Bounded local feedback first, then the EXISTING
+                        // remote DTMF exactly once (unchanged path). System
+                        // sound touches no AVAudioSession, so the live call's
+                        // audio ownership/graph/route is untouched.
+                        KeypadTonePlayer.shared.play(key)
                         onDigit(key)
                     } label: {
                         Text(key)
@@ -374,6 +390,7 @@ struct InCallKeypad: View {
             .padding(.horizontal, 48)
             .navigationTitle("键盘")
             .navigationBarTitleDisplayMode(.inline)
+            .onDisappear { KeypadTonePlayer.shared.stop() }
         }
     }
 }

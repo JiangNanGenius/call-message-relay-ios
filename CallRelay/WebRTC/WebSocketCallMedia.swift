@@ -95,7 +95,33 @@ final class WebSocketCallMedia: NSObject {
     }
     private var quality = MediaQuality()
     private var selfManagedAudioActive = false
+    /// False while this socket is a STAGED handover attach: it may complete
+    /// its handshake but must not open its capture/playback graph until
+    /// `activateAudio()` promotes it (exactly one mic owner at all times).
+    private var audioAllowed = true
     private var connected = false
+
+    /// The CURRENT transport state (idle/connected/disconnected/failed/
+    /// closed). Unlike the one-shot `onState` callback, this value can be
+    /// read after a handover so a caller that just installed this session
+    /// can re-synchronize its own media phase instead of inheriting a stale
+    /// `.disconnected` left by a superseded socket (build-38 false
+    /// "音频中断" report while relay audio was actually healthy).
+    var state: MediaState { currentState }
+
+    /// Re-emits the current quality snapshot to `onQuality`. A staged relay
+    /// reaches `.connected` during its handshake BEFORE it becomes the
+    /// installed session, so that first emission is dropped by the
+    /// coordinator's identity fence; the exclusive promotion calls this so
+    /// the UI converges on the healthy relay instead of holding a stale
+    /// interruption banner from the retired transport.
+    func republishCurrentQuality() {
+        onQuality?(quality)
+    }
+
+    #if DEBUG
+    func stateForTest() -> MediaState { currentState }
+    #endif
 
     // MARK: Send queue (single writer, bounded, drop-stale)
     //
@@ -122,6 +148,16 @@ final class WebSocketCallMedia: NSObject {
     /// first pong). Lets callers apply an explicit freshness deadline and
     /// clear a stale displayed value instead of indefinitely holding it.
     var lastPingSample: PingSample? { pingSampleLog.last }
+    /// LOCAL playback-buffer delay in seconds from the audio graph's own
+    /// depth (20 ms frames). Zero-cost read of an existing counter.
+    var playbackBufferSeconds: Double { Double(audioIO.playbackBufferedFrames) * 0.02 }
+    /// Last gateway pong host-buffer evidence with arrival date (relay
+    /// telemetry only; nil until a pong arrives).
+    private var lastGatewayBuffer: (frames: Int, at: Date)?
+    var gatewayBufferSeconds: Double? {
+        guard let last = lastGatewayBuffer, Date().timeIntervalSince(last.at) <= 8 else { return nil }
+        return Double(last.frames) * 0.02
+    }
     private var pingTimer: Timer?
     private var pingSequence: UInt64 = 0
     private var pendingPings: [UInt64: Date] = [:]
@@ -337,7 +373,27 @@ final class WebSocketCallMedia: NSObject {
     /// handshake. Used by the route handover so the system audio session is
     /// owned by exactly one transport at a time.
     func activateAudio() {
+        audioAllowed = true
         startAudio()
+    }
+
+    /// Marks a staged handover attach: the socket is READY but must not open
+    /// a second capture graph while the previous transport still carries the
+    /// call. Cleared at the exclusive promotion (`promoteAudioOwnership()`).
+    func markAudioStaged(_ staged: Bool = true) {
+        audioAllowed = !staged
+    }
+
+    /// Exclusive promotion: this session may now open the capture graph.
+    func promoteAudioOwnership() {
+        audioAllowed = true
+    }
+
+    /// Route-change revalidation: the real graph re-checks the live input
+    /// format and rebuilds the capture pipeline when a route change altered
+    /// it; no-op for graph fakes.
+    func revalidateAudioRoute() {
+        audioIO.revalidateRoute()
     }
 
     /// A receive/send continuation cannot be cancelled by task-group
@@ -526,6 +582,11 @@ final class WebSocketCallMedia: NSObject {
                 pingSampleLog.append(PingSample(rtt: rtt, at: Date()))
                 if pingSampleLog.count > 120 { pingSampleLog.removeFirst(pingSampleLog.count - 120) }
             }
+            // Gateway-side host buffer depth (seconds) for the live telemetry
+            // row; stale evidence is never rendered as current.
+            if let hostBuf = control.buf {
+                lastGatewayBuffer = (frames: max(0, hostBuf), at: Date())
+            }
             // Uplink closed loop: the gateway answers with the depth of the
             // host buffer this socket feeds and the worst uplink gap it saw.
             // Fresh evidence drives bounded encoder adaptation; stale or
@@ -609,6 +670,12 @@ final class WebSocketCallMedia: NSObject {
 
     func startPingSampling() {
         guard pingTimer == nil else { return }
+        // Sample immediately: the call-start route decision compares the
+        // relay's MEASURED fresh RTT against the preflight candidate, and it
+        // must not wait a full timer tick for the relay's first sample. The
+        // socket is already READY at every call site; a ping is a small JSON
+        // control frame and never touches audio.
+        sendPing()
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.sendPing() }
         }
@@ -641,7 +708,24 @@ final class WebSocketCallMedia: NSObject {
     // MARK: Audio lifecycle (CallKit contract, same as WebRTCCallMedia)
 
     func audioActivated(with session: AVAudioSession) {
-        selfManagedAudioActive = false
+        // A real interruption owns the session right now: starting an engine
+        // would race the competing app for the mic. The bridge does not
+        // publish activation while interrupted; this guard is the last line
+        // of defense for a replay racing the notification.
+        if AudioSessionBridge.shared.isInterrupted {
+            DiagnosticsCensus.shared.increment("audio.wsActivationWhileInterrupted")
+            return
+        }
+        // Ownership is explicit: only a self-managed activation keeps this
+        // session responsible for deactivating on close; a system activation
+        // permanently transfers that responsibility to CallKit/LCK.
+        selfManagedAudioActive = AudioSessionBridge.shared.currentOwnership == .selfManaged
+        // A staged relay (handover in progress) must never open a second mic
+        // while the previous transport still carries the call.
+        guard audioAllowed else {
+            DiagnosticsCensus.shared.increment("audio.wsStagedActivationSuppressed")
+            return
+        }
         // CallKit activates OUR app's session with the configuration the
         // system picked (build-16 field evidence: mode=Default/Speaker on
         // outgoing, VoiceChat/Receiver on incoming), and some combinations
@@ -651,13 +735,12 @@ final class WebSocketCallMedia: NSObject {
         // to exactly what the proven self-managed path uses fixes the
         // mismatch before the engine starts. Ownership stays with CallKit:
         // only setCategory runs here, never setActive/deactivate.
-        do {
-            try session.setCategory(
-                .playAndRecord, mode: .voiceChat,
-                options: [.allowBluetooth, .allowBluetoothA2DP])
-        } catch {
-            AppLog.media.notice("ws session normalization failed: \((error as NSError).code)")
-            DiagnosticsStore.shared.log("audio", "ws session normalization failed: \((error as NSError).code)")
+        let normalized = AudioSessionBridge.normalizeForVoiceChat(session)
+        if normalized {
+            // Only log the rare path where a change was actually applied:
+            // startIfNeeded() then follows a category change, which is not
+            // the normal (pre-configured) call path anymore.
+            DiagnosticsStore.shared.log("audio", "ws session normalized at engine start (changed=yes)")
         }
         guard audioIO.startIfNeeded() else {
             // Never claim audio that cannot run.
@@ -676,45 +759,42 @@ final class WebSocketCallMedia: NSObject {
     @discardableResult
     func activateAudioWithoutCallKit() -> Bool {
         if selfManagedAudioActive { return true }
-        if AudioSessionBridge.shared.activeSession != nil { return true }
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(
-                .playAndRecord, mode: .voiceChat,
-                options: [.allowBluetooth, .allowBluetoothA2DP]
-            )
-            // Match the CallKit/LCK path: request a 20 ms I/O cycle so the
-            // input tap delivers 20 ms frames instead of slow large buffers.
-            try session.setPreferredIOBufferDuration(0.02)
-            try session.setActive(true)
-            guard audioIO.startIfNeeded() else {
-                try? session.setActive(false, options: .notifyOthersOnDeactivation)
-                DiagnosticsStore.shared.log("audio", "ws direct-answer activation failed: graph start error")
-                return false
-            }
-            selfManagedAudioActive = true
-            DiagnosticsStore.shared.log("audio", "ws audio activated (direct answer)")
+        if let active = AudioSessionBridge.shared.activeSession {
+            audioActivated(with: active)
             return true
-        } catch {
-            AppLog.media.notice("ws direct-answer audio activation failed")
-            DiagnosticsStore.shared.log("audio", "ws direct-answer activation error: \(error.localizedDescription)")
+        }
+        guard let session = AudioSessionBridge.shared.activateSelfManaged() else {
+            DiagnosticsStore.shared.log("audio", "ws direct-answer activation error")
             return false
         }
+        selfManagedAudioActive = true
+        if audioAllowed, !audioIO.startIfNeeded() {
+            // The session was activated but the graph cannot run: release the
+            // ownership we just claimed instead of pretending audio works.
+            AudioSessionBridge.shared.registerSelfManagedDeactivation()
+            selfManagedAudioActive = false
+            DiagnosticsStore.shared.log("audio", "ws direct-answer activation failed: graph start error")
+            return false
+        }
+        _ = session
+        DiagnosticsStore.shared.log("audio", "ws audio activated (direct answer)")
+        return true
     }
 
     func deactivateAudioWithoutCallKit() {
         guard selfManagedAudioActive else { return }
         selfManagedAudioActive = false
         audioIO.stop()
-        try? AVAudioSession.sharedInstance().setActive(
-            false, options: .notifyOthersOnDeactivation)
+        AudioSessionBridge.shared.deactivateSelfManaged()
     }
 
     private func startAudio() {
         // A system call may have activated the session before the socket was
         // ready; otherwise a direct answer self-activates before connecting.
         // Audio activation failure fails the media session truthfully.
+        if AudioSessionBridge.shared.isInterrupted { return }
         if AudioSessionBridge.shared.activeSession != nil || selfManagedAudioActive {
+            guard audioAllowed else { return }
             guard audioIO.startIfNeeded() else {
                 socketDidFail(toFailed: true)
                 return
@@ -1008,6 +1088,10 @@ extension WebSocketCallMedia.WSAudioGraphing {
     func pushSyntheticPlayback(_ frame: [Int16]) { pushPlayback(frame) }
     var playbackIdleMilliseconds: Int { .max }
     var playbackBufferedFrames: Int { 0 }
+    /// Route-change revalidation hook: the real graph re-checks the live
+    /// input format and rebuilds the capture pipeline when the route changed
+    /// it; lightweight fakes do nothing.
+    func revalidateRoute() {}
 }
 
 extension WebSocketCallMedia.MediaSocket {

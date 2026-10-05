@@ -41,13 +41,13 @@ RFC 8291 加密，使用经过验证的公开库）。App 只生成短时单次�
    ./Scripts/package-release-variants.sh
    # 或对已有构建：
    ./Scripts/package-release-variants.sh \
-     --app-native <native CallRelay.app> --app-bark <bark CallRelay.app>
+     --app-native <native CallRelay.app> --app-pwa <pwa CallRelay.app>
    ```
    产物形如 `build/feather-<version>-<build>/`：
    - `CallRelay-Feather-Native-<version>-<build>-unsigned.ipa`
-   - `CallRelay-AppStore-Bark-<version>-<build>-unsigned.ipa`
+   - `CallRelay-AppStore-PWA-<version>-<build>-unsigned.ipa`
    - `SHA256SUMS.public.txt`
-3. 生成/更新 Feather 源（只能使用原生 IPA；脚本会拒绝 Bark 包）：
+3. 生成/更新 Feather 源（只能使用原生 IPA；脚本会拒绝任何含桥接的包）：
    ```sh
    ./Scripts/update-feather-source.py \
      build/feather-<version>-<build>/CallRelay-Feather-Native-<version>-<build>-unsigned.ipa \
@@ -63,7 +63,7 @@ RFC 8291 加密，使用经过验证的公开库）。App 只生成短时单次�
    gh release create v<version> --prerelease \
      --title "CallRelay <version> (<build>)" --notes-file <release-notes.md> \
      CallRelay-Feather-Native-<version>-<build>-unsigned.ipa \
-     CallRelay-AppStore-Bark-<version>-<build>-unsigned.ipa \
+     CallRelay-AppStore-PWA-<version>-<build>-unsigned.ipa \
      SHA256SUMS.public.txt
    ```
    为避免与本地文件名混淆，上传时把 `SHA256SUMS.public.txt` 命名为 `SHA256SUMS`。
@@ -79,7 +79,29 @@ RFC 8291 加密，使用经过验证的公开库）。App 只生成短时单次�
 - Feather 源只能指向纯原生未签名 IPA；App Store/TestFlight 上传需要单独的明确授权。
 - 已发布版本与其标签/资产视为不可变：下一个版本使用新的补丁版本号，不覆盖旧资产。
 
-## 当前版本 (0.3.11 build 18)
+## 当前版本 (0.3.34 build 41)
+
+- 0.3.21–0.3.34 为公开发布前的累计开发版本，本次公开发布包含其中的 App 侧
+  修复与功能（联系人密钥隔离、vCard、告警、直连优先/中继横幅、音频会话生命周期等），核心变更：
+  - 来电系统界面（LiveCommunicationKit）上报链路修复：重复 VoIP 推送只在
+    “上报进行中 / 系统已接受 / 已无可用有界重试额度”时才去重；App 内追踪
+    不再冒充系统接受。被拒绝或未决的上报可由后续推送有界重试；上报进行中
+    到达的真实主叫号不再丢失，会立即刷新系统句柄或用于一次重试。
+  - LCK 上报的接受/拒绝结果（仅 domain/code，无号码/联系人）写入脱敏诊断，
+    下一次现场导出即可判定“无系统界面”是上报被拒还是系统未展示。上报成功
+    仅代表系统接受了上报，不代表 OS 界面可见。
+  - 系统音频回调不再内联执行引擎/会话工作：音频桥事件经投递顺序 FIFO 在主
+    actor 上应用并以 epoch 防陈旧；语音会话在真正开始通话音频时配置，不在
+    推送上报路径上重新配置。
+- 测试：新增/扩展系统上报状态、去重、重复推送、上报进行中主叫号、非内联
+  投递与快速激活/去激活一致性用例；受影响音频/路由/来电回归全绿。
+- 发布：`v0.3.34` 预发布包含两个未签名 IPA（Feather 纯原生、AppStore PWA）与
+  `SHA256SUMS`；Feather 源只指向纯原生 IPA；私有签名原生 IPA 仅交付
+  Documents 与 iCloud（latest-only，0.3.33-40 转入本地 rollback）。
+- 诚实边界：真机系统来电界面（锁屏/后台）与通话音频仍由用户真机验收；本版本
+  不声称已在真机证实。
+
+## 历史版本 (0.3.11 build 18)
 
 - 修复 0.3.10(17) 遗留的真机验收缺陷：新建短信“收件人”此前是纯数字
   `.phonePad` 键盘（`TextField("输入号码")`），联系人名/中文联想实际不可达——

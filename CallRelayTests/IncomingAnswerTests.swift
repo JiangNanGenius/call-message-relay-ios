@@ -145,6 +145,109 @@ final class IncomingAnswerTests: XCTestCase {
         XCTAssertNotNil(issues.first!)
     }
 
+    // MARK: System report acceptance vs in-app tracking (build 41)
+
+    /// "Tracked" must never be conflated with "the system accepted the report":
+    /// the suppression rule for repeated pushes reads this state.
+    func testSystemReportStateReflectsActualAcceptance() async {
+        let (driver, _, callKit) = makeDriver()
+        let accepted = makeCallRecord(
+            id: "line1:state-ok", state: .incomingRinging, direction: .inbound, peer: ""
+        )
+        callKit.reportIncomingResult = true
+        await driver.reportIncomingFromEvent(accepted)
+        XCTAssertEqual(driver.systemReportState(gatewayId: accepted.id), .accepted)
+        XCTAssertTrue(driver.isRinging(gatewayId: accepted.id))
+        XCTAssertFalse(driver.canAttemptSystemReport(gatewayId: accepted.id),
+                       "an accepted call needs no re-report")
+
+        let rejected = makeCallRecord(
+            id: "line1:state-rej", state: .incomingRinging, direction: .inbound, peer: ""
+        )
+        callKit.reportIncomingResult = false
+        await driver.reportIncomingFromEvent(rejected)
+        XCTAssertEqual(driver.systemReportState(gatewayId: rejected.id), .rejected)
+        XCTAssertTrue(driver.isRinging(gatewayId: rejected.id))
+        XCTAssertTrue(driver.canAttemptSystemReport(gatewayId: rejected.id),
+                      "a rejected ringing call may be re-reported by a repeated push")
+    }
+
+    /// Repeated pushes must not loop a permanently rejectable report: the
+    /// driver bounds total attempts per gateway call.
+    func testSystemReportAttemptsAreBounded() async {
+        let (driver, _, callKit) = makeDriver()
+        callKit.reportIncomingResult = false
+        let call = makeCallRecord(
+            id: "line1:bounded", state: .incomingRinging, direction: .inbound, peer: ""
+        )
+        await driver.reportIncomingFromEvent(call)
+        let uuid = callKit.incoming.first!.uuid
+        await driver.reportIncomingPush(
+            gatewayId: call.id, uuid: uuid, handle: "", record: nil)
+        XCTAssertEqual(callKit.incoming.count, 2)
+        XCTAssertFalse(driver.canAttemptSystemReport(gatewayId: call.id),
+                       "the attempt budget is exhausted")
+        XCTAssertEqual(driver.systemReportState(gatewayId: call.id), .rejected)
+    }
+
+    /// A repeated push for a tracked-but-rejected call is re-reportable.
+    func testRepeatedPushCanRecoverAfterRejection() async {
+        let (driver, _, callKit) = makeDriver()
+        callKit.reportIncomingResult = false
+        let call = makeCallRecord(
+            id: "line1:repeat", state: .incomingRinging, direction: .inbound, peer: ""
+        )
+        await driver.reportIncomingFromEvent(call)
+        XCTAssertEqual(driver.systemReportState(gatewayId: call.id), .rejected)
+
+        callKit.reportIncomingResult = true
+        await driver.reportIncomingPush(
+            gatewayId: call.id, uuid: callKit.incoming.first!.uuid, handle: "", record: nil)
+        XCTAssertEqual(driver.systemReportState(gatewayId: call.id), .accepted)
+    }
+
+    /// A real caller id that arrives while the report is in flight must not be
+    /// dropped: the accepted report gets the handle refresh afterwards.
+    func testHandleUpdateDuringAcceptedReportIsApplied() async {
+        let (driver, _, callKit) = makeDriver()
+        let call = makeCallRecord(
+            id: "line1:inflight-ok", state: .incomingRinging, direction: .inbound, peer: ""
+        )
+        callKit.armReportWait = true
+        let report = Task { await driver.reportIncomingFromEvent(call) }
+        await waitUntil { callKit.incoming.count == 1 }
+
+        driver.updateIncomingHandle(gatewayId: call.id, handle: "13800009999")
+        XCTAssertTrue(callKit.updates.isEmpty, "the report is still in flight")
+
+        callKit.resumeReport(true)
+        await report.value
+
+        XCTAssertEqual(callKit.updates.last?.handle, "13800009999")
+        XCTAssertEqual(driver.systemReportState(gatewayId: call.id), .accepted)
+    }
+
+    /// Same race with a rejection: the retained handle drives the one bounded
+    /// retry instead of being lost with the failed report.
+    func testHandleUpdateDuringRejectedReportRetriesWithRealCallerId() async {
+        let (driver, _, callKit) = makeDriver()
+        let call = makeCallRecord(
+            id: "line1:inflight-rej", state: .incomingRinging, direction: .inbound, peer: ""
+        )
+        callKit.armReportWait = true
+        let report = Task { await driver.reportIncomingFromEvent(call) }
+        await waitUntil { callKit.incoming.count == 1 }
+
+        driver.updateIncomingHandle(gatewayId: call.id, handle: "13700007777")
+        callKit.reportIncomingResult = true
+        callKit.resumeReport(false)
+        await report.value
+
+        XCTAssertEqual(callKit.incoming.count, 2, "the retained caller id earns one retry")
+        XCTAssertEqual(callKit.incoming.last?.handle, "13700007777")
+        XCTAssertEqual(driver.systemReportState(gatewayId: call.id), .accepted)
+    }
+
     // MARK: In-app answer
 
     func testInAppAnswerFallsBackToGatewayWhenNoSystemCall() async {

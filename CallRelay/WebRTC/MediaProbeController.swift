@@ -49,6 +49,37 @@ final class MediaProbeController: NSObject {
     /// then may teardown disable the shared RTCAudioSession.
     private var audioOwned = false
     private(set) var mediaReady = false
+    /// Inbound/outbound audio RTP observed by WebRTC stats (max across
+    /// reports). Zero until audio actually flows on this peer.
+    private(set) var inboundAudioPackets: UInt64 = 0
+    private(set) var outboundAudioPackets: UInt64 = 0
+    /// Counter snapshots taken at ADOPTION: only packets received/sent AFTER
+    /// the adoption may prove the live direct media path (a pre-adoption
+    /// probe packet, or any lifetime total, is never audio-readiness proof).
+    private var adoptionInboundPackets: UInt64 = 0
+    private var adoptionOutboundPackets: UInt64 = 0
+    /// Two-way audio proof for the ADOPTED path: the RTC audio session is
+    /// enabled AND both directions have ADVANCED since adoption. The
+    /// data-channel echo proves reachability/RTT, NEVER audio.
+    var audioFlowing: Bool {
+        Self.audioFlowEvidence(
+            adopted: adopted,
+            rtcAudioEnabled: RTCAudioSession.sharedInstance().isAudioEnabled,
+            inboundPackets: inboundAudioPackets,
+            outboundPackets: outboundAudioPackets,
+            baselineInbound: adoptionInboundPackets,
+            baselineOutbound: adoptionOutboundPackets)
+    }
+
+    /// Pure accounting for the audio gate: post-adoption advancement only.
+    static func audioFlowEvidence(adopted: Bool, rtcAudioEnabled: Bool,
+                                  inboundPackets: UInt64, outboundPackets: UInt64,
+                                  baselineInbound: UInt64, baselineOutbound: UInt64) -> Bool {
+        guard adopted, rtcAudioEnabled else { return false }
+        let inboundAdvanced = inboundPackets >= baselineInbound + 5
+        let outboundAdvanced = outboundPackets >= baselineOutbound + 3
+        return inboundAdvanced && outboundAdvanced
+    }
 
     var onConnected: (() -> Void)?
     var onState: ((MediaState) -> Void)?
@@ -126,18 +157,84 @@ final class MediaProbeController: NSObject {
         guard !adopted else { return }
         adopted = true
         audioOwned = true
+        // Baseline the media counters AT adoption: only advancement from here
+        // counts as proof the live direct path carries two-way audio.
+        adoptionInboundPackets = inboundAudioPackets
+        adoptionOutboundPackets = outboundAudioPackets
         let rtc = RTCAudioSession.sharedInstance()
         if let session { rtc.audioSessionDidActivate(session) }
         rtc.isAudioEnabled = true
         enableAudioTrack(true)
-        statsTimerCadence(1.0)
+        // Fast stats for the bounded audio gate, then settle to the normal
+        // 1 s cadence so evidence arrives quickly without permanent overhead.
+        statsTimerCadence(0.25)
+        let settle = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.statsTimerCadence(1.0)
+        }
+        statsSettleTask?.cancel()
+        statsSettleTask = settle
         onState?(.connected)
         evaluateReady()
     }
 
+    private var statsSettleTask: Task<Void, Never>?
+
     func setMuted(_ muted: Bool) {
         guard adopted else { return }
         enableAudioTrack(!muted)
+    }
+
+    /// Output-port override, identical to the WSS/ICE transports (a direct-first
+    /// call never had a relay set it, so the adopted peer owns this call).
+    func setSpeakerphone(_ enabled: Bool) throws {
+        try AVAudioSession.sharedInstance().overrideOutputAudioPort(
+            enabled ? .speaker : .none)
+    }
+    /// Forwards a CallKit/system audio activation that arrives AFTER the warm
+    /// direct adoption (build 38 direct-first calls). In manual-audio mode the
+    /// SDK only learns the active session through this explicit forwarding.
+    func audioSessionActivated(_ session: AVAudioSession) {
+        guard adopted else { return }
+        let rtc = RTCAudioSession.sharedInstance()
+        rtc.audioSessionDidActivate(session)
+        // A recovery activation after an interruption must re-enable the ADM;
+        // the normal adoption path also enables it.
+        rtc.isAudioEnabled = true
+    }
+
+    /// Forwards a system deactivation (interruption began / media reset /
+    /// call end): stop the adopted peer's ADM without touching the transport.
+    /// The peer connection and its RTP stay alive for a later activation.
+    func audioSessionDeactivated(_ session: AVAudioSession) {
+        guard adopted else { return }
+        let rtc = RTCAudioSession.sharedInstance()
+        rtc.audioSessionDidDeactivate(session)
+        rtc.isAudioEnabled = false
+    }
+
+    /// Direct in-app answer with no system call (no `didActivate` will come):
+    /// activates the voice-chat session through the shared bridge — the same
+    /// serialized ownership the WSS transports use — then hands it to
+    /// RTCAudioSession. A failed activation is reported truthfully.
+    @discardableResult
+    func activateAudioWithoutCallKit() -> Bool {
+        guard adopted else { return false }
+        if let active = AudioSessionBridge.shared.activeSession {
+            let rtc = RTCAudioSession.sharedInstance()
+            rtc.audioSessionDidActivate(active)
+            rtc.isAudioEnabled = true
+            return true
+        }
+        guard let session = AudioSessionBridge.shared.activateSelfManaged() else {
+            AppLog.media.notice("direct probe self-activation failed")
+            return false
+        }
+        let rtc = RTCAudioSession.sharedInstance()
+        rtc.audioSessionDidActivate(session)
+        rtc.isAudioEnabled = true
+        return true
     }
 
     private func enableAudioTrack(_ enabled: Bool) {
@@ -199,6 +296,11 @@ final class MediaProbeController: NSObject {
         echoStamps.filter { now.timeIntervalSince($0.at) <= window }.map(\.rtt)
     }
 
+    func freshTimestampedQualitySamples(within window: TimeInterval, now: Date = Date())
+        -> [(rtt: TimeInterval, at: Date)] {
+        echoStamps.filter { now.timeIntervalSince($0.at) <= window }
+    }
+
     private func handleEchoData(_ data: Data, channelLabel: String?) {
         // Identity: only the probe channel can drive measurements.
         guard channelLabel == nil || channelLabel == "callrelay-probe" else { return }
@@ -258,7 +360,21 @@ final class MediaProbeController: NSObject {
         guard let pc = peerConnection, connected else { return }
         pc.statistics { [weak self] report in
             guard let self else { return }
+            var inboundAudio: UInt64 = 0
+            var outboundAudio: UInt64 = 0
             for statistic in report.statistics.values {
+                let isAudio = (statistic.values["kind"] as? String) == "audio"
+                    || (statistic.values["mediaType"] as? String) == "audio"
+                if statistic.type == "inbound-rtp", isAudio {
+                    let packets = (statistic.values["packetsReceived"] as? NSNumber)?.uint64Value ?? 0
+                    inboundAudio = max(inboundAudio, packets)
+                    continue
+                }
+                if statistic.type == "outbound-rtp", isAudio {
+                    let packets = (statistic.values["packetsSent"] as? NSNumber)?.uint64Value ?? 0
+                    outboundAudio = max(outboundAudio, packets)
+                    continue
+                }
                 guard statistic.type == "candidate-pair",
                       (statistic.values["nominated"] as? NSNumber)?.boolValue == true,
                       let rttSeconds = (statistic.values["currentRoundTripTime"] as? NSNumber)?.doubleValue,
@@ -270,8 +386,16 @@ final class MediaProbeController: NSObject {
                     }
                 }
             }
+            if inboundAudio > 0 || outboundAudio > 0 {
+                Task { @MainActor in
+                    self.inboundAudioPackets = max(self.inboundAudioPackets, inboundAudio)
+                    self.outboundAudioPackets = max(self.outboundAudioPackets, outboundAudio)
+                }
+            }
         }
     }
+
+
 
     // MARK: Teardown
 
@@ -288,6 +412,7 @@ final class MediaProbeController: NSObject {
     }
 
     private func teardown(closeState: Bool, disableAudio: Bool) {
+        statsSettleTask?.cancel(); statsSettleTask = nil
         statsTimer?.invalidate(); statsTimer = nil
         echoTimer?.invalidate(); echoTimer = nil
         gatheringObserver?.invalidate(); gatheringObserver = nil
@@ -297,6 +422,10 @@ final class MediaProbeController: NSObject {
         }
         connected = false
         mediaReady = false
+        inboundAudioPackets = 0
+        outboundAudioPackets = 0
+        adoptionInboundPackets = 0
+        adoptionOutboundPackets = 0
         echoChannelOpen = false
         echoChannel = nil
         pendingEcho = nil
@@ -310,6 +439,15 @@ final class MediaProbeController: NSObject {
     }
 
     // MARK: Gathering (one-shot, cancellable, observer retained to completion)
+
+    /// Bounded ICE-gather wait before the offer is finalized. iOS often never
+    /// reports `.complete` for a non-trickle offer, so this deadline is what
+    /// usually ends the wait; the former 8 s value delayed every foreground
+    /// idle measurement by ~9 s (build-36 field: the route-measurement screen
+    /// showed 未测得 because the candidate was still gathering). Host and STUN
+    /// srflx candidates normally arrive well inside this window, and the
+    /// probe is a measurement candidate, not the only path to a call.
+    var gatherDeadlineSeconds: TimeInterval = 2.5
 
     private func waitForGatheringComplete(_ pc: RTCPeerConnection) async throws {
         if pc.iceGatheringState == .complete { return }
@@ -336,8 +474,9 @@ final class MediaProbeController: NSObject {
                     }
                 }
                 self.gatheringObserver = observer
+                let deadline = self.gatherDeadlineSeconds
                 let deadlineTask = Task { [weak self] in
-                    try? await Task.sleep(nanoseconds: 8_000_000_000)
+                    try? await Task.sleep(nanoseconds: UInt64(deadline * 1_000_000_000))
                     guard !Task.isCancelled else { return }
                     await MainActor.run { finish(.success(())) }
                     _ = self
@@ -469,14 +608,69 @@ protocol DirectProbeControlling: AnyObject {
     var mediaReady: Bool { get }
     /// Fresh comparable RTT samples in SECONDS (app echo only).
     var samples: [TimeInterval] { get }
+    /// True once this ADOPTED transport has proven ADVANCING two-way audio
+    /// since adoption (inbound gateway RTP + outbound mic RTP with the RTC
+    /// audio session enabled). A data-channel echo, a lifetime packet total
+    /// or a pre-adoption probe packet is reachability/RTT evidence only,
+    /// NEVER audio readiness; fakes that do not model RTP default to true.
+    var audioFlowing: Bool { get }
+    /// Lifetime audio RTP counters (diagnostics/gate inputs). Fakes default
+    /// to zero; the gate itself compares against an adoption-time baseline.
+    var inboundAudioPackets: UInt64 { get }
+    var outboundAudioPackets: UInt64 { get }
+    /// Most recent app-level echo sample with its arrival date (nil before
+    /// the first echo). Never an ICE candidate-pair statistic.
+    var latestQualitySample: (rtt: TimeInterval, at: Date)? { get }
     var echoStallCount: Int { get }
     func freshQualitySamples(within window: TimeInterval, now: Date) -> [TimeInterval]
+    /// Fresh echo samples with timestamps so a caller that snapped the
+    /// candidate before a slow request can re-validate freshness at the
+    /// decision moment (build 38 warm direct-first).
+    func freshTimestampedQualitySamples(within window: TimeInterval, now: Date)
+        -> [(rtt: TimeInterval, at: Date)]
     func makeOffer(ice: ICEConfiguration) async throws -> String
     func applyAnswer(_ sdp: String) async throws
     func adopt(activatedSession session: AVAudioSession?)
+    /// Forwards a post-adoption CallKit/system audio activation (build 38
+    /// direct-first calls can adopt before didActivate arrives).
+    func audioSessionActivated(_ session: AVAudioSession)
+    /// Forwards a system/CallKit deactivation (interruption began or call
+    /// end) so the adopted RTC peer stops its ADM instead of keeping the mic
+    /// warm while another session owns audio.
+    func audioSessionDeactivated(_ session: AVAudioSession)
+    /// Self-activates voice chat for an in-app direct answer (no system call).
+    @discardableResult
+    func activateAudioWithoutCallKit() -> Bool
+    /// Output-port override (speaker), matching the other transports.
+    func setSpeakerphone(_ enabled: Bool) throws
     func setMuted(_ muted: Bool)
     func cancel()
     func closeTransport()
 }
 
-extension MediaProbeController: DirectProbeControlling {}
+extension DirectProbeControlling {
+    /// Test fakes default to accepting the forwarded activation; the live
+    /// probe forwards it to the manual RTCAudioSession.
+    func audioSessionActivated(_ session: AVAudioSession) {}
+    /// Test fakes default to accepting the forwarded deactivation.
+    func audioSessionDeactivated(_ session: AVAudioSession) {}
+    /// Fakes are treated as self-activation capable; the live probe really
+    /// activates the shared AVAudioSession.
+    @discardableResult
+    func activateAudioWithoutCallKit() -> Bool { true }
+    /// Fakes do not reroute audio.
+    func setSpeakerphone(_ enabled: Bool) throws {}
+}
+
+extension DirectProbeControlling {
+    /// Test fakes without echo timestamps; the real probe overrides this.
+    var latestQualitySample: (rtt: TimeInterval, at: Date)? { nil }
+    /// Test fakes that do not model RTP are treated as audio-flowing.
+    var audioFlowing: Bool { true }
+    var inboundAudioPackets: UInt64 { 0 }
+    var outboundAudioPackets: UInt64 { 0 }
+}
+
+extension MediaProbeController: DirectProbeControlling {
+    var latestQualitySample: (rtt: TimeInterval, at: Date)? { echoStamps.last }
+}

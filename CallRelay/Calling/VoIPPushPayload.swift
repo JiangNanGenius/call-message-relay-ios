@@ -85,6 +85,33 @@ struct CallKitTarget: Equatable {
     let handle: String
 }
 
+/// Bounded suppression rule for a repeated must-report VoIP push.
+///
+/// A push may be swallowed only while a report is actually in flight, the
+/// SYSTEM accepted the call, or no further bounded report attempt is possible.
+/// Tracking a call inside the app is NOT acceptance: a rejected (or never
+/// resolved) system report must not silently consume the repeated push — that
+/// is exactly how a "no system incoming UI" call can be reported as
+/// `alreadyReported` in the export while no system surface exists.
+enum PushReportSuppression {
+    static func suppressibleIds(
+        tracked: Set<String>,
+        reserved: Set<String>,
+        systemState: (String) -> SystemReportState,
+        canAttempt: (String) -> Bool
+    ) -> Set<String> {
+        Set(tracked.filter { id in
+            if reserved.contains(id) { return true }
+            switch systemState(id) {
+            case .accepted:
+                return true
+            case .rejected, .unknown:
+                return !canAttempt(id)
+            }
+        })
+    }
+}
+
 /// Pure policy for mapping pushes to CallKit actions.
 struct PushReceptionPolicy {
     var expectedGatewayId: String?

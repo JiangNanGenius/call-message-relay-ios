@@ -59,6 +59,16 @@ enum PhoneNormalizer {
         func add(_ value: String) { if !keys.contains(value) { keys.append(value) } }
         add(d)
 
+        // An EXPLICIT international prefix decides the numbering plan: a
+        // Canadian/US +1 number ("+1 873 …", 11 digits starting with 1) must
+        // never gain +86/0086 aliases just because its digit shape resembles a
+        // mainland mobile (11 digits, second digit 3-9). Domestic mainland
+        // numbers (no explicit "+") keep the historic behaviour.
+        let explicitInternational = raw.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("+")
+        if explicitInternational, d.hasPrefix("1") {
+            return keys
+        }
+
         // Strip an explicit country-code prefix.
         let local: String
         if d.hasPrefix("0086"), d.count > 4 {

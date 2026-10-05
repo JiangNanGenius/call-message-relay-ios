@@ -60,10 +60,15 @@ struct DialerView: View {
 
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(keys, id: \.self) { key in
-                        DialKey(label: key) { append(key) }
-                            .contextMenu {
-                                if key == "0" { Button("输入 +") { append("+") } }
-                            }
+                        DialKey(label: key) {
+                            // Native Phone-style local key feedback; system
+                            // sound policy only, no audio session is touched.
+                            KeypadTonePlayer.shared.play(key)
+                            append(key)
+                        }
+                        .contextMenu {
+                            if key == "0" { Button("输入 +") { append("+") } }
+                        }
                     }
                 }
                 .padding(.horizontal, 64)
@@ -132,6 +137,7 @@ struct DialerView: View {
                     Text("号码 \(attempt.peer) 命中：\(attempt.reason)。这是本机拦截，未通过网关呼出；可在短信/通话规则里修改。")
                 }
             }
+            .onDisappear { KeypadTonePlayer.shared.stop() }
         }
     }
 

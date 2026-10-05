@@ -38,7 +38,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>扫描网关上显示的配对二维码时需要使用相机；也可以选择粘贴配对内容。</string>
 	<key>NSContactsUsageDescription</key>
-	<string>用于在联系人中选择号码拨号或发短信、在最近通话/短信中显示联系人姓名，并可按你的选择将通讯录号码视为可信发件人。App 不会上传或备份你的通讯录。</string>
+	<string>用于在联系人中选择号码拨号或发短信、在最近通话/短信中显示联系人姓名，并可按你的选择将通讯录号码视为可信发件人。只有你主动点击“同步到网关”时，联系人会通过加密连接保存到你的自有网关，供同一配对密钥的设备使用；App 不会修改或删除系统通讯录，也不会发送给第三方。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>通话时需要使用麦克风，将你的语音经网关发送到对方。</string>
 	<key>NSUserActivityTypes</key>

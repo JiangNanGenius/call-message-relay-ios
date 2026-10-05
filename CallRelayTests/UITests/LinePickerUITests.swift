@@ -154,4 +154,50 @@ final class LinePickerUITests: XCTestCase {
                       "settings must offer an explicit re-pair route")
         attach("18-auth-lost-settings")
     }
+
+    /// The reported "latency invisible" defect: the audio-route page must not
+    /// be only the three mode choices. It has to expose the measured per-path
+    /// status rows, and an unmeasured path must say so instead of rendering a
+    /// fabricated value (e.g. "0 ms"). Uses the dedicated route-settings
+    /// preview, which renders the same production view code offline.
+    func testAudioRouteShowsMeasuredPathStatus() throws {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = [
+            "-callrelayUITestReset",
+            "-callrelayRouteSettingsPreview"
+        ]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["设置"].waitForExistence(timeout: 15))
+        app.tabBars.buttons["设置"].tap()
+        let row = app.staticTexts["音频线路"].firstMatch
+        for _ in 0..<8 where !row.exists { app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "settings 音频线路 row must exist")
+        row.tap()
+        XCTAssertTrue(app.navigationBars["音频线路"].waitForExistence(timeout: 5))
+        let direct = app.descendants(matching: .any)["routeDirectStatus"].firstMatch
+        let relay = app.descendants(matching: .any)["routeRelayStatus"].firstMatch
+        XCTAssertTrue(direct.waitForExistence(timeout: 5), "direct path status row must be visible")
+        XCTAssertTrue(relay.waitForExistence(timeout: 5), "relay path status row must be visible")
+        XCTAssertFalse(direct.label.contains("0 ms"),
+                       "an unmeasured RTT must never be shown as 0 ms: \(direct.label)")
+        XCTAssertFalse(relay.label.contains("0 ms"),
+                       "an unmeasured RTT must never be shown as 0 ms: \(relay.label)")
+        Thread.sleep(forTimeInterval: 0.5)
+        attach("20-audio-route-measured-status")
+    }
+
+    /// The lock-screen Settings row must state its actual readiness source,
+    /// never the old static instruction.
+    func testSettingsShowsSourceBackedPushReadiness() throws {
+        launchPaired()
+        app.tabBars.buttons["设置"].tap()
+        let lockRow = app.staticTexts["锁屏来电"].firstMatch
+        for _ in 0..<8 where !lockRow.exists { app.swipeUp() }
+        XCTAssertTrue(lockRow.waitForExistence(timeout: 5), "settings 锁屏来电 row must exist")
+        XCTAssertFalse(app.staticTexts["需网关推送服务"].exists,
+                       "static push instruction must be gone; row must show measured readiness")
+        Thread.sleep(forTimeInterval: 0.4)
+        attach("21-lockscreen-push-readiness")
+    }
 }

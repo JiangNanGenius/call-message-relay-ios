@@ -174,6 +174,11 @@ final class MessageInbox: ObservableObject {
     private let api: GatewayAPI
     private let filter: SpamFilterStore?
     private var outboxStore: OutboxStore?
+    /// Durable conversation-delete horizons, scoped to the paired gateway.
+    /// The gateway tombstone is authoritative for live data, but CloudKit-
+    /// restored history has no knowledge of it: without a durable local copy
+    /// a deleted conversation reappears after a restart/cloud refresh.
+    private let tombstoneStore: ThreadTombstoneStore
     /// Owner-controlled contact whitelist hook (contacts never enter the
     /// spam engine otherwise).
     var isTrustedContact: ((String) -> Bool)?
@@ -213,12 +218,16 @@ final class MessageInbox: ObservableObject {
         api: GatewayAPI,
         filter: SpamFilterStore? = nil,
         outboxStore: OutboxStore? = nil,
+        tombstoneScope: String? = nil,
+        tombstoneDefaults: UserDefaults = .standard,
         now: @escaping () -> Date = Date.init
     ) {
         self.api = api
         self.filter = filter
         self.outboxStore = outboxStore
+        self.tombstoneStore = ThreadTombstoneStore(scope: tombstoneScope, defaults: tombstoneDefaults)
         self.now = now
+        self.tombstonedThreadKeys = tombstoneStore.load()
         recoverPersistedOutbox()
     }
 
@@ -264,13 +273,75 @@ final class MessageInbox: ObservableObject {
 
     /// Applies a conversation delete locally (optimistic, after the gateway
     /// accepted it): drops the thread row, prunes its cached messages and
-    /// marks the tombstone so cloud restores cannot resurrect it.
+    /// marks the tombstone so cloud restores cannot resurrect it. The
+    /// horizon is persisted per gateway, because restored CloudKit history
+    /// outlives the session and has no server-side thread tombstone.
     func applyThreadDeleted(key: String, deletedAt: Int64? = nil) {
         threads.removeAll { $0.key == key }
         threadCache.removeValue(forKey: key)
         hasMoreThreads.remove(key)
         tombstonedThreadKeys[key] = deletedAt ?? Date().unixMilliseconds
+        tombstoneStore.save(tombstonedThreadKeys)
         reevaluateAll()
+    }
+
+    /// Durable tombstone horizons for tests and diagnostics (read-only copy).
+    var persistedTombstoneHorizons: [String: Int64] { tombstonedThreadKeys }
+
+    /// Marks every inbound unread live message in each conversation as read.
+    /// Existing per-message endpoint only: no backend rewrite, and each mark
+    /// rides the worker's `message.updated` event so other authorized devices
+    /// converge on the same read state. Returns honest per-thread results —
+    /// already-read messages are not re-marked, and a thread whose page fetch
+    /// or a mark request fails is reported as failed rather than dropped.
+    func markThreadsRead(_ keys: [String]) async -> BulkOperationResult {
+        var result = BulkOperationResult()
+        for key in keys {
+            do {
+                _ = try await markThreadRead(key)
+                result.succeeded.append(key)
+            } catch is CancellationError {
+                result.failed.append(key)
+                break
+            } catch {
+                result.failed.append(key)
+            }
+        }
+        if !result.succeeded.isEmpty { await refreshThreads() }
+        return result
+    }
+
+    /// Fetches and marks one conversation's unread inbound messages (bounded
+    /// to four pages of history). A mid-thread failure leaves already-marked
+    /// messages read and throws so the caller reports the thread honestly.
+    private func markThreadRead(_ key: String) async throws -> Int {
+        let captured = generation
+        var before: MessageRecord?
+        var remaining = max(1, threads.first { $0.key == key }?.unreadCount ?? 1)
+        var marked = 0
+        for _ in 0..<4 {
+            guard captured == generation else { throw CancellationError() }
+            let page = try await api.listThreadMessages(
+                threadKey: key,
+                beforeCreatedAt: before?.createdAt, beforeID: before?.id, limit: pageLimit
+            )
+            guard captured == generation else { throw CancellationError() }
+            let unread = page.messages.filter {
+                $0.direction == .inbound && $0.status != .read && !Self.isCloudRecordID($0.id)
+            }
+            var updated: [MessageRecord] = []
+            for message in unread {
+                try await api.markMessageRead(id: message.id, idempotencyKey: UUID().uuidString)
+                guard captured == generation else { throw CancellationError() }
+                marked += 1
+                remaining -= 1
+                updated.append(message.with(status: .read))
+            }
+            if !updated.isEmpty { mergeMessages(updated) }
+            guard page.hasMore, let oldest = page.messages.first, remaining > 0 else { break }
+            before = oldest
+        }
+        return marked
     }
 
     /// True when `key` was deleted and no newer gateway message has

@@ -289,9 +289,13 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
     }
 
     func audioActivated(with session: AVAudioSession) {
-        // CallKit now owns the session: drop the self-managed flag so close()
-        // never deactivates a system-owned session.
-        selfManagedAudioActive = false
+        // Never enable the ADM while a competing session actually owns audio:
+        // the bridge only publishes usable activations, and this guard keeps
+        // a replay from racing an interruption notification.
+        guard !AudioSessionBridge.shared.isInterrupted else { return }
+        // Explicit ownership: a system activation transfers the deactivation
+        // responsibility to CallKit; a self-managed activation keeps it here.
+        selfManagedAudioActive = AudioSessionBridge.shared.currentOwnership == .selfManaged
         let rtc = RTCAudioSession.sharedInstance()
         rtc.audioSessionDidActivate(session)
         rtc.isAudioEnabled = true
@@ -306,31 +310,25 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
     }
 
     /// Direct in-app answer path: CallKit never reported/activated this call,
-    /// so configure and activate the shared voice-chat session ourselves or
-    /// the negotiated audio path would stay muted.
+    /// so activate the shared voice-chat session through the serialized
+    /// bridge (bounded, ownership-tracked) or the negotiated audio path would
+    /// stay muted.
     @discardableResult
     func activateAudioWithoutCallKit() -> Bool {
         if selfManagedAudioActive { return true }
-        // CallKit owns the session already: report success and let its
-        // didActivate path drive the RTC audio.
-        if AudioSessionBridge.shared.activeSession != nil { return true }
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(
-                .playAndRecord, mode: .voiceChat,
-                options: [.allowBluetooth, .allowBluetoothA2DP]
-            )
-            try session.setActive(true)
-            let rtc = RTCAudioSession.sharedInstance()
-            rtc.audioSessionDidActivate(session)
-            rtc.isAudioEnabled = true
-            selfManagedAudioActive = true
-            AppLog.media.debug("audio activated for direct in-app answer (no system call)")
+        // Someone already owns a usable session: enable this session against
+        // it instead of activating again.
+        if let active = AudioSessionBridge.shared.activeSession {
+            audioActivated(with: active)
             return true
-        } catch {
+        }
+        guard let session = AudioSessionBridge.shared.activateSelfManaged() else {
             AppLog.media.notice("direct answer audio activation failed")
             return false
         }
+        audioActivated(with: session)
+        AppLog.media.debug("audio activated for direct in-app answer (no system call)")
+        return true
     }
 
     func deactivateAudioWithoutCallKit() {
@@ -339,8 +337,7 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
         let rtc = RTCAudioSession.sharedInstance()
         rtc.isAudioEnabled = false
         rtc.audioSessionDidDeactivate(AVAudioSession.sharedInstance())
-        try? AVAudioSession.sharedInstance().setActive(
-            false, options: .notifyOthersOnDeactivation)
+        AudioSessionBridge.shared.deactivateSelfManaged()
         stopStats()
     }
 

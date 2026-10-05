@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 
 @main
 struct CallRelayApp: App {
@@ -27,7 +28,7 @@ struct CallRelayApp: App {
     }
 }
 
-final class AppDelegate: NSObject, UIApplicationDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     weak var model: AppModel?
     private var pendingPeer: String?
 #if PWA_BRIDGE
@@ -96,10 +97,46 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // APNs registration for the ordinary (non-VoIP) alert token. The VoIP
-        // token is obtained separately through PushKit.
+        // Ordinary (non-VoIP) service alerts: delegate + APNs registration.
+        // Permission is requested by AppModel after pairing; the VoIP token
+        // is obtained separately through PushKit and never used for alerts.
+        UNUserNotificationCenter.current().delegate = self
         application.registerForRemoteNotifications()
+        if let response = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
+            Task { @MainActor in model?.handleServiceNotification(userInfo: response) }
+        }
         return true
+    }
+
+    // MARK: Standard notifications (never PushKit/VoIP)
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        // A foreground service alert is still worth showing: it describes a
+        // carrier/network condition, not a ring.
+        completionHandler([.banner, .list, .sound])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        Task { @MainActor in model?.handleServiceNotification(userInfo: userInfo) }
+        completionHandler()
+    }
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        Task { @MainActor in model?.handleServiceNotification(userInfo: userInfo) }
+        completionHandler(.newData)
     }
 
     func application(

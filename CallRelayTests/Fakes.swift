@@ -206,10 +206,15 @@ final class FakeGatewayAPI: GatewayAPI {
     private(set) var preflightCommitIds: [String?] = []
     private(set) var discardPreflightIds: [String] = []
     private(set) var deletedThreadKeys: [String] = []
+    /// Per-key delete errors so bulk partial-failure behavior is testable.
+    var deleteThreadErrors: [String: Error] = [:]
+    /// Per-message read errors so bulk mark-read partial failures are testable.
+    var readErrors: [String: Error] = [:]
     private var commitContinuation: CheckedContinuation<Void, Error>?
     private var commitArmed = false
     var discardProbeCalls: [String] = []
     var measureRequestCallCount = 0
+    var relayProbeRequestCallCount = 0
 
     func armCommitWait() { commitArmed = true }
     var onCommit: (() -> Void)?
@@ -435,6 +440,8 @@ final class FakeGatewayAPI: GatewayAPI {
     var iceConfigOverride: ICEConfiguration?
     /// When set, returned by mediaWebSocketRequest (default throws notReady).
     var mediaWSRequestOverride: URLRequest?
+    /// Count of call media WebSocket attach requests (build-38 fastpath tests).
+    private(set) var mediaWSRequestCallCount = 0
 
     func iceConfiguration(callId: String) async throws -> ICEConfiguration {
         if let iceError { throw iceError }
@@ -447,6 +454,7 @@ final class FakeGatewayAPI: GatewayAPI {
     }
 
     func mediaWebSocketRequest(callId: String) async throws -> URLRequest {
+        mediaWSRequestCallCount += 1
         if let mediaWSRequestOverride { return mediaWSRequestOverride }
         throw APIError.notReady("当前配对不支持 WebSocket 音频。")
     }
@@ -455,6 +463,38 @@ final class FakeGatewayAPI: GatewayAPI {
         SyncResponse(from: after, to: after, hasMore: false, changes: [])
     }
     func registerPush(registration: PushRegistration, idempotencyKey: String) async throws {}
+
+    // MARK: Contacts sync + service alerts (unified v2)
+
+    /// Uploaded contact batches in order.
+    private(set) var contactSyncRequests: [ContactSyncRequest] = []
+    /// When set, syncContacts throws it.
+    var contactSyncError: Error?
+    /// Result returned by syncContacts (defaults to a successful merge).
+    var contactSyncResult = ContactSyncResult(revision: 1, created: 0, updated: 0, unchanged: 0, skipped: 0, total: 0)
+    /// When set, notificationsStatus throws it.
+    var notificationsStatusError: Error?
+    var notificationsStatusResult: GatewayNotificationStatus?
+
+    func syncContacts(_ request: ContactSyncRequest, idempotencyKey: String) async throws -> ContactSyncResult {
+        contactSyncRequests.append(request)
+        actionLog.append("syncContacts:\(request.contacts.count)")
+        if let contactSyncError { throw contactSyncError }
+        return ContactSyncResult(
+            revision: contactSyncResult.revision,
+            created: contactSyncResult.created + request.contacts.count,
+            updated: contactSyncResult.updated,
+            unchanged: contactSyncResult.unchanged,
+            skipped: contactSyncResult.skipped,
+            total: request.contacts.count
+        )
+    }
+
+    func notificationsStatus() async throws -> GatewayNotificationStatus {
+        if let notificationsStatusError { throw notificationsStatusError }
+        if let notificationsStatusResult { return notificationsStatusResult }
+        throw APIError.notReady("提醒状态未配置")
+    }
 
     // MARK: Conference (unified v2)
 
@@ -544,6 +584,7 @@ final class FakeGatewayAPI: GatewayAPI {
     }
 
     func markMessageRead(id: String, idempotencyKey: String) async throws {
+        if let error = readErrors[id] { throw error }
         readMarked.append(id)
     }
 
@@ -580,21 +621,62 @@ final class FakeGatewayAPI: GatewayAPI {
     func discardMediaProbe(callId: String) async throws {
         discardProbeCalls.append(callId)
     }
+    // MARK: Device-scoped idle preflight (RoutePreflightController tests)
+
+    var preflightIce = ICEConfiguration(
+        policy: "all", iceServers: [], expiresAt: "2026-01-01T00:00:00Z",
+        mediaTransports: ["ice", "ws"])
+    var preflightIceError: Error?
+    var preflightAnswer = V2PreflightAnswer(
+        sdp: "v=0\r\n", type: "answer", iceMode: "stun", preflightId: "prb_1", ttlMs: 45_000)
+    var preflightAttachError: Error?
+    private(set) var preflightAttachCount = 0
+    private(set) var renewPreflightIds: [String] = []
+    var preflightRenewError: Error?
+    var preflightRenewTTLMs: Int64 = 45_000
+    /// When armed once, the next renewal parks until resumeRenew (in-flight
+    /// renewal race tests).
+    private var renewArmed = false
+    private var renewContinuation: CheckedContinuation<Void, Error>?
+
+    func armRenewWait() { renewArmed = true }
+    func resumeRenew(with result: Result<Void, Error>) {
+        renewContinuation?.resume(with: result)
+        renewContinuation = nil
+    }
+
     func iceConfiguration() async throws -> ICEConfiguration {
-        throw APIError.notReady("demo")
+        if let preflightIceError { throw preflightIceError }
+        return preflightIce
     }
     func attachMediaPreflight(sdp: String) async throws -> V2PreflightAnswer {
-        throw APIError.notReady("demo")
+        preflightAttachCount += 1
+        if let preflightAttachError { throw preflightAttachError }
+        return preflightAnswer
     }
     func discardMediaPreflight(preflightId: String) async throws {
         discardPreflightIds.append(preflightId)
     }
+    func renewMediaPreflight(preflightId: String) async throws -> V2PreflightRenewAnswer {
+        renewPreflightIds.append(preflightId)
+        if renewArmed {
+            renewArmed = false
+            try await withCheckedThrowingContinuation { renewContinuation = $0 }
+        }
+        if let preflightRenewError { throw preflightRenewError }
+        return V2PreflightRenewAnswer(preflightId: preflightId, ttlMs: preflightRenewTTLMs)
+    }
     func deleteThread(threadKey: String) async throws {
+        if let error = deleteThreadErrors[threadKey] { throw error }
         deletedThreadKeys.append(threadKey)
     }
     func mediaMeasureWebSocketRequest(callId: String) async throws -> URLRequest {
         measureRequestCallCount += 1
         return URLRequest(url: URL(string: "wss://example.test/calls/\(callId)/media/measure")!)
+    }
+    func mediaRelayProbeWebSocketRequest() async throws -> URLRequest {
+        relayProbeRequestCallCount += 1
+        return URLRequest(url: URL(string: "wss://example.test/api/v2/media/relay-probe")!)
     }
 }
 

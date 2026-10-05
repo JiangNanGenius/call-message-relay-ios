@@ -33,16 +33,21 @@ import AVFoundation
 /// BEFORE the engine starts (the canonical AVAudioEngine pattern; a tap
 /// attached mid-run can miss the input node's first render cycle — the
 /// build-21 field log shows every cold call opened with a ~2 s zero-delivery
-/// tap, and the precise mechanism remains a hypothesis) and the tap-dead
-/// verdict gets its own longer grace so a merely slow start is never
-/// churned by a restart it does not need. This addresses the cold-start
-/// uplink gap only; steady-state uplink health is a separate question the
-/// per-run level census answers. Recovery policy: the first restart of a
-/// window rebuilds with the SAME configuration (engine-level voice
-/// processing stays ON); only a SECOND dead render in the same window falls
-/// back to VP OFF, logged explicitly as degraded processing (the
-/// voice-chat mode provides NO echo cancellation or gain correction without
-/// voice processing and lowers playback level).
+/// tap, and the precise mechanism remains a hypothesis). Build-33 field
+/// evidence refined the response: EVERY call still opened with a 3 s
+/// zero-delivery tap and the engine restart both spent the shared budget and
+/// (on the second call) triggered the VP-off fallback. The first stage is
+/// now a bounded TAP REINSTALL (0.8 s, no restart, no budget, no VP change)
+/// with the input node's current format — a format change between tap
+/// installation and the first render cycle is one leading hypothesis, and a
+/// reinstall targets it directly; the 3 s engine restart stays as the
+/// fallback for a genuinely dead render. Recovery policy is scoped to the
+/// graph INSTANCE (one call): its first restart keeps the SAME configuration
+/// (engine-level voice processing stays ON); only a SECOND dead render in
+/// the same instance falls back to VP OFF, logged explicitly as degraded
+/// processing (the voice-chat mode provides NO echo cancellation or gain
+/// correction without voice processing and lowers playback level). The
+/// process-wide budget (3 restarts / 600 s) still bounds total churn.
 /// State shared between the main-actor lifecycle (start/stop/mute) and the
 /// dedicated feed-queue tick. Reference-typed so a `let` on the main actor
 /// class exposes it to nonisolated code without actor-isolation violations.
@@ -63,6 +68,26 @@ private final class FeedState: @unchecked Sendable {
     /// Total feed ticks this run (diagnostic seam for the watchdog tests).
     var tickCount: UInt64 = 0
     var restartAttempted = false
+    /// One tap REINSTALL per start (cheap, non-degrading first-stage
+    /// recovery): the tap is removed and re-attached with the input node's
+    /// CURRENT format while the engine keeps running. A changed input-bus
+    /// format after the first render cycle is the leading hypothesis for the
+    /// cold-start zero-delivery tap, and a reinstall targets it directly
+    /// instead of spending a full engine restart (or voice-processing
+    /// downgrade) on it.
+    var tapReinstalled = false
+    /// One pipeline rebuild per start when a delivered tap buffer carries a
+    /// rate the pipeline's converter was not built for (the live input rate
+    /// changed after installation). Rebuilding uses the current input
+    /// format and is safe even after a tap reinstall already ran.
+    var rateRebuildRequested = false
+    /// Health restarts THIS graph instance (one call/session), not the
+    /// process-wide budget: the VP-off degraded fallback must apply to a
+    /// SECOND dead render of the SAME call. A fresh call's first recovery
+    /// must never inherit a previous call's restart and lose voice
+    /// processing (build-33 field evidence: call 2's first restart already
+    /// disabled VP because call 1 had restarted 20 s earlier).
+    var healthRestartsThisInstance = 0
     /// Instance-local count of ACCEPTED health-restart requests (this run's
     /// graph only — unlike the process-wide census this survives
     /// `DiagnosticsStore.clear()` between tests).
@@ -84,6 +109,11 @@ private final class FeedState: @unchecked Sendable {
     /// fires, so a merely slow start is never churned by a restart it does
     /// not need.
     var tapGrace: TimeInterval = 3.0
+    /// First-stage tap recovery: reinstall the tap (no engine restart, no
+    /// VP change, no budget) when the freshly started engine has delivered
+    /// NOTHING. Bounds the field-observed cold-start uplink gap to this
+    /// window; the 3 s engine-restart gate remains as the fallback.
+    var tapReinstallGrace: TimeInterval = 0.8
     /// Monotonic uptime of the most recent REAL downlink frame; the call
     /// progress tone only fills silence while this stays stale.
     var lastRealPlaybackUptime: TimeInterval?
@@ -148,6 +178,10 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     private let playback = WSPlaybackScheduler()
 
     private var inputTapInstalled = false
+    /// The input-bus format the CURRENT tap was installed with. Compared at
+    /// reinstall time to the live input format so `formatChanged` describes
+    /// a real change since installation — not two back-to-back reads.
+    private var installedCaptureFormat: AVAudioFormat?
 
     private var feedTimer: DispatchSourceTimer?
     private let feedQueue = DispatchQueue(label: "callrelay.audio.feed")
@@ -188,6 +222,14 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.lock.lock()
         guard !feed.running else { feed.lock.unlock(); return true }
         feed.lock.unlock()
+        // A competing session owns the hardware while an interruption is in
+        // progress. Starting an engine here would race it for the mic and
+        // produce a silent capture; report the truth and let the interruption
+        // lifecycle publish the next real activation.
+        if AudioSessionBridge.shared.isInterrupted {
+            DiagnosticsCensus.shared.increment("audio.graphStartBlockedInterrupted")
+            return false
+        }
 
         var captureRate = 0
         var playbackRate = 0
@@ -309,6 +351,10 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         let tapDeliveries = pipeline?.tapDeliverySnapshotCount ?? 0
         let tapGapMs = pipeline?.tapGapMaxMilliseconds ?? 0
         let tapFramesMax = pipeline?.tapFrameLengthMaxSnapshot ?? 0
+        let tapCallbacks = pipeline?.tapCallbackSnapshotCount ?? 0
+        let tapUnusable = pipeline?.tapUnusableSnapshotCount ?? 0
+        let tapRateMismatch = pipeline?.tapRateMismatchSnapshotCount ?? 0
+        let tapFirstMs = pipeline?.firstTapMilliseconds
         if tapGapMs > 0 {
             DiagnosticsCensus.shared.maximize("audio.tapGapMsMax", tapGapMs)
         }
@@ -323,6 +369,9 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             + " playConcealed=\(playback.concealedFrames)"
             + " inFlight=\(playback.framesInFlight)"
             + " tapDeliveries=\(tapDeliveries) tapGapMsMax=\(tapGapMs) tapFramesMax=\(tapFramesMax)"
+            + " tapCallbacks=\(tapCallbacks) tapUnusable=\(tapUnusable)"
+            + " tapRateMismatch=\(tapRateMismatch)"
+            + (tapFirstMs.map { " tapFirstMs=\($0)" } ?? "")
             + (feedMinConservation.map { " capMinPct=\($0)" } ?? "")
         let runSummary = " mic=\(run.mic) micSilent=\(run.micSilent) micPeak=\(run.micPeak)"
             + " micSilentDL=\(run.micSilentDL)"
@@ -357,11 +406,15 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     /// defaults stored in `FeedState`). The tap grace tracks the shared
     /// grace unless a test explicitly separates them.
     func configureHealthWindowForTest(grace: TimeInterval, stall: TimeInterval,
-                                      tapGrace: TimeInterval? = nil) {
+                                      tapGrace: TimeInterval? = nil,
+                                      tapReinstallGrace: TimeInterval? = nil) {
         feed.lock.lock()
         feed.healthGrace = grace
         feed.healthStall = stall
         feed.tapGrace = tapGrace ?? grace
+        // Test default: the reinstall stage keeps pace with the shared grace
+        // unless a test separates it explicitly (production default 0.8 s).
+        feed.tapReinstallGrace = tapReinstallGrace ?? min(0.8, max(grace, 0.05))
         feed.lock.unlock()
     }
 
@@ -381,9 +434,14 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.progressStoppedSince = nil
         feed.restartAttempted = false
         feed.restartsRequested = 0
+        feed.tapReinstalled = false
+        feed.rateRebuildRequested = false
         feed.lastTickUptime = nil
         feed.runMinConservation = nil
         feed.lock.unlock()
+        // NOTE: healthRestartsThisInstance deliberately survives a restart:
+        // it counts restarts across THIS graph instance (one call), which is
+        // the scope of the degraded VP-off fallback policy.
     }
 
     /// Called on the feed queue every tick; cheap counter snapshots only.
@@ -399,8 +457,25 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         let grace = feed.healthGrace
         let stallWindow = feed.healthStall
         let tapGraceWindow = feed.tapGrace
+        let tapReinstallGraceWindow = feed.tapReinstallGrace
+        let tapReinstalled = feed.tapReinstalled
+        let rateRebuildRequested = feed.rateRebuildRequested
         feed.lock.unlock()
         let now = ProcessInfo.processInfo.systemUptime
+        // While a real interruption owns the session, no health verdict is
+        // valid: the engine is stopped on purpose, the tap is expected to be
+        // silent, and rebuilding would fight the competing app for the mic.
+        // Hold the health clock so recovery starts with a full grace window
+        // and the watchdog never rebuilds an engine that cannot legally
+        // capture (the interruption lifecycle publishes the next activation).
+        if AudioSessionBridge.shared.isInterrupted {
+            feed.lock.lock()
+            feed.healthStartUptime = now
+            feed.lastCompleted = nil
+            feed.progressStoppedSince = nil
+            feed.lock.unlock()
+            return
+        }
         // Grace window: the engine and the first buffers need time to spin
         // up; a route handover also stops the graph, resetting the clock.
         guard now - start > grace else { return }
@@ -448,9 +523,25 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         // before its first render, and the pre-installed tap then receives
         // data immediately (no restart needed). A genuinely dead render still
         // recovers through the same bounded restart.
-        if !muted, let capture, capture.tapDeliverySnapshotCount == 0,
-           now - start > tapGraceWindow {
-            requestHealthRestart(reason: "tap-dead", now: now, generation: generation)
+        if !muted, let capture, capture.tapDeliverySnapshotCount == 0 {
+            if !tapReinstalled, now - start > tapReinstallGraceWindow {
+                // First stage: re-attach the tap with the input node's
+                // CURRENT format while the engine runs. Cheap, bounded, and
+                // it never touches voice processing or the restart budget.
+                requestTapReinstall(now: now, generation: generation)
+            } else if now - start > tapGraceWindow {
+                // Second stage: a genuinely dead render cycle still gets the
+                // bounded engine restart.
+                requestHealthRestart(reason: "tap-dead", now: now, generation: generation)
+            }
+        }
+        // Rate fence: a delivered buffer arrived at a rate the pipeline's
+        // converter was not built for. Rejected at the door already; rebuild
+        // the pipeline for the live format (bounded once per run) so uplink
+        // resumes instead of dropping every buffer.
+        if !muted, let capture, capture.hasRateMismatch,
+           !rateRebuildRequested {
+            requestRateRebuild(now: now, generation: generation)
         }
 
         // Capture-conservation EVIDENCE (2026-10-05 review: NOT a restart
@@ -471,6 +562,99 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             }
             feed.lock.unlock()
         }
+    }
+
+    private nonisolated func requestTapReinstall(now: TimeInterval, generation: UInt64) {
+        feed.lock.lock()
+        guard feed.running, feed.generation == generation, !feed.tapReinstalled else {
+            feed.lock.unlock()
+            return
+        }
+        feed.tapReinstalled = true
+        feed.lock.unlock()
+        DispatchQueue.main.async { [weak self] in
+            Task { @MainActor in
+                self?.performTapReinstall(generation: generation)
+            }
+        }
+    }
+
+    /// Rate-mismatch rebuild request: independent of `tapReinstalled` (the
+    /// tap may already have been reinstalled earlier in this run), bounded
+    /// to once per run. Reaches the same perform path, which rebuilds the
+    /// pipeline because the live rate differs.
+    private nonisolated func requestRateRebuild(now: TimeInterval, generation: UInt64) {
+        feed.lock.lock()
+        guard feed.running, feed.generation == generation, !feed.rateRebuildRequested else {
+            feed.lock.unlock()
+            return
+        }
+        feed.rateRebuildRequested = true
+        feed.lock.unlock()
+        DispatchQueue.main.async { [weak self] in
+            Task { @MainActor in
+                self?.performTapReinstall(generation: generation)
+            }
+        }
+    }
+
+    /// Main-actor tap reinstall: remove and re-attach the capture tap with
+    /// the input node's current format, keeping the engine, its render
+    /// cycle, the session and voice processing untouched. `installTap` is
+    /// explicitly allowed while the engine runs.
+    ///
+    /// Rate safety: the capture pipeline's converter is built for the
+    /// source format it was CREATED with. If the live input rate differs,
+    /// the old pipeline is fenced (non-accepting + flushed, so nothing
+    /// wrong-rate can be converted) and a fresh pipeline for the current
+    /// format replaces it before the tap is attached. `formatChanged`
+    /// compares the format this tap was ACTUALLY installed with against the
+    /// live one — the previous two-read version could never see a change
+    /// that happened between installation and reinstall.
+    private func performTapReinstall(generation: UInt64) {
+        feed.lock.lock()
+        guard feed.running, feed.generation == generation, let pipeline = feed.capture else {
+            feed.lock.unlock()
+            return
+        }
+        feed.lock.unlock()
+        // Headless runs own no engine; nothing to reinstall.
+        guard !configuredForHeadlessTesting, let engine else { return }
+        let installed = installedCaptureFormat
+        let current = engine.hardwareInputFormat
+        let formatChanged = installed?.sampleRate != current.sampleRate
+            || installed?.channelCount != current.channelCount
+            || installed?.isInterleaved != current.isInterleaved
+        var active = pipeline
+        var rebuilt = false
+        if abs(pipeline.sourceSampleRate - current.sampleRate) > 0.5 {
+            let fresh = WSCapturePipeline(sourceFormat: current)
+            feed.lock.lock()
+            let stillOwner = feed.running && feed.generation == generation
+                && feed.capture === pipeline
+            if stillOwner { feed.capture = fresh }
+            feed.lock.unlock()
+            // A newer run already owns the graph: leave ITS pipeline/tap
+            // untouched rather than fencing the wrong object.
+            guard stillOwner else { return }
+            pipeline.setAccepting(false)
+            pipeline.flushAndReset()
+            active = fresh
+            rebuilt = true
+        }
+        removeCapture()
+        installCapture(pipeline: active)
+        DiagnosticsCensus.shared.increment("audio.tapReinstall")
+        if rebuilt {
+            DiagnosticsCensus.shared.increment("audio.tapRateRebuild")
+        }
+        lastReinstallFormatChangedForTest = formatChanged
+        DiagnosticsStore.shared.log("audio",
+            "tap reinstall: formatChanged=\(formatChanged) "
+            + "rateRebuild=\(rebuilt) "
+            + "installedRate=\(Int(installed?.sampleRate ?? 0)) "
+            + "currentRate=\(Int(current.sampleRate)) ch=\(Int(current.channelCount)) "
+            + "interleaved=\(current.isInterleaved)")
     }
 
     private nonisolated func requestHealthRestart(reason: String, now: TimeInterval,
@@ -495,12 +679,6 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             DiagnosticsCensus.shared.increment("audio.engineRestartSkipped")
             return
         }
-        // Restarts BEFORE this one (the recovery policy boundary): the first
-        // restart keeps the same config; only the second dead render in the
-        // window falls back to degraded processing. Captured BEFORE the
-        // append — reading the count later at perform time would count this
-        // very restart and disable VP on the FIRST recovery.
-        let priorRestarts = budget.timestamps.count
         budget.timestamps.append(now)
         budget.lock.unlock()
 
@@ -508,36 +686,37 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         DiagnosticsCensus.shared.increment("audio.engineRestart.\(reason)")
         DispatchQueue.main.async { [weak self] in
             Task { @MainActor in
-                self?.performHealthRestart(reason: reason, generation: generation,
-                                           priorRestarts: priorRestarts)
+                self?.performHealthRestart(reason: reason, generation: generation)
             }
         }
     }
 
     /// Main-actor restart: rebuild the engine once, verifying the graph
     /// generation so a queued restart can never hit a newer run. Recovery
-    /// policy (bounded, measured): the FIRST health restart in the current
-    /// window keeps the SAME voice-processing configuration — a cold start
-    /// without `prepare()` is the suspected one-off race, so the rebuild
-    /// adds engine prepare(). Only a SECOND dead render in the same window
-    /// (`priorRestarts >= 1`) falls back to VP OFF, logged explicitly as
-    /// degraded processing (no AEC/AGC and lowered playback per the
-    /// voice-chat mode contract). `priorRestarts` is captured at REQUEST
-    /// time (before the budget append) so a stale or superseded perform can
-    /// never miscount or degrade a different run. The process-wide budget
-    /// (3 restarts / 600 s) bounds the fallback automatically.
-    private func performHealthRestart(reason: String, generation: UInt64,
-                                      priorRestarts: Int) {
+    /// policy (bounded, measured): the FIRST health restart of THIS graph
+    /// instance (one call/session) keeps the SAME voice-processing
+    /// configuration — a cold start without `prepare()` is the suspected
+    /// one-off race, so the rebuild adds engine prepare(). Only a SECOND
+    /// dead render in the SAME instance falls back to VP OFF, logged
+    /// explicitly as degraded processing (no AEC/AGC and lowered playback
+    /// per the voice-chat mode contract). The instance counter is captured
+    /// under the same lock as the generation fence, so a stale or
+    /// superseded perform can never degrade a different run. The
+    /// process-wide budget (3 restarts / 600 s) still bounds total churn.
+    private func performHealthRestart(reason: String, generation: UInt64) {
         feed.lock.lock()
         guard feed.running, feed.generation == generation else { feed.lock.unlock(); return }
+        feed.healthRestartsThisInstance += 1
+        let instanceRestartIndex = feed.healthRestartsThisInstance
         feed.lock.unlock()
-        if priorRestarts >= 1 && voiceProcessingEnabled {
+        if instanceRestartIndex > 1 && voiceProcessingEnabled {
             voiceProcessingEnabled = false
             DiagnosticsStore.shared.log("audio",
                 "engine health restart: \(reason); degraded processing fallback: "
                 + "voice processing OFF (no echo cancellation/gain correction, lowered playback)")
         } else {
-            DiagnosticsStore.shared.log("audio", "engine health restart: \(reason)")
+            DiagnosticsStore.shared.log("audio",
+                "engine health restart: \(reason); instanceRestart=\(instanceRestartIndex)")
         }
         // Headless runs own no engine; restarting them would build a real
         // AVAudioEngine inside unit tests for no diagnostic value.
@@ -551,15 +730,14 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     private func installCapture(pipeline: WSCapturePipeline) {
         guard let engine else { return }
         let format = engine.hardwareInputFormat
-        let interleaved = format.isInterleaved
-        let channels = Int(max(1, format.channelCount))
+        installedCaptureFormat = format
         engine.installInputTap(bufferSize: 1024, format: format) { buffer in
             // Realtime/nonisolated queue: ONLY lock-owned work; no main-actor
             // state is touched here. The captured pipeline object belongs to
             // this engine run: after stop() the tap is removed, and even a
             // late tap appends into the now-dead pipeline that no scheduler
             // reads — it can never reach the new run.
-            pipeline.appendTap(buffer: buffer, interleaved: interleaved, channels: channels)
+            pipeline.appendTap(buffer: buffer)
         }
         inputTapInstalled = true
     }
@@ -577,6 +755,15 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         let pipeline = feed.capture
         feed.lock.unlock()
         pipeline?.appendSamples(samples)
+    }
+
+    /// Test injection of a raw tap buffer (honours the pipeline's rate
+    /// fence exactly like the production tap callback).
+    func injectTapBufferForTest(_ buffer: AVAudioPCMBuffer) {
+        feed.lock.lock()
+        let pipeline = feed.capture
+        feed.lock.unlock()
+        pipeline?.appendTap(buffer: buffer)
     }
 
     /// Drives one cadence tick on the feed queue (serial with the timer),
@@ -785,6 +972,19 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.lock.unlock()
         return pipeline?.pendingSnapshotCount ?? 0
     }
+
+    /// Test seam: source sample rate of the live capture pipeline (nil while
+    /// stopped). A rate-changing reinstall must rebuild the pipeline.
+    var captureSourceRateForTest: Double? {
+        feed.lock.lock()
+        let pipeline = feed.capture
+        feed.lock.unlock()
+        return pipeline?.sourceSampleRate
+    }
+
+    /// Test seam: the truthful `formatChanged` verdict of the most recent
+    /// tap reinstall (nil before any reinstall).
+    private(set) var lastReinstallFormatChangedForTest: Bool?
 
     /// Test seam: current median inter-tap gap of the live pipeline.
     var tapGapMedianProbeForTest: TimeInterval? {

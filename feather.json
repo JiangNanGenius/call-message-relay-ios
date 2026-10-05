@@ -11,11 +11,21 @@
    "bundleIdentifier": "com.jiangnangenius.callrelay",
    "developerName": "JiangNanGenius",
    "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
-   "localizedDescription": "CallRelay 0.3.10（build 17）纯原生版：不含任何网页推送桥接。未签名 IPA，需自行使用证书与描述文件签名后安装。",
+   "localizedDescription": "CallRelay 0.3.34（build 41）纯原生版：修复来电系统界面上报链路——重复 VoIP 推送只有在系统已接受上报或上报仍在进行时才去重，被拒绝/未决的上报可由后续推送（有界）重试；上报进行中到达的真实主叫号不再丢失，会立即刷新或用于一次重试；LCK 上报接受/拒绝结果（仅 domain/code，无号码）写入脱敏诊断；系统音频回调不再内联执行引擎/会话工作，音频事件经投递顺序 FIFO 在主 actor 上应用并以 epoch 防陈旧。未签名 IPA，需自行使用证书与描述文件签名后安装；真机系统来电界面验收仍由用户完成。",
    "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
    "tintColor": "135CDC",
    "beta": true,
    "versions": [
+    {
+     "version": "0.3.34",
+     "buildVersion": "41",
+     "date": "2026-10-05T19:20:22Z",
+     "minOSVersion": "17.0",
+     "size": 14097419,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.34/CallRelay-Feather-Native-0.3.34-41-unsigned.ipa",
+     "localizedDescription": "CallRelay 0.3.34（build 41）纯原生版：修复来电系统界面上报链路——重复 VoIP 推送只有在系统已接受上报或上报仍在进行时才去重，被拒绝/未决的上报可由后续推送（有界）重试；上报进行中到达的真实主叫号不再丢失，会立即刷新或用于一次重试；LCK 上报接受/拒绝结果（仅 domain/code，无号码）写入脱敏诊断；系统音频回调不再内联执行引擎/会话工作，音频事件经投递顺序 FIFO 在主 actor 上应用并以 epoch 防陈旧。未签名 IPA，需自行使用证书与描述文件签名后安装；真机系统来电界面验收仍由用户完成。",
+     "sha256": "54d1912e7590cc88c48e99a26cf8d540316a6762545e099bd41a0971872f69db"
+    },
     {
      "version": "0.3.10",
      "buildVersion": "17",
@@ -147,10 +157,10 @@
      "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
     }
    ],
-   "version": "0.3.10",
-   "versionDate": "2026-10-04T06:44:51Z",
-   "size": 13173515,
-   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.10/CallRelay-Feather-Native-0.3.10-17-unsigned.ipa",
+   "version": "0.3.34",
+   "versionDate": "2026-10-05T19:20:22Z",
+   "size": 14097419,
+   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.34/CallRelay-Feather-Native-0.3.34-41-unsigned.ipa",
    "appPermissions": {
     "entitlements": [
      "aps-environment"
@@ -166,7 +176,7 @@
      },
      {
       "name": "NSContactsUsageDescription",
-      "usageDescription": "用于在联系人中选择号码拨号或发短信、在最近通话/短信中显示联系人姓名，并可按你的选择将通讯录号码视为可信发件人。App 不会上传或备份你的通讯录。"
+      "usageDescription": "用于在联系人中选择号码拨号或发短信、在最近通话/短信中显示联系人姓名，并可按你的选择将通讯录号码视为可信发件人。只有你主动点击“同步到网关”时，联系人会通过加密连接保存到你的自有网关，供同一配对密钥的设备使用；App 不会修改或删除系统通讯录，也不会发送给第三方。"
      }
     ]
    },

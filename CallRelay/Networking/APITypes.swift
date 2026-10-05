@@ -94,6 +94,9 @@ protocol GatewayAPI: Sendable {
     /// v2: side-effect-free measurement socket (ping/pong only) used to
     /// sample relay RTT while media runs over direct ICE.
     func mediaMeasureWebSocketRequest(callId: String) async throws -> URLRequest
+    /// v2: call-independent relay measurement socket (ping/pong only) used by
+    /// the foreground idle route screen. Never attaches to a call's media.
+    func mediaRelayProbeWebSocketRequest() async throws -> URLRequest
     /// v2: attaches a DETACHED echo probe for candidate-quality measurement.
     /// The probe never disturbs the live media path; the answer is a normal
     /// SDP answer for the isolated probe peer connection.
@@ -115,8 +118,25 @@ protocol GatewayAPI: Sendable {
     func attachMediaPreflight(sdp: String) async throws -> V2PreflightAnswer
     /// v2: discards the device-scoped preflight probe (safe no-op).
     func discardMediaPreflight(preflightId: String) async throws
+    /// v2: extends the server TTL of the still-registered device-scoped
+    /// preflight candidate IN PLACE (same id and peer connection, no new
+    /// negotiation). Throws an honest 404 when the id expired or was
+    /// superseded; the caller then rebuilds a fresh candidate.
+    func renewMediaPreflight(preflightId: String) async throws -> V2PreflightRenewAnswer
     func sync(after: Int64, limit: Int) async throws -> SyncResponse
     func registerPush(registration: PushRegistration, idempotencyKey: String) async throws
+    /// v2: uploads the device's system contacts to the pairing-key principal.
+    /// Upsert-only — the gateway merges repeated imports and never deletes a
+    /// contact because it was missing from an upload.
+    func syncContacts(_ request: ContactSyncRequest, idempotencyKey: String) async throws -> ContactSyncResult
+    /// v2: designated-backup availability/incident view for Settings.
+    func notificationsStatus() async throws -> GatewayNotificationStatus
+
+    /// Anonymous `/health` snapshot. The push section lets the UI distinguish
+    /// "token registered" from "gateway can actually send" (a gateway with no
+    /// configured APNs broker accepts registrations and never delivers) and
+    /// compare the broker's environment with the app's signed one.
+    func gatewayHealth() async throws -> GatewayHealth
 
     // MARK: SMS
     func listThreads() async throws -> [MessageThread]
@@ -405,6 +425,18 @@ struct DeviceEnvelope: Decodable, Equatable, Sendable {
     let lines: [AuthorizedLine]
 }
 
+/// Gateway push readiness from the anonymous `/health` endpoint.
+struct GatewayPushHealth: Decodable, Equatable, Sendable {
+    let configured: Bool
+    let environment: String?
+}
+
+struct GatewayHealth: Decodable, Equatable, Sendable {
+    let status: String?
+    let version: String?
+    let push: GatewayPushHealth?
+}
+
 struct EnrollmentRequest: Encodable, Sendable {
     let enrollmentKey: String
     let deviceName: String
@@ -493,6 +525,21 @@ extension GatewayAPI {
         throw APIError.notReady("当前配对不支持删除对话。")
     }
 
+    /// v1/demo transports have no unified health surface.
+    func gatewayHealth() async throws -> GatewayHealth {
+        throw APIError.notReady("当前配对没有统一网关健康接口。")
+    }
+
+    /// v1/demo transports have no principal-scoped contacts.
+    func syncContacts(_ request: ContactSyncRequest, idempotencyKey: String) async throws -> ContactSyncResult {
+        throw APIError.notReady("当前配对不是统一网关，无法同步通讯录。")
+    }
+
+    /// v1/demo transports have no service-alert status.
+    func notificationsStatus() async throws -> GatewayNotificationStatus {
+        throw APIError.notReady("当前配对不是统一网关，无法获取提醒状态。")
+    }
+
     func decline(callId: String, idempotencyKey: String) async throws {
         throw APIError.notReady("当前配对不支持本地忽略来电。")
     }
@@ -565,11 +612,19 @@ extension GatewayAPI {
         throw APIError.notReady("当前配对不支持媒体探测。")
     }
 
+    func renewMediaPreflight(preflightId: String) async throws -> V2PreflightRenewAnswer {
+        throw APIError.notReady("当前配对不支持媒体探测。")
+    }
+
     func conferenceMediaWebSocketRequest(conferenceId: String) async throws -> URLRequest {
         throw APIError.notReady("当前配对不支持 WebSocket 音频。")
     }
 
     func mediaMeasureWebSocketRequest(callId: String) async throws -> URLRequest {
+        throw APIError.notReady("当前配对不支持线路质量测量。")
+    }
+
+    func mediaRelayProbeWebSocketRequest() async throws -> URLRequest {
         throw APIError.notReady("当前配对不支持线路质量测量。")
     }
 

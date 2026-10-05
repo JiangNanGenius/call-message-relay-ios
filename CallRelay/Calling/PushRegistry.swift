@@ -16,6 +16,10 @@ final class PushRegistry: NSObject {
     var handler: VoIPPushHandling?
     var onVoIPToken: ((Data) -> Void)?
     var onTokenInvalidated: (() -> Void)?
+    /// Called the moment a VoIP push reaches PushKit, before parsing/deciding.
+    /// This is the app's strongest available delivery evidence; callers must
+    /// not interpret APNs acceptance or a live socket as delivery.
+    var onVoIPPushReceived: (() -> Void)?
     /// Called when a VoIP push with `mustReport` cannot be reported as a real
     /// gateway call (malformed/foreign/stale). The conformer reports a minimal
     /// placeholder call and ends it, awaiting completion so the push
@@ -89,6 +93,7 @@ extension PushRegistry: PKPushRegistryDelegate {
             // "never rang" report hinges on knowing whether APNs delivery
             // reached PushKit at all. Keys count and push type only — never
             // values.
+            onVoIPPushReceived?()
             DiagnosticsStore.shared.log("push",
                 "voip push received keys=\(payload.dictionaryPayload.count) mustReport=\(mustReport)")
             switch VoIPPushPayloadParser.parse(payload.dictionaryPayload) {

@@ -13,25 +13,27 @@ import AVFoundation
 /// coordinator through the WSS path with a scripted socket and assert the
 /// graph starts exactly when the system session activates.
 @MainActor
-final class WSSAudioHandoffTests: XCTestCase {
-    private final class Graph: WebSocketCallMedia.WSAudioGraphing {
-        var onMicFrame: (([Int16]) -> Void)?
-        private(set) var startCount = 0
-        private(set) var stopCount = 0
-        var isRunning: Bool { startCount > stopCount }
-        @discardableResult
-        func startIfNeeded() -> Bool {
-            // Model the real graph's re-entry guard: repeated activations
-            // (CallKit can deliver didActivate more than once) must not
-            // restart the engine.
-            guard !isRunning else { return true }
-            startCount += 1
-            return true
-        }
-        func stop() { stopCount += 1 }
-        func setMicMuted(_ muted: Bool) { }
-        func pushPlayback(_ frame: [Int16]) { }
+final class Graph: WebSocketCallMedia.WSAudioGraphing {
+    var onMicFrame: (([Int16]) -> Void)?
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+    var isRunning: Bool { startCount > stopCount }
+    @discardableResult
+    func startIfNeeded() -> Bool {
+        // Model the real graph's re-entry guard: repeated activations
+        // (CallKit can deliver didActivate more than once) must not
+        // restart the engine.
+        guard !isRunning else { return true }
+        startCount += 1
+        return true
     }
+    func stop() { stopCount += 1 }
+    func setMicMuted(_ muted: Bool) { }
+    func pushPlayback(_ frame: [Int16]) { }
+}
+
+@MainActor
+final class WSSAudioHandoffTests: XCTestCase {
 
     private struct WSSetup {
         let coordinator: CallCoordinator

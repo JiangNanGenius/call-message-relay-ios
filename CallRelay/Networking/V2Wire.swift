@@ -59,6 +59,19 @@ struct V2CommitProbeRequest: Encodable, Equatable {
     let preflightId: String?
 }
 
+/// `/api/v2/media/probe/renew` body: extend the SAME registered candidate's
+/// server TTL in place (no SDP, no renegotiation).
+struct V2PreflightRenewRequest: Encodable, Equatable {
+    let preflightId: String
+}
+
+/// `/api/v2/media/probe/renew` response: the refreshed server TTL for the
+/// unchanged preflight id. `ttlMs` counts from the renewal instant.
+struct V2PreflightRenewAnswer: Decodable, Equatable {
+    let preflightId: String
+    let ttlMs: Int64
+}
+
 struct V2DevicePreferencesRequest: Encodable, Equatable {
     let defaultLineId: String
 }
@@ -167,4 +180,69 @@ struct V2CallView: Decodable {
             mediaTransport: mediaTransport
         )
     }
+}
+
+// MARK: - Contacts sync (principal-scoped) and service-alert status
+
+/// One labeled value in an uploaded contact.
+struct ContactSyncField: Codable, Equatable {
+    let label: String
+    let value: String
+}
+
+/// One mobile→gateway contact upload. `clientRef` is the device's stable
+/// system-contacts identifier: the gateway uses it to absorb repeated imports
+/// without duplicating and to refuse resurrecting a contact the owner deleted
+/// elsewhere.
+struct ContactSyncEntry: Codable, Equatable {
+    let clientRef: String
+    let displayName: String
+    let givenName: String
+    let familyName: String
+    let organization: String
+    let nickname: String
+    /// Pinyin/T9 search signature computed on-device (the server never
+    /// transliterates CJK); empty for non-CJK names.
+    let searchKey: String
+    let phones: [ContactSyncField]
+    let emails: [ContactSyncField]
+    let urls: [ContactSyncField]
+}
+
+struct ContactSyncRequest: Encodable, Equatable {
+    let contacts: [ContactSyncEntry]
+}
+
+struct ContactSyncResult: Decodable, Equatable {
+    let revision: Int64
+    let created: Int
+    let updated: Int
+    let unchanged: Int
+    let skipped: Int
+    let total: Int
+}
+
+/// One open service-alert incident on a line (arrears or network).
+struct GatewayNotificationIncident: Decodable, Equatable {
+    let lineId: String
+    let cause: String
+    let openedAt: String?
+    let faultNotified: Bool?
+    let arrearsNotified: Bool?
+    let recoveryNotified: Bool?
+}
+
+/// `/api/v2/notifications/status`: the designated-line availability view the
+/// Settings screen renders. Line name/tail are blanked server-side for keys
+/// without access to that line.
+struct GatewayNotificationStatus: Decodable, Equatable {
+    let enabled: Bool
+    let availability: String
+    let lineId: String?
+    let lineName: String?
+    let lineTail: String?
+    let lastProbeAt: Int64?
+    let lastProbeResult: String?
+    let agentState: String?
+    let incidents: [GatewayNotificationIncident]?
 }

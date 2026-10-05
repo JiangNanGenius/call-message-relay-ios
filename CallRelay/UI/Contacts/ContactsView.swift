@@ -41,6 +41,16 @@ private struct ContactsContent: View {
                             } label: {
                                 Label("导入联系人", systemImage: "square.and.arrow.down")
                             }
+                            Divider()
+                            Button {
+                                model.syncContactsToGateway()
+                            } label: {
+                                Label("同步到网关（同密钥设备共享）", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .disabled(model.contactSyncStatus == .syncing)
+                            if model.contactSyncStatus != .idle {
+                                Text(model.contactSyncStatus.summary)
+                            }
                         } label: {
                             Image(systemName: "ellipsis.circle")
                         }

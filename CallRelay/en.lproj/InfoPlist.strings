@@ -5,7 +5,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>The camera is used to scan the pairing QR code shown on the gateway; you can also paste the pairing content instead.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Used to pick numbers from contacts for dialing or texting, show contact names in recents and messages, and optionally trust your contacts as senders. The app never uploads or backs up your contacts.</string>
+	<string>Used to pick numbers from contacts for dialing or texting, show contact names in recents and messages, and optionally trust your contacts as senders. Only when you tap “Sync to gateway” are contacts saved over an encrypted connection to your own gateway for devices using the same pairing key. The app never modifies or deletes your system contacts and never sends them to third parties.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>The microphone is used during calls to send your voice to the other party through the gateway.</string>
 </dict>

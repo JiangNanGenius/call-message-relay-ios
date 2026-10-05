@@ -68,6 +68,35 @@ final class MediaProbeControllerTests: XCTestCase {
                        "cancelling a detached probe must not toggle shared audio")
     }
 
+    /// The route audio gate counts ONLY post-adoption advancing two-way RTP
+    /// with the RTC session enabled — never a lifetime or pre-adoption total.
+    func testAudioFlowEvidenceRequiresPostAdoptionAdvancement() {
+        XCTAssertFalse(MediaProbeController.audioFlowEvidence(
+            adopted: false, rtcAudioEnabled: true,
+            inboundPackets: 500, outboundPackets: 500,
+            baselineInbound: 0, baselineOutbound: 0),
+            "a detached probe can never prove audio flow")
+        XCTAssertFalse(MediaProbeController.audioFlowEvidence(
+            adopted: true, rtcAudioEnabled: false,
+            inboundPackets: 500, outboundPackets: 500,
+            baselineInbound: 0, baselineOutbound: 0),
+            "an enabled RTC audio session is required")
+        XCTAssertFalse(MediaProbeController.audioFlowEvidence(
+            adopted: true, rtcAudioEnabled: true,
+            inboundPackets: 500, outboundPackets: 500,
+            baselineInbound: 500, baselineOutbound: 500),
+            "lifetime counters that do not ADVANCE after adoption are not proof")
+        XCTAssertFalse(MediaProbeController.audioFlowEvidence(
+            adopted: true, rtcAudioEnabled: true,
+            inboundPackets: 504, outboundPackets: 2,
+            baselineInbound: 500, baselineOutbound: 0),
+            "both directions must advance")
+        XCTAssertTrue(MediaProbeController.audioFlowEvidence(
+            adopted: true, rtcAudioEnabled: true,
+            inboundPackets: 505, outboundPackets: 3,
+            baselineInbound: 500, baselineOutbound: 0))
+    }
+
     func testCandidateTypeExtractedFromSDPLine() {
         let host = "candidate:1 1 udp 2130706431 192.168.10.163 40123 typ host generation 0"
         let srflx = "candidate:2 1 udp 1694498815 43.161.240.56 5000 typ srflx raddr ..."

@@ -29,7 +29,7 @@ configs:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.20"
+    MARKETING_VERSION: "0.3.34"
     # v0.3.5 public build 9 stays immutable. Build 12 (0.3.5) was the
     # TestFlight CloudKit/WSS/LCK repair; build 13 ships the build-12 crash,
     # iCloud, push-environment and audio fixes in BOTH editions and adds the
@@ -67,9 +67,108 @@ settings:
     # tap installs BEFORE the engine starts (every build-21 cold call opened
     # with a ~2 s zero-delivery tap and a forced watchdog restart; the precise
     # mechanism is a hypothesis, the pre-start install is the canonical
-    # pattern) and the tap-dead verdict gets its own longer grace so a merely
+    # pattern) and the tap-dead verdict gets its longer grace so a merely
     # slow start is never churned by a restart it does not need.
-    CURRENT_PROJECT_VERSION: "27"
+    # Build 30 (0.3.23) pairs with the gateway audio repair: the worker
+    # pre-rotates the QDC507 voice route at RING and before ATD (no more
+    # silent first seconds), the daemon reports the codec actually
+    # negotiated and waits for the worker bridge before greeting the
+    # phone, and aplay/arecord exit/stderr reasons are preserved so the
+    # next device test shows an observable failure cause. The SMS
+    # delete surface (permanent Edit entry in the list, swipe/context
+    # actions and the in-conversation delete menu) ships as the
+    # production entry point.
+    # Build 31 (0.3.24) adds a content-level 管理信息 row at the top of
+    # the SMS list (visible before any editing, independent of the nav
+    # toolbar) that enters the same native bulk mark-read/delete mode.
+    # Build 32 (0.3.25) pairs with the gateway SMS septet-alignment fix and
+    # the single-pacer uplink playback fix; the lock-screen row now shows the
+    # source-backed push readiness state instead of a static instruction.
+    # Build 33 (0.3.26) is a signing-only release: Scripts/sign-native-ipa.sh
+    # now merges application-identifier / com.apple.developer.team-identifier /
+    # get-task-allow from the certificate-verified provisioning profile into the
+    # signing entitlements (build 32 omitted them and iOS refused to install)
+    # and Scripts/verify-signed-ipa.py audits the package before delivery. No
+    # app behaviour or gateway protocol changed.
+    # Build 34 (0.3.27) repairs the build-33 field defects: the voice-chat
+    # session is configured before system activation (never racing
+    # AVAudioEngine.start()), a zero-delivery tap is first recovered by a
+    # bounded tap reinstall (0.8 s) instead of always spending a 3 s engine
+    # restart, the VP-off degraded fallback is scoped to a second dead render
+    # of the SAME call (a new call no longer inherits a previous call's
+    # restart), tap-callback/unusable/first-delivery evidence is logged, and
+    # the route detail now labels stopped/post-call measurements truthfully
+    # (a late terminal route state can no longer resurrect a frozen
+    # "本次通话实时" surface).
+    # Build 35 (0.3.28) makes the idle preflight candidate ACTUALLY
+    # selectable and bounds startup route measurement: the call-start handoff
+    # is taken before the WSS media setup (build 34 cancelled the probe in
+    # `callWillStart()` before `consumeHandoff()`, so a connected, measured
+    # candidate was never adopted), auto waits a bounded window for BOTH
+    # sides' fresh measured RTT instead of declining on the freshly connected
+    # relay's empty sample list, and when no handoff exists ONE bounded
+    # startup opportunity measures a detached candidate in PARALLEL with the
+    # audible relay and upgrades only on sustained material improvement
+    # (single promotion, 20% median, jitter/loss ceilings), then pins the
+    # route. A connected candidate is kept adoptable continuously by renewing
+    # its server TTL in place (no renegotiation; builds without the renewal
+    # route fall back to a fresh attach). Every adoption is gated on
+    # ADVANCING two-way RTC audio since adoption (inbound + outbound RTP with
+    # the RTC session enabled) within a bounded window; on failure the call
+    # returns to a freshly staged relay with bounded attach retries. Because
+    # the gateway's atomic commit closes the old WSS host AT adoption, the
+    # handover is a single-owner sequential cutover and is explicitly NOT
+    # claimed to be gapless. The selection logs its measured decision inputs
+    # (sample counts, medians, jitter, stalls, wait, reason). Audio
+    # capture/playback paths are untouched.
+    # Build 36 (0.3.29) repairs the direct-route silent-audio root cause and
+    # adds the manual escape. The gateway's adopted preflight now continues
+    # the probe's RTP sequence number and 48 kHz timestamp instead of
+    # restarting at 0/0: the phone's receiver had already consumed the
+    # probe's silence stream on the same SSRC, so every post-adoption packet
+    # looked like a stale replay (RFC 3550 old-packet / NetEq duplicate
+    # logic) and the modem audio was discarded until the counters caught
+    # back up — 18 s of perceived silence in the build-35 field call, longer
+    # than the call itself. The client also makes the in-call route menu's
+    # explicit relay choice a real make-before-break escape (stage a fresh
+    # WSS attach, promote it, then close the direct peer) instead of a
+    # next-call-only preference; a failed escape keeps the current transport
+    # and reports it, and tapping relay again retries.
+    # Build 38 (0.3.31) fences relay quality after route handover (no false
+    # "音频已中断") and adopts a fresh warm direct candidate before relay on
+    # the first call. Build 39 (0.3.32) adds ordinary (non-VoIP) carrier
+    # arrears / designated-backup-network alerts with permission handling and
+    # Settings status, plus principal-scoped gateway contacts sync (explicit
+    # upsert-only action; system Contacts are only read). The web PWA gets a
+    # contacts tab with vCard import preview/result, search/edit/delete/export
+    # and pinyin suggestions. No call-audio or network-protocol changes.
+    # Build 40 (0.3.33) serializes the cross-app audio lifecycle: the shared
+    # AVAudioSession bridge now owns explicit system/self-managed ownership
+    # plus interruption-began/ended, route-change and media-services
+    # reset/lost observers. A real system activation is authoritative and
+    # ends a pending interruption even when the OS delivers only `began`
+    # (RTCAudioSession.mm contract); system-managed sessions never call
+    # setActive(true) while a competing session may own audio; self-managed
+    # recovery is bounded (2 attempts) and fenced by event epochs and an
+    # explicit live-call audio demand, so a hangup followed by late
+    # interruption/media-reset notifications can never reopen the microphone.
+    # Deactivation is forwarded to the adopted direct peer and staged relay
+    # handovers keep exactly one mic owner; the engine watchdog and start path
+    # are suppressed while actually interrupted, route changes revalidate the
+    # capture format, and a minimal honest status line replaces any silent
+    # pretend-success. No gateway, network, PCM/codec or dialing changes.
+    # Build 41 (0.3.34) repairs the incoming system-UI reporting path: a push
+    # is suppressed only while a report is in flight, the SYSTEM accepted it,
+    # or no bounded attempt remains — in-app tracking alone no longer swallows
+    # a repeated must-report push, and a rejected/unresolved report is
+    # observable and re-reportable. A caller id that arrives during the
+    # report await is retained and applied/retried instead of dropped.
+    # LCK report acceptance/rejection is exported (domain/code, no caller
+    # data). Audio-session/engine work no longer runs inline in system
+    # callbacks: bridge events are applied through a delivery-ordered FIFO on
+    # the main actor with epoch fencing, and the voice-chat session is
+    # configured when a call actually starts audio, not on the push path.
+    CURRENT_PROJECT_VERSION: "41"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.
@@ -143,7 +242,7 @@ targets:
           - audio
         NSMicrophoneUsageDescription: 通话时需要使用麦克风，将你的语音经网关发送到对方。
         NSCameraUsageDescription: 扫描网关上显示的配对二维码时需要使用相机；也可以选择粘贴配对内容。
-        NSContactsUsageDescription: 用于在联系人中选择号码拨号或发短信、在最近通话/短信中显示联系人姓名，并可按你的选择将通讯录号码视为可信发件人。App 不会上传或备份你的通讯录。
+        NSContactsUsageDescription: 用于在联系人中选择号码拨号或发短信、在最近通话/短信中显示联系人姓名，并可按你的选择将通讯录号码视为可信发件人。只有你主动点击“同步到网关”时，联系人会通过加密连接保存到你的自有网关，供同一配对密钥的设备使用；App 不会修改或删除系统通讯录，也不会发送给第三方。
         ITSAppUsesNonExemptEncryption: false
     entitlements:
       path: CallRelay/CallRelay.entitlements

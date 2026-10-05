@@ -39,6 +39,26 @@ final class WSCapturePipeline: @unchecked Sendable {
     /// distinguishes a dead engine render cycle — zero tap deliveries —
     /// from a merely quiet microphone).
     private(set) var tapDeliveryCount: Int = 0
+    /// RAW tap callback count (including unusable/empty buffers). Delivery
+    /// count alone cannot distinguish "the engine never pulled input" from
+    /// "it pulled but the buffer format was not decodable"; the server-side
+    /// field review needs that split. Bounded counters only.
+    private(set) var tapCallbackCount: Int = 0
+    /// Callbacks dropped because the buffer was empty or its format was not
+    /// extractable. Non-zero with callbacks > 0 proves a format/size
+    /// contract problem, not a dead render cycle.
+    private(set) var tapUnusableCount: Int = 0
+    /// Callbacks dropped because the buffer's SAMPLE RATE no longer matches
+    /// the pipeline's converter source format. Converting those through the
+    /// stale-rate converter would silently pitch-shift the uplink, so they
+    /// are rejected at the door and flagged for a bounded pipeline rebuild.
+    private(set) var tapRateMismatchCount: Int = 0
+    private var rateMismatchDetected = false
+    /// Wall-clock (monotonic uptime) of the FIRST accepted delivery and of
+    /// pipeline creation: `firstTapMs` in the stop log bounds how long a
+    /// graph ran before capture actually started.
+    private(set) var firstDeliveryUptime: TimeInterval?
+    let createdAt: TimeInterval = ProcessInfo.processInfo.systemUptime
     /// Largest observed gap between tap deliveries. A healthy 20 ms cycle
     /// stays ~20 ms; field evidence showed 100 ms-1 s gaps (input render
     /// starvation), which this records per run so the next physical check
@@ -79,11 +99,37 @@ final class WSCapturePipeline: @unchecked Sendable {
 
     // MARK: Tap side (nonisolated, realtime-safe: allocation + lock only)
 
-    /// Appends one tap buffer, deinterleaving channel 0 when required.
-    func appendTap(buffer: AVAudioPCMBuffer, interleaved: Bool, channels: Int) {
-        guard let samples = Self.extractChannelZero(buffer: buffer,
-                                                    interleaved: interleaved,
-                                                    channels: channels) else { return }
+    /// Appends one tap buffer. Interleaving and channel count are read from
+    /// the DELIVERED buffer's own format, not captured once from
+    /// `inputNode.outputFormat`: if the engine's input bus format changes
+    /// between tap installation and the first render cycle (the suspected
+    /// cold-start race), extraction stays correct instead of silently
+    /// dropping every buffer.
+    func appendTap(buffer: AVAudioPCMBuffer) {
+        lock.lock()
+        tapCallbackCount += 1
+        lock.unlock()
+        // RATE FENCE: the converter is built for `sourceFormat.sampleRate`;
+        // feeding it samples actually captured at another rate produces
+        // wrong-speed audio. Reject truthfully, flag a rebuild.
+        if buffer.frameLength > 0,
+           abs(buffer.format.sampleRate - sourceFormat.sampleRate) > 0.5 {
+            lock.lock()
+            tapRateMismatchCount += 1
+            rateMismatchDetected = true
+            lock.unlock()
+            return
+        }
+        guard let samples = Self.extractChannelZero(
+            buffer: buffer,
+            interleaved: buffer.format.isInterleaved,
+            channels: Int(max(1, buffer.format.channelCount))
+        ) else {
+            lock.lock()
+            tapUnusableCount += 1
+            lock.unlock()
+            return
+        }
         appendSamples(samples, frameLength: Int(buffer.frameLength))
     }
 
@@ -94,6 +140,7 @@ final class WSCapturePipeline: @unchecked Sendable {
         let uptime = ProcessInfo.processInfo.systemUptime
         lock.lock()
         guard accepting else { lock.unlock(); return }
+        if tapDeliveryCount == 0 { firstDeliveryUptime = uptime }
         tapDeliveryCount += 1
         if let last = lastTapUptime {
             let gap = uptime - last
@@ -223,6 +270,40 @@ final class WSCapturePipeline: @unchecked Sendable {
     var tapFrameLengthMaxSnapshot: Int {
         lock.lock(); defer { lock.unlock() }
         return tapFrameLengthMax
+    }
+
+    var tapCallbackSnapshotCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return tapCallbackCount
+    }
+
+    var tapUnusableSnapshotCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return tapUnusableCount
+    }
+
+    /// Milliseconds from pipeline creation to the first ACCEPTED tap
+    /// delivery; nil while no delivery ever arrived. Proof of how long a
+    /// graph ran with a dead (or unusable) capture.
+    var firstTapMilliseconds: Int? {
+        lock.lock(); defer { lock.unlock() }
+        guard let firstDeliveryUptime else { return nil }
+        return Int(((firstDeliveryUptime - createdAt) * 1000).rounded())
+    }
+
+    /// Sample rate the converter was built for (immutable per pipeline).
+    var sourceSampleRate: Double { sourceFormat.sampleRate }
+
+    var tapRateMismatchSnapshotCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return tapRateMismatchCount
+    }
+
+    /// True once a delivered buffer carried a rate the converter cannot
+    /// process; the graph rebuilds the pipeline with the current format.
+    var hasRateMismatch: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return rateMismatchDetected
     }
 
     /// Rolling-window capture-conservation snapshot: (delivered samples,

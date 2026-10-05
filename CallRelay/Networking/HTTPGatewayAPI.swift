@@ -152,6 +152,17 @@ final class HTTPGatewayAPI: GatewayAPI {
         return try decoder.decode(IdentityResponse.self, from: data)
     }
 
+    func gatewayHealth() async throws -> GatewayHealth {
+        guard isV2 else { throw APIError.notReady("当前配对没有统一网关健康接口。") }
+        // Anonymous like /identity: readiness must be readable even when the
+        // token path is being repaired.
+        let request = try makeRequest(path: "health", method: "GET", queryItems: [])
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.network(URLError(.badServerResponse)) }
+        guard (200..<300).contains(http.statusCode) else { throw try error(from: http, data: data) }
+        return try decoder.decode(GatewayHealth.self, from: data)
+    }
+
     func gatewayInfo() async throws -> GatewayResponse {
         if isV2 {
             // v2 has no `/gateway`; the anonymous identity handshake is the
@@ -337,6 +348,15 @@ final class HTTPGatewayAPI: GatewayAPI {
         return try await authorizedWebSocketRequest(path: "calls/\(callId)/media/measure")
     }
 
+    /// Call-independent relay measurement socket: the same authenticated
+    /// relay transport a WSS call uses, JSON ping/pong only. Used while the
+    /// app is idle/foreground so the route picker can show a MEASURED relay
+    /// RTT without a call.
+    func mediaRelayProbeWebSocketRequest() async throws -> URLRequest {
+        guard isV2 else { throw APIError.notReady("当前配对不支持线路质量测量。") }
+        return try await authorizedWebSocketRequest(path: "media/relay-probe")
+    }
+
     func attachMediaProbe(callId: String, sdp: String) async throws -> WebRTCAnswer {
         guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
         let body = V2WebRTCOfferRequest(sdp: sdp, type: "offer")
@@ -398,6 +418,15 @@ final class HTTPGatewayAPI: GatewayAPI {
         try await authorizedVoidAction(
             "media/probe?preflightId=\(escaped)", method: "DELETE",
             body: Optional<Data>.none, idempotencyKey: UUID().uuidString
+        )
+    }
+
+    func renewMediaPreflight(preflightId: String) async throws -> V2PreflightRenewAnswer {
+        guard isV2 else { throw APIError.notReady("当前配对不支持媒体探测。") }
+        return try await authorizedPost(
+            "media/probe/renew",
+            body: V2PreflightRenewRequest(preflightId: preflightId),
+            idempotencyKey: UUID().uuidString
         )
     }
 
@@ -478,6 +507,16 @@ final class HTTPGatewayAPI: GatewayAPI {
         )
     }
 
+    func syncContacts(_ request: ContactSyncRequest, idempotencyKey: String) async throws -> ContactSyncResult {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关，无法同步通讯录。") }
+        return try await authorizedPost("contacts/sync", body: request, idempotencyKey: idempotencyKey)
+    }
+
+    func notificationsStatus() async throws -> GatewayNotificationStatus {
+        guard isV2 else { throw APIError.notReady("当前配对不是统一网关，无法获取提醒状态。") }
+        return try await authorizedGet("notifications/status")
+    }
+
     // MARK: Optional web push bridge (v2)
     // Part of the App Store PWA edition only (PWA_BRIDGE).
 
@@ -534,10 +573,14 @@ final class HTTPGatewayAPI: GatewayAPI {
     func deleteThread(threadKey: String) async throws {
         guard isV2 else { throw APIError.notReady("当前配对不支持删除对话。") }
         // Global keys are "lineId:workerKey"; phone-number keys contain no
-        // slashes, so a single escaped path value is safe.
-        let escaped = threadKey.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? threadKey
+        // slashes, so a single path value is safe. Pass the key RAW: the URL
+        // builder percent-encodes exactly once. Pre-encoding it here (builds
+        // 25–27) made `apiURL` escape the `%` again ("line-1%253A+86…"), so
+        // the gateway's `lineId:workerKey` split found no colon and answered
+        // CB-V2-400 "threadKey 格式错误" — the conversation was never
+        // tombstoned.
         try await authorizedVoidAction(
-            "threads/\(escaped)", method: "DELETE",
+            "threads/\(threadKey)", method: "DELETE",
             body: Optional<Data>.none, idempotencyKey: UUID().uuidString
         )
     }

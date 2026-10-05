@@ -12,6 +12,7 @@ import SwiftUI
 struct ThreadDetailView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var inbox: MessageInbox
     let threadKey: String
     let peer: String
@@ -19,6 +20,8 @@ struct ThreadDetailView: View {
 
     @State private var draft = ""
     @State private var showInfo = false
+    @State private var showDeleteConfirm = false
+    @State private var deleteFailure: String?
     @FocusState private var composerFocused: Bool
 
     var body: some View {
@@ -43,6 +46,29 @@ struct ThreadDetailView: View {
                 }
                 .accessibilityLabel("呼叫该号码")
             }
+            // Explicit, discoverable conversation menu (the field report was
+            // "cannot find delete"): deleting lives here, not only behind a
+            // swipe or the info sheet.
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        showInfo = true
+                    } label: {
+                        Label("对话信息", systemImage: "info.circle")
+                    }
+                    Divider()
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("删除对话", systemImage: "trash")
+                    }
+                    .accessibilityIdentifier("threadMenuDelete")
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("更多")
+                .accessibilityIdentifier("threadMenu")
+            }
         }
         .safeAreaInset(edge: .top) {
             if junk, let reason = inbox.junkReason(for: threadKey) {
@@ -52,6 +78,32 @@ struct ThreadDetailView: View {
         .sheet(isPresented: $showInfo) {
             ConversationInfoSheet(threadKey: threadKey, peer: peer, junk: junk)
                 .environmentObject(model)
+        }
+        .confirmationDialog(
+            String(localized: "删除与 \(displayName) 的对话？"),
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "删除对话"), role: .destructive) {
+                Task {
+                    if await model.deleteThread(threadKey) {
+                        dismiss()
+                    } else {
+                        deleteFailure = String(localized: "删除对话失败，请检查网络后重试。")
+                    }
+                }
+            }
+            Button(String(localized: "取消"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "删除后所有设备将不再显示这段对话历史。"))
+        }
+        .alert(String(localized: "删除失败"), isPresented: Binding(
+            get: { deleteFailure != nil },
+            set: { if !$0 { deleteFailure = nil } }
+        )) {
+            Button(String(localized: "知道了"), role: .cancel) { deleteFailure = nil }
+        } message: {
+            Text(deleteFailure ?? "")
         }
     }
 
@@ -311,6 +363,8 @@ struct ConversationInfoSheet: View {
     let threadKey: String
     let peer: String
     var junk: Bool = false
+    @State private var showDeleteConfirm = false
+    @State private var deleteFailure: String?
 
     var body: some View {
         NavigationStack {
@@ -368,6 +422,15 @@ struct ConversationInfoSheet: View {
                         } label: {
                             Label("删除对话", systemImage: "trash")
                         }
+                    } else {
+                        // Same gateway tombstone as the list swipe/menu; the
+                        // system Messages details screen exposes it here too.
+                        Button(role: .destructive) {
+                            showDeleteConfirm = true
+                        } label: {
+                            Label("删除对话", systemImage: "trash")
+                        }
+                        .accessibilityIdentifier("infoDeleteConversation")
                     }
                 }
             }
@@ -378,8 +441,36 @@ struct ConversationInfoSheet: View {
                     Button("完成") { dismiss() }
                 }
             }
+            .confirmationDialog(
+                String(localized: "删除与 \(displayName) 的对话？"),
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "删除对话"), role: .destructive) {
+                    Task {
+                        if await model.deleteThread(threadKey) {
+                            dismiss()
+                        } else {
+                            deleteFailure = String(localized: "删除对话失败，请检查网络后重试。")
+                        }
+                    }
+                }
+                Button(String(localized: "取消"), role: .cancel) {}
+            } message: {
+                Text(String(localized: "删除后所有设备将不再显示这段对话历史。"))
+            }
+            .alert(String(localized: "删除失败"), isPresented: Binding(
+                get: { deleteFailure != nil },
+                set: { if !$0 { deleteFailure = nil } }
+            )) {
+                Button(String(localized: "知道了"), role: .cancel) { deleteFailure = nil }
+            } message: {
+                Text(deleteFailure ?? "")
+            }
         }
     }
+
+    private var displayName: String { model.contacts.name(forPeer: peer) ?? peer }
 
     private var currentLineID: String? { model.preferredLine(for: threadKey) }
 

@@ -28,14 +28,32 @@ struct InCallRouteMenu: View {
                                  : mode == .direct ? "antenna.radiowaves.left.and.right" : "globe"))
                     }
                 }
-                // Honest measured TRANSPORT round-trip (WS ping / direct echo),
-                // explicitly distinct from end-to-end voice latency; never a
-                // fabricated or static value — unmeasured says so.
+                // Honest measured per-path TRANSPORT round trips (WS ping /
+                // direct echo), explicitly distinct from end-to-end voice
+                // latency; never a fabricated or static value — unmeasured or
+                // expired says so, and the inactive path keeps its own label.
                 Section {
-                    if let ms = state?.rttMilliseconds {
-                        Text(String(localized: "网络往返 · \(ms)ms"))
-                    } else {
-                        Text(String(localized: "网络往返 · 未测量"))
+                    HStack {
+                        Label(MediaRouteKind.direct.shortLabel, systemImage: "antenna.radiowaves.left.and.right")
+                        Spacer()
+                        Text(model.routeDiagnostics.direct.label())
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Label(MediaRouteKind.relay.shortLabel, systemImage: "globe")
+                        Spacer()
+                        Text(model.routeDiagnostics.relay.label())
+                            .foregroundStyle(.secondary)
+                    }
+                    if model.routeDiagnostics.inCall {
+                        ForEach(model.routeDiagnostics.liveTelemetryRows(), id: \.label) { row in
+                            HStack {
+                                Text(row.label)
+                                Spacer()
+                                Text(row.value)
+                                    .foregroundStyle(row.isCurrent ? Color.secondary : Color.secondary.opacity(0.6))
+                            }
+                        }
                     }
                 }
                 // 2026-10-05 routing policy: the route is chosen once at call
@@ -43,7 +61,7 @@ struct InCallRouteMenu: View {
                 // preference and must say so.
                 if state?.pinned == true {
                     Section {
-                        Text(String(localized: "本次通话已锁定当前线路，更改将于下次通话生效。"))
+                        Text(String(localized: "更改于下次通话生效。"))
                     }
                 }
             } label: {
@@ -227,8 +245,11 @@ struct RouteModeSettingRow: View {
                 HStack {
                     Text(String(localized: "音频线路"))
                     Spacer()
-                    Text(model.preferredRouteMode.title)
+                    // Actual route + freshest measured transport RTT, or the
+                    // preference plus the measured candidate when idle.
+                    Text(model.routeDiagnostics.connectionSummary(preferred: model.preferredRouteMode))
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
                 }
             } icon: {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
@@ -263,8 +284,78 @@ struct RouteModePickerView: View {
                     .buttonStyle(.plain)
                 }
             }
+            // Measured per-path transport status (direct candidate echo RTT /
+            // WSS relay ping RTT) reusing the existing measurements. Values
+            // are never zeroed or faked; stale shows its age.
+            Section {
+                HStack {
+                    Label(MediaRouteKind.direct.shortLabel, systemImage: "antenna.radiowaves.left.and.right")
+                    Spacer()
+                    Text(model.routeDiagnostics.direct.label())
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
+                .accessibilityIdentifier("routeDirectStatus")
+                HStack {
+                    Label(MediaRouteKind.relay.shortLabel, systemImage: "globe")
+                    Spacer()
+                    Text(model.routeDiagnostics.relay.label())
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
+                .accessibilityIdentifier("routeRelayStatus")
+                if !model.routeDiagnostics.inCall {
+                    Button {
+                        model.recheckRouteMeasurement()
+                    } label: {
+                        Label(String(localized: "重新检测"), systemImage: "arrow.clockwise")
+                    }
+                    .disabled(model.routeDiagnostics.direct.state == .probing)
+                    .accessibilityIdentifier("routeRecheckButton")
+                }
+            } header: {
+                Text(String(localized: "线路测量"))
+            } footer: {
+                Text(model.routeDiagnostics.measurementFooter())
+            }
+            // Live while the call runs, explicitly HISTORICAL after it ends:
+            // a frozen sample must never sit under a "实时更新" footer
+            // (build-33 screenshot showed 1–2 minute old values with a
+            // real-time claim).
+            if model.routeDiagnostics.inCall || model.routeDiagnostics.hasHistoricalTelemetry {
+                Section {
+                    ForEach(model.routeDiagnostics.telemetryRows(), id: \.label) { row in
+                        HStack {
+                            Text(row.label)
+                            Spacer()
+                            Text(row.value)
+                                .foregroundStyle(row.isCurrent ? Color.secondary : Color.secondary.opacity(0.6))
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                } header: {
+                    Text(model.routeDiagnostics.telemetryHeading())
+                } footer: {
+                    Text(model.routeDiagnostics.telemetryFooter())
+                }
+            }
+            if model.routeDiagnostics.inCall {
+                Section {
+                    Text(String(localized: "更改于下次通话生效。"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .navigationTitle(String(localized: "音频线路"))
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            // Opening the detail is an explicit intent to see current
+            // measurements: start a fresh bounded idle preflight (no mic, no
+            // call, no parallel in-call probing — ignored while a call runs).
+            if !model.routeDiagnostics.inCall {
+                model.recheckRouteMeasurement()
+            }
+        }
     }
 }

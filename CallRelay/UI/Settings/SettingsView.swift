@@ -50,6 +50,7 @@ struct SettingsView: View {
 
                 if !model.isDemo {
                     gatewaySection
+                    serviceAlertSection
                 } else {
                     Section {
                         Button("退出演示模式", role: .destructive) { model.exitDemo() }
@@ -118,8 +119,15 @@ struct SettingsView: View {
     private var gatewaySection: some View {
         Section {
             detailRow(title: "名称", value: model.gatewayName.isEmpty ? "—" : model.gatewayName)
-            detailRow(title: "锁屏来电",
-                      value: model.voipTokenHex == nil ? "需推送描述文件" : "需网关推送服务")
+            // Short, source-backed state instead of a constant instruction:
+            // entitlement → device token → gateway registration → gateway
+            // APNs configuration/environment → an actually received push.
+            detailRow(title: "锁屏来电", value: model.pushReadiness.summary)
+            if let detail = model.pushReadiness.detail {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(model.pushReadiness.isProblem ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+            }
             if let issue = model.callKitIssue {
                 Text(issue).font(.caption).foregroundStyle(.orange)
             }
@@ -131,6 +139,69 @@ struct SettingsView: View {
             }
         } header: {
             Text("网关")
+        }
+    }
+
+    /// Ordinary service alerts: arrears and designated-backup availability,
+    /// plus the explicit contacts-sync action/status. All server-side scoped
+    /// to this pairing key.
+    @ViewBuilder
+    private var serviceAlertSection: some View {
+        Section {
+            detailRow(title: "系统通知", value: model.alertPermission.title)
+            if model.alertPermission == .notDetermined {
+                Button("开启提醒") {
+                    Task { _ = await model.requestAlertAuthorizationIfNeeded() }
+                }
+            } else if !model.alertPermission.isEnabled,
+                      let url = URL(string: UIApplication.openSettingsURLString) {
+                Link("在系统设置中开启通知", destination: url)
+            }
+            detailRow(title: "备用网络", value: backupNetworkText)
+            if let incident = model.gatewayNotificationStatus?.incidents?.first {
+                Text("\(incident.lineId) · \(incident.cause == "arrears" ? "欠费提醒处理中" : "网络异常处理中")")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if let alert = model.pendingServiceAlert {
+                Text(alert.body ?? alert.alert.title)
+                    .font(.caption)
+                    .foregroundStyle(alert.alert.isProblem ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                    .onTapGesture { model.clearPendingServiceAlert() }
+            }
+            Button {
+                model.syncContactsToGateway()
+            } label: {
+                Label("同步通讯录到网关", systemImage: "person.crop.circle.badge.arrow.up")
+            }
+            .disabled(model.contactSyncStatus == .syncing)
+            if model.contactSyncStatus != .idle {
+                Text(model.contactSyncStatus.summary)
+                    .font(.caption)
+                    .foregroundStyle(contactSyncColor)
+            }
+        } header: {
+            Text("服务提醒")
+        } footer: {
+            Text("提醒通过普通通知发送，不会使用来电通道；不同配对密钥之间的通讯录互不可见。")
+        }
+    }
+
+    private var backupNetworkText: String {
+        guard let status = model.gatewayNotificationStatus, status.enabled else { return "未知" }
+        let label = status.lineName ?? status.lineId ?? ""
+        let tail = status.lineTail.map { "（尾号\($0)）" } ?? ""
+        switch status.availability {
+        case "available": return "\(label)\(tail) 正常"
+        case "unavailable": return "\(label)\(tail) 不可用"
+        default: return "\(label)\(tail) 未知"
+        }
+    }
+
+    private var contactSyncColor: AnyShapeStyle {
+        switch model.contactSyncStatus {
+        case .failed, .partial: return AnyShapeStyle(.orange)
+        default: return AnyShapeStyle(.secondary)
         }
     }
 

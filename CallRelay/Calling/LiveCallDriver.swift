@@ -19,6 +19,8 @@ final class LiveCallDriver: NSObject, CallDriver {
     var onRouteState: ((CallRouteState) -> Void)?
     /// A failed forced/auto route selection, plus an "offer auto" flag.
     var onRouteNotice: ((String, Bool) -> Void)?
+    /// Honest audio-availability notice (nil clears).
+    var onAudioStatus: ((String?) -> Void)?
 
     private let callKit: CallKitControlling
     private let coordinator: CallCoordinator
@@ -28,9 +30,16 @@ final class LiveCallDriver: NSObject, CallDriver {
     /// Foreground, call-independent direct-path preflight (AppModel-owned);
     /// forwarded to the coordinator so call start can consume fresh
     /// measurements.
-    var routePreflight: RoutePreflightController? {
+    var routePreflight: CallRoutePreflightProviding? {
         get { coordinator.routePreflight }
         set { coordinator.routePreflight = newValue }
+    }
+
+    /// Idle relay-path measurement controller (AppModel-owned); forwarded so
+    /// call lifecycle can stop/restart it with the direct preflight.
+    var idleRelayProbe: CallRelayIdleProbeProviding? {
+        get { coordinator.idleRelayProbe }
+        set { coordinator.idleRelayProbe = newValue }
     }
 
     /// True while any call is live on this device (preflight eligibility).
@@ -51,6 +60,14 @@ final class LiveCallDriver: NSObject, CallDriver {
     private var callKitReported: [String: Bool] = [:]
     /// Calls already retried once with a real caller id after a failed report.
     private var callKitRetryAttempted: Set<String> = []
+    /// A better caller id that arrived while the system report was still in
+    /// flight. It must not be dropped: after the report resolves it is applied
+    /// (`updateIncoming`) or used for the one bounded retry.
+    private var pendingReportHandle: [String: String] = [:]
+    /// Bounded (re)report attempts per gateway call. A permanently rejected or
+    /// unreportable call must not be re-reported forever by repeated pushes.
+    private var systemReportAttempts: [String: Int] = [:]
+    private static let maxSystemReportAttempts = 2
     /// Serializes in-app answer attempts per call so a double tap cannot send
     /// two answers.
     private var answering: Set<UUID> = []
@@ -88,6 +105,9 @@ final class LiveCallDriver: NSObject, CallDriver {
         coordinator.onRouteState = { [weak self] state in self?.onRouteState?(state) }
         coordinator.onRouteNotice = { [weak self] message, offerAuto in
             self?.onRouteNotice?(message, offerAuto)
+        }
+        coordinator.onAudioStatus = { [weak self] message in
+            self?.onAudioStatus?(message)
         }
         // The driver is the CallKit director so provider actions can carry the
         // default line into the coordinator explicitly.
@@ -160,6 +180,58 @@ final class LiveCallDriver: NSObject, CallDriver {
         coordinator.isRinging(callId: gatewayId)
     }
 
+    /// Public (protocol) view of the same per-call state: whether the SYSTEM
+    /// accepted the report, and whether another bounded attempt is allowed.
+    func systemReportState(gatewayId: String) -> SystemReportState {
+        guard let accepted = callKitReported[gatewayId] else { return .unknown }
+        return accepted ? .accepted : .rejected
+    }
+
+    func canAttemptSystemReport(gatewayId: String) -> Bool {
+        guard isStillRinging(gatewayId: gatewayId) else { return false }
+        // An accepted report already has its system call; only a rejected or
+        // unresolved one may consume the bounded attempt budget.
+        guard callKitReported[gatewayId] != true else { return false }
+        return (systemReportAttempts[gatewayId] ?? 0) < Self.maxSystemReportAttempts
+    }
+
+    func isRinging(gatewayId: String) -> Bool {
+        isStillRinging(gatewayId: gatewayId)
+    }
+
+    /// Resolves a caller id that arrived while the report was in flight.
+    /// An accepted report only needs the handle refresh; a rejected one gets
+    /// the same single bounded retry as the post-report update path.
+    private func resolvePendingReportHandle(
+        gatewayId: String, uuid: UUID, accepted: Bool
+    ) async {
+        guard let pending = pendingReportHandle.removeValue(forKey: gatewayId) else { return }
+        guard isStillRinging(gatewayId: gatewayId) else { return }
+        if accepted {
+            callKit.updateIncoming(uuid: uuid, handle: pending)
+            return
+        }
+        guard !callKitRetryAttempted.contains(gatewayId),
+              !Self.isPermanentReportRejection(callKit.lastIncomingReportErrorCode),
+              canAttemptSystemReport(gatewayId: gatewayId) else { return }
+        callKitRetryAttempted.insert(gatewayId)
+        systemReportAttempts[gatewayId, default: 0] += 1
+        let ok = await callKit.reportIncoming(uuid: uuid, handle: pending, isVideo: false)
+        if ok {
+            systemCallUUIDs.insert(uuid)
+            if isOwnedCall(gatewayId: gatewayId) {
+                callKitReported[gatewayId] = true
+                onCallKitIssue?(nil)
+            } else {
+                await endOrphanSystemCall(uuid: uuid)
+            }
+        } else {
+            callKitReported[gatewayId] = false
+            AppLog.callKit.notice("CallKit retry with the in-flight caller id rejected")
+            onCallKitIssue?(Self.callKitIssueMessage(callKit.lastIncomingReportErrorCode))
+        }
+    }
+
     /// CXErrorCodeIncomingCallError cases a retry cannot fix: unentitled,
     /// UUID-already-exists and every filtered/restricted variant (DND, block
     /// list, restricted sharing, protected call, sensitive participants).
@@ -209,11 +281,15 @@ final class LiveCallDriver: NSObject, CallDriver {
             if ok { await endOrphanSystemCall(uuid: uuid) }
             return
         }
+        systemReportAttempts[gatewayId, default: 0] += 1
         if ok { systemCallUUIDs.insert(uuid) }
         callKitReported[gatewayId] = ok
         if !ok {
             AppLog.callKit.notice("CallKit rejected incoming report; in-app answer stays available")
             onCallKitIssue?(Self.callKitIssueMessage(callKit.lastIncomingReportErrorCode))
+            // A caller id that raced the failed report still earns the one
+            // bounded retry (never silently dropped).
+            await resolvePendingReportHandle(gatewayId: gatewayId, uuid: uuid, accepted: false)
         } else if !isOwnedCall(gatewayId: gatewayId) {
             // The call ended while CallKit was reporting: never leave a ghost
             // system ring, and drop the provisional state if it still points
@@ -231,6 +307,7 @@ final class LiveCallDriver: NSObject, CallDriver {
             return
         } else {
             onCallKitIssue?(nil)
+            await resolvePendingReportHandle(gatewayId: gatewayId, uuid: uuid, accepted: true)
         }
         publish()
         publishGroup()
@@ -255,6 +332,7 @@ final class LiveCallDriver: NSObject, CallDriver {
             if ok { await endOrphanSystemCall(uuid: uuid) }
             return
         }
+        systemReportAttempts[call.id, default: 0] += 1
         if ok {
             systemCallUUIDs.insert(uuid)
         }
@@ -262,6 +340,7 @@ final class LiveCallDriver: NSObject, CallDriver {
         if !ok {
             AppLog.callKit.notice("event-driven incoming report rejected; in-app answer stays available")
             onCallKitIssue?(Self.callKitIssueMessage(callKit.lastIncomingReportErrorCode))
+            await resolvePendingReportHandle(gatewayId: call.id, uuid: uuid, accepted: false)
         } else if !isOwnedCall(gatewayId: call.id) {
             // The call ended while the report was in flight.
             await endOrphanSystemCall(uuid: uuid)
@@ -279,6 +358,7 @@ final class LiveCallDriver: NSObject, CallDriver {
             return
         } else {
             onCallKitIssue?(nil)
+            await resolvePendingReportHandle(gatewayId: call.id, uuid: uuid, accepted: true)
         }
         publish()
         publishGroup()
@@ -331,7 +411,11 @@ final class LiveCallDriver: NSObject, CallDriver {
                 }
             }
         case nil:
-            break
+            // No report outcome yet (the report is in flight): retain the
+            // better handle so it is applied the moment the report resolves.
+            // Dropping it here lost the caller id until a later event — and
+            // when none came, the system UI stayed "unknown" or unretried.
+            pendingReportHandle[gatewayId] = display
         }
     }
 
@@ -353,6 +437,8 @@ final class LiveCallDriver: NSObject, CallDriver {
     private func cleanupPerCallState(gatewayId: String) {
         callKitReported.removeValue(forKey: gatewayId)
         callKitRetryAttempted.remove(gatewayId)
+        pendingReportHandle.removeValue(forKey: gatewayId)
+        systemReportAttempts.removeValue(forKey: gatewayId)
         if let uuid = uuidByGateway.removeValue(forKey: gatewayId) {
             systemCallUUIDs.remove(uuid)
             answering.remove(uuid)
@@ -450,6 +536,8 @@ final class LiveCallDriver: NSObject, CallDriver {
         uuidByGateway.removeAll()
         callKitReported.removeAll()
         callKitRetryAttempted.removeAll()
+        pendingReportHandle.removeAll()
+        systemReportAttempts.removeAll()
         answering.removeAll()
         systemCallUUIDs.removeAll()
         onCallKitIssue?(nil)

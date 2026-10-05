@@ -38,6 +38,26 @@ protocol MediaSessionProviding: Sendable {
     func makeSession() -> CallMediaSession
 }
 
+/// Minimal seam over the AppModel-owned foreground direct preflight, so the
+/// coordinator can consume a fresh handoff at call start without depending
+/// on the concrete controller in tests.
+protocol CallRoutePreflightProviding: AnyObject {
+    func handoffForCall() -> RoutePreflightController.Handoff?
+}
+
+/// Minimal seam over the AppModel-owned foreground relay probe: the
+/// coordinator stops it at call start and reads its fresh samples for the
+/// warm direct-first comparison.
+protocol CallRelayIdleProbeProviding: AnyObject {
+    func stop()
+    func appDidEnterForeground()
+    func freshTimestampedSamples(within window: TimeInterval, now: Date)
+        -> [(rtt: TimeInterval, at: Date)]
+}
+
+extension RoutePreflightController: CallRoutePreflightProviding {}
+extension RelayIdleProbeController: CallRelayIdleProbeProviding {}
+
 struct WebRTCMediaProvider: MediaSessionProviding {
     func makeSession() -> CallMediaSession { WebRTCCallMedia() }
 }
@@ -80,6 +100,9 @@ final class CallCoordinator: NSObject {
     private let mediaProvider: MediaSessionProviding
     /// WSS relay session construction, injectable in tests (fake socket/graph).
     private let wsMediaFactory: () -> WebSocketCallMedia
+    /// Direct probe construction for the route controller, injectable in
+    /// tests to drive route transitions without a WebRTC stack.
+    private let routeProbeFactory: @MainActor () -> DirectProbeControlling
     private let registry: CallIdentityRegistry
     private let transport: String
     private let mediaRecoveryWindow: TimeInterval
@@ -89,6 +112,9 @@ final class CallCoordinator: NSObject {
 
     private var media: CallMediaSession?
     private var wsMedia: WebSocketCallMedia?
+    /// Latest measured quality from the 1:1 WebRTC media session (direct
+    /// route telemetry: packet loss; RTT/jitter come from the echo samples).
+    private var latestWebRTCQuality: MediaQuality?
     private var wsConferenceMedia: WebSocketCallMedia?
     /// Previous relay kept alive (with audio ownership) while a replacement
     /// attach is staged; retired at exclusive promotion.
@@ -97,13 +123,41 @@ final class CallCoordinator: NSObject {
     private var route: CallRouteController?
     /// Foreground, call-independent direct-path preflight (AppModel-owned).
     /// The route controller consumes its fresh candidate at call start.
-    var routePreflight: RoutePreflightController?
+    var routePreflight: CallRoutePreflightProviding?
+    /// Foreground, call-independent relay-path probe (AppModel-owned). Stopped
+    /// when a call starts and restarted when the call's media is torn down.
+    var idleRelayProbe: CallRelayIdleProbeProviding?
+    /// Ownership of the fresh preflight candidate taken at media-establish
+    /// time (BEFORE the WSS handshake), handed to the route controller once it
+    /// exists. Kept here so a call that fails before routing is built cannot
+    /// leak the detached peer, and so the probe is never cancelled by the
+    /// cycle stop ahead of consumption (the build-34 "preflight connected but
+    /// never selected" defect).
+    private var pendingPreflightHandoff: RoutePreflightController.Handoff?
     private let routeModeDefault: MediaRouteMode
     private let routeGatewayID: String?
+    /// Injectable route cadence for deterministic tests; production uses the
+    /// controller's built-in defaults.
+    private let routeCadence: CallRouteController.Cadence?
     /// ICE/direct advertised by the gateway for the active call.
     private var directAdvertised = false
+    /// Fresh relay-path RTT samples captured from the foreground idle relay
+    /// probe at call start, used ONLY by the warm direct-first fastpath to
+    /// answer "is a ready direct handoff genuinely better than the relay
+    /// RIGHT NOW" without attaching a call relay first. Timestamps travel
+    /// with the values so freshness is re-validated at decision time (a slow
+    /// `/ice` or commit must not act on an aged RTT).
+    private var idleRelaySamples: [(rtt: TimeInterval, at: Date)] = []
     var onRouteState: ((CallRouteState) -> Void)?
     var onRouteNotice: ((String, Bool) -> Void)?
+    /// Honest, minimal product copy while audio ownership is unavailable
+    /// (another app holds the mic, an interruption is pending, the audio
+    /// server is resetting). nil clears it. Never used for route decisions.
+    var onAudioStatus: ((String?) -> Void)?
+    /// True between an interruption began and the next usable activation.
+    /// While set, watchdog/self-activation recovery is suppressed.
+    private var audioInterrupted = false
+    private var audioStatusMessage: String?
     private var activeGatewayId: String?
     private var latestGateway: CallRecord?
     private var latestMedia: MediaState = .idle
@@ -151,17 +205,21 @@ final class CallCoordinator: NSObject {
         transport: String,
         mediaRecoveryWindow: TimeInterval = 20,
         gatewayID: String? = nil,
-        wsMediaFactory: @escaping @MainActor () -> WebSocketCallMedia = { WebSocketCallMedia() }
+        wsMediaFactory: @escaping @MainActor () -> WebSocketCallMedia = { WebSocketCallMedia() },
+        routeProbeFactory: @escaping @MainActor () -> DirectProbeControlling = { MediaProbeController() },
+        routeCadence: CallRouteController.Cadence? = nil
     ) {
         self.api = api
         self.callKit = callKit
         self.mediaProvider = mediaProvider
         self.wsMediaFactory = wsMediaFactory
+        self.routeProbeFactory = routeProbeFactory
         self.registry = registry
         self.transport = transport
         self.mediaRecoveryWindow = mediaRecoveryWindow
         self.routeModeDefault = MediaRoutePreferenceStore.shared.mode(for: gatewayID)
         self.routeGatewayID = gatewayID
+        self.routeCadence = routeCadence
         super.init()
         callKit.director = self
         // Call-progress tone seams read the CURRENT media session every
@@ -199,23 +257,206 @@ final class CallCoordinator: NSObject {
         // fulfilled answer action), so the attach-time replay sees no active
         // session. Forgetting the WSS session here leaves the relay
         // connected but permanently silent in both directions.
+        //
+        // Ordering: callbacks are appended to `deliverAudioEvent`'s FIFO and
+        // applied on the main actor in delivery order. The OS callbacks
+        // (CXProvider delegate, LCK, NotificationCenter) never execute engine
+        // or session work inline; every event carries the bridge ownership
+        // epoch and is dropped when a newer event already superseded it, so a
+        // late callback can never restart audio for an ended call or pause a
+        // newer call's audio.
         AudioSessionBridge.shared.onActivate = { [weak self] session in
-            Task { @MainActor in
-                guard let self else { return }
-                self.media?.audioActivated(with: session)
-                self.wsMedia?.audioActivated(with: session)
-                self.wsConferenceMedia?.audioActivated(with: session)
+            self?.deliverAudioEvent { coordinator, epoch in
+                coordinator.applyAudioActivation(session, epoch: epoch)
             }
         }
         AudioSessionBridge.shared.onDeactivate = { [weak self] session in
-            Task { @MainActor in
-                guard let self else { return }
-                self.media?.audioDeactivated(with: session)
-                self.wsMedia?.audioDeactivated(with: session)
-                self.wsConferenceMedia?.audioDeactivated(with: session)
+            self?.deliverAudioEvent { coordinator, epoch in
+                coordinator.applyAudioDeactivation(session, epoch: epoch)
+            }
+        }
+        // Audio lifecycle (interruption / route / media-services reset). The
+        // bridge serializes the session state; the coordinator reacts by
+        // stopping or resuming ONLY the live media surfaces — transports are
+        // never torn down by an audio event.
+        AudioSessionBridge.shared.onInterruptionBegan = { [weak self] in
+            self?.deliverAudioEvent { coordinator, epoch in
+                coordinator.applyInterruptionBegan(epoch: epoch)
+            }
+        }
+        AudioSessionBridge.shared.onInterruptionEnded = { [weak self] shouldResume in
+            self?.deliverAudioEvent { coordinator, epoch in
+                coordinator.applyInterruptionEnded(shouldResume: shouldResume, epoch: epoch)
+            }
+        }
+        AudioSessionBridge.shared.onMediaServicesReset = { [weak self] in
+            self?.deliverAudioEvent { coordinator, epoch in
+                coordinator.applyMediaServicesReset(epoch: epoch)
+            }
+        }
+        AudioSessionBridge.shared.onAvailabilityChanged = { [weak self] available, message in
+            self?.deliverAudioEvent { coordinator, epoch in
+                coordinator.applyAudioAvailability(available: available, message: message, epoch: epoch)
+            }
+        }
+        AudioSessionBridge.shared.onRouteChanged = { [weak self] _, _ in
+            // Route changes do not change ownership; revalidate the live
+            // graphs unconditionally (they are nil when no call exists).
+            self?.deliverAudioEvent { coordinator, _ in
+                coordinator.wsMedia?.revalidateAudioRoute()
+                coordinator.wsConferenceMedia?.revalidateAudioRoute()
             }
         }
     }
+
+    /// Serialized audio-event delivery. Producers append to a lock-protected
+    /// FIFO; a single main-actor drain then applies the queued events in
+    /// append (delivery) order. Ordering is therefore owned by this queue and
+    /// never depends on how the runtime happens to schedule main-actor tasks.
+    /// Every consumer re-checks the bridge epoch at execution time, so an
+    /// event superseded by a newer state change is dropped instead of racing
+    /// it. Delivery is ALWAYS deferred off the producer: the producers are OS
+    /// callbacks (CXProvider/LCK delegates, AVAudioSession notifications) and
+    /// running engine/session work inline in them can stall the system's own
+    /// call presentation.
+    private final class AudioEventQueue: @unchecked Sendable {
+        typealias Payload = @MainActor (CallCoordinator, UInt64) -> Void
+
+        private let lock = NSLock()
+        private var pending: [(epoch: UInt64, payload: Payload)] = []
+        private var draining = false
+
+        /// Appends an event. Returns true when the caller must start the drain.
+        func append(epoch: UInt64, payload: @escaping Payload) -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            pending.append((epoch, payload))
+            guard !draining else { return false }
+            draining = true
+            return true
+        }
+
+        /// Next event in append order, or nil when the queue is empty.
+        func next() -> (epoch: UInt64, payload: Payload)? {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !pending.isEmpty else {
+                draining = false
+                return nil
+            }
+            return pending.removeFirst()
+        }
+    }
+
+    private let audioEvents = AudioEventQueue()
+
+    private nonisolated func deliverAudioEvent(
+        _ block: @escaping @MainActor (CallCoordinator, UInt64) -> Void
+    ) {
+        let epoch = AudioSessionBridge.shared.eventEpoch
+        if audioEvents.append(epoch: epoch, payload: block) {
+            Task { @MainActor [weak self] in
+                self?.drainAudioEvents()
+            }
+        }
+    }
+
+    @MainActor
+    private func drainAudioEvents() {
+        while let event = audioEvents.next() {
+            event.payload(self, event.epoch)
+        }
+    }
+
+    // MARK: Audio ownership event application (epoch-fenced)
+
+    private func applyAudioActivation(_ session: AVAudioSession, epoch: UInt64) {
+        guard epoch == AudioSessionBridge.shared.eventEpoch else {
+            DiagnosticsCensus.shared.increment("audio.staleActivationDropped")
+            return
+        }
+        // Never start media for an ended call; the session must still be the
+        // one the bridge considers usable.
+        guard activeGatewayId != nil || conference != nil,
+              AudioSessionBridge.shared.activeSession === session else { return }
+        audioInterrupted = false
+        publishAudioStatus(nil)
+        media?.audioActivated(with: session)
+        wsMedia?.audioActivated(with: session)
+        wsConferenceMedia?.audioActivated(with: session)
+        // During a make-before-break handover the OLD relay is the one still
+        // carrying audio (wsMedia points at the staged replacement, whose
+        // own gate suppresses a second mic); a recovery activation must
+        // resume the carrier, not the staged socket.
+        stagedPreviousRelay?.audioActivated(with: session)
+        // Warm direct-first (build 38): the call can be carried by an adopted
+        // direct probe with no WSS relay session.
+        route?.directAudioSessionActivated(session)
+    }
+
+    private func applyAudioDeactivation(_ session: AVAudioSession, epoch: UInt64) {
+        // A deactivation superseded by a newer activation must not pause the
+        // newer call's audio.
+        guard epoch == AudioSessionBridge.shared.eventEpoch else {
+            DiagnosticsCensus.shared.increment("audio.staleDeactivationDropped")
+            return
+        }
+        media?.audioDeactivated(with: session)
+        wsMedia?.audioDeactivated(with: session)
+        wsConferenceMedia?.audioDeactivated(with: session)
+        // A relay being replaced during a handover still runs its graph; stop
+        // it too (it is never restarted unless promoted).
+        stagedPreviousRelay?.audioDeactivated(with: session)
+        // Warm direct-first: the adopted RTC peer must drop its ADM when the
+        // system deactivates, or it keeps the mic warm.
+        route?.directAudioSessionDeactivated(session)
+    }
+
+    private func applyInterruptionBegan(epoch: UInt64) {
+        guard epoch == AudioSessionBridge.shared.eventEpoch else { return }
+        audioInterrupted = true
+        // The bridge has already published onDeactivate (graphs stopped) and
+        // its honest availability message; nothing else to tear down. The
+        // transport and CallKit call stay fully alive so recovery is a graph
+        // re-bind, never a reconnect.
+        DiagnosticsStore.shared.log("call", "audio interruption began (transports kept)")
+    }
+
+    private func applyInterruptionEnded(shouldResume: Bool, epoch: UInt64) {
+        guard epoch == AudioSessionBridge.shared.eventEpoch else { return }
+        audioInterrupted = false
+        // Self-managed recovery is driven by the bridge (it publishes
+        // onActivate on success); a system-managed call intentionally waits
+        // for the real system didActivate. Only a system activation clears the
+        // honest "waiting" status, so nothing is cleared here.
+        DiagnosticsStore.shared.log("call", "audio interruption ended shouldResume=\(shouldResume)")
+    }
+
+    private func applyMediaServicesReset(epoch: UInt64) {
+        guard epoch == AudioSessionBridge.shared.eventEpoch else { return }
+        audioInterrupted = false
+        // The bridge invalidates the session and (self-managed only) runs one
+        // bounded reactivation; success arrives through onActivate with the
+        // rebuilt graph. Transports are untouched.
+        DiagnosticsStore.shared.log("call", "audio media services reset (bounded recovery armed)")
+    }
+
+    private func applyAudioAvailability(available: Bool, message: String, epoch: UInt64) {
+        guard epoch == AudioSessionBridge.shared.eventEpoch else { return }
+        publishAudioStatus(available ? nil : message)
+    }
+
+    #if DEBUG
+    // Lifecycle regression seams: deliver an ownership event with an explicit
+    // epoch (production delivery is synchronous and reads the live epoch).
+    func applyAudioActivationForTest(_ session: AVAudioSession, epoch: UInt64) {
+        applyAudioActivation(session, epoch: epoch)
+    }
+    func applyAudioDeactivationForTest(_ session: AVAudioSession, epoch: UInt64) {
+        applyAudioDeactivation(session, epoch: epoch)
+    }
+    var audioInterruptedForTest: Bool { audioInterrupted }
+    #endif
 
     // MARK: Multi-call inspection
 
@@ -338,6 +579,11 @@ final class CallCoordinator: NSObject {
             AppLog.call.notice("ignoring duplicate dial; one active call only")
             return
         }
+        // Configure the shared session for two-way voice BEFORE the system
+        // activates it, so the first engine start finds an already-settled
+        // category/mode instead of racing a just-requested reconfiguration
+        // (build-33 cold-start dead tap).
+        AudioSessionBridge.shared.prepareForVoiceCall()
         beginCall()
         activeCallIsOutgoing = true
         let clientCallId = uuid.uuidString.lowercased()
@@ -492,6 +738,11 @@ final class CallCoordinator: NSObject {
     /// before the socket existed), fires once a transport is live, and is a
     /// no-op when the system owns the session. Self-activation failure is
     /// logged so a silent call can never hide behind an unchecked Bool.
+    ///
+    /// A real interruption suppresses this repair entirely: a competing
+    /// session owns audio then, and forcing `setActive(true)` would fight it
+    /// (the exact cross-app failure this build repairs). The interruption
+    /// lifecycle owns the next activation instead.
     private func armActivationFallback(callId: String, gen: UInt64) {
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -501,6 +752,7 @@ final class CallCoordinator: NSObject {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 guard gen == self.generation,
                       self.activeGatewayId == callId, !self.ended else { return }
+                if AudioSessionBridge.shared.isInterrupted { return }
                 if AudioSessionBridge.shared.activeSession != nil { return }
                 if self.wsMedia?.isGraphRunning == true { return }
                 let activated: Bool
@@ -508,6 +760,11 @@ final class CallCoordinator: NSObject {
                     activated = ws.activateAudioWithoutCallKit()
                 } else if let media = self.media {
                     activated = media.activateAudioWithoutCallKit()
+                } else if let route, route.activeTransportIsDirect {
+                    // Warm direct-first (build 38): no WSS graph exists; the
+                    // adopted RTC peer needs the self-activated session
+                    // forwarded exactly like a lost CallKit activation.
+                    activated = route.activateDirectWithoutCallKit()
                 } else {
                     continue // media still attaching; retry on the next tick
                 }
@@ -517,7 +774,29 @@ final class CallCoordinator: NSObject {
                         : "answer activation fallback FAILED: self-activation returned false")
                 if activated { return }
             }
+            // Bounded repair exhausted without a usable session: reflect the
+            // temporary unavailability honestly instead of leaving a
+            // connected-but-silent call unexplained.
+            guard gen == self.generation, self.activeGatewayId == callId, !self.ended else { return }
+            if AudioSessionBridge.shared.activeSession == nil {
+                self.publishAudioStatus(
+                    String(localized: "暂时无法启用通话音频，请稍后重试。"))
+            }
         }
+    }
+
+    // MARK: Audio interruption / route / media-services lifecycle
+
+    private func publishAudioStatus(_ message: String?) {
+        // Never surface an audio status without a live call, and never let a
+        // late event reintroduce one after the call ended.
+        let effective = activeGatewayId != nil ? message : nil
+        guard effective != audioStatusMessage else { return }
+        audioStatusMessage = effective
+        if let effective {
+            DiagnosticsStore.shared.log("audio", "status: \(effective)")
+        }
+        onAudioStatus?(effective)
     }
 
     /// Makes the given tracked call active, replacing any old media session.
@@ -526,6 +805,14 @@ final class CallCoordinator: NSObject {
     private func activate(
         callId: String, uuid: UUID, gen: UInt64, selfManagedAudio: Bool = false
     ) {
+        // The call is about to own audio: settle the voice-chat session before
+        // any media object starts an engine (the push-registration path in
+        // `beginCall` deliberately does not touch the session).
+        AudioSessionBridge.shared.prepareForVoiceCall()
+        // Every path that makes a call active arms audio demand for it (an
+        // already-running second call answered after the first ended must
+        // not be treated as an idle app).
+        AudioSessionBridge.shared.callStarted()
         activeGatewayId = callId
         latestGateway = tracked[callId]?.record
         latestMedia = .idle
@@ -545,6 +832,7 @@ final class CallCoordinator: NSObject {
         stagedPreviousRelay = nil
         route?.teardown()
         route = nil
+        discardPendingPreflight()
         if var entry = tracked[callId] {
             entry.held = false
             tracked[callId] = entry
@@ -688,6 +976,7 @@ final class CallCoordinator: NSObject {
         activeGatewayId = nil
         latestGateway = nil
         delegate?.callGroupChanged()
+        publishAudioStatus(nil)
     }
 
     private func reportHeldLocally(_ callId: String, held: Bool) async {
@@ -1004,6 +1293,9 @@ final class CallCoordinator: NSObject {
         } else {
             activeGatewayId = nil
             latestGateway = nil
+            // No active call remains: release audio demand so a late
+            // interruption/media-reset completion cannot revive audio.
+            releaseAudioOwnershipIfIdle()
             delegate?.callGroupChanged()
         }
     }
@@ -1157,6 +1449,8 @@ final class CallCoordinator: NSObject {
         latestMedia = .idle
         monitorStarted = false
         ended = true
+        AudioSessionBridge.shared.callEnded()
+        publishAudioStatus(nil)
         for id in ids {
             await markCallEndedLocally(id, reason: .remoteEnded)
         }
@@ -1169,12 +1463,27 @@ final class CallCoordinator: NSObject {
     private func establishMedia(
         callId: String, uuid: UUID, generation gen: UInt64, selfManagedAudio: Bool
     ) async throws {
-        // A call is starting: stop the idle preflight cycle. Ownership of a
-        // fresh candidate moves to the route controller via consumeHandoff;
-        // anything else is cancelled here (bounded server TTL covers races).
-        routePreflight?.callWillStart()
+        // A call is starting: stop BOTH idle measurement cycles and take
+        // ownership of a fresh direct candidate in ONE step, BEFORE any call
+        // media handshake. The relay-idle samples are captured first (they
+        // stop at this moment) so the warm direct-first decision compares
+        // the ready candidate against FRESH relay evidence, not an old RTT.
+        // The route controller receives the handoff once routing is built
+        // (`routeRelayDidConnect`); until then the coordinator owns it and
+        // discards it if the call fails.
+        idleRelaySamples = idleRelayProbe?.freshTimestampedSamples(within: 30, now: Date()) ?? []
+        let preflight = routePreflight?.handoffForCall()
+        pendingPreflightHandoff = preflight
+        // The relay probe always loses to a live call: it must not keep a
+        // measurement socket while the call's own relay transport carries
+        // audio. It is restarted on teardown by the AppModel (foreground and
+        // no-live-call gated).
+        idleRelayProbe?.stop()
         let ice = try await api.iceConfiguration(callId: callId)
         guard gen == self.generation else { throw CancellationError() }
+        // Set the direct-advertised flag up front: the warm direct-first
+        // fastpath runs before establishWSMedia (which used to set it).
+        directAdvertised = ice.mediaTransports?.contains("ice") == true
 
         // Capability negotiation: when the gateway advertises the
         // authenticated WSS audio transport, use it — it rides the same
@@ -1183,6 +1492,35 @@ final class CallCoordinator: NSObject {
         // deliberately no silent ICE fallback: if the socket fails, the call
         // fails truthfully.
         if ice.mediaTransports?.contains("ws") == true {
+            // Warm direct-first fastpath (build 38): a fresh, connected,
+            // measured preflight handoff is committed BEFORE the call relay
+            // attaches when the chosen mode allows it AND fresh measurements
+            // show direct is genuinely better (auto) or it was explicitly
+            // chosen (direct). Answer/audio are never blocked on a new
+            // handshake — the handoff was warmed while idle, and any failure
+            // (commit rejection, missing leg, bad audio) falls back to the
+            // normal audible relay attach. When the evidence is missing,
+            // stale or marginal the relay goes first and the existing
+            // bounded promotion/fallback semantics are preserved.
+            if let preflight,
+               await takeWarmDirectFastpath(
+                    preflight: preflight, ice: ice, callId: callId,
+                    uuid: uuid, gen: gen, selfManagedAudio: selfManagedAudio) {
+                return
+            }
+            // Re-guard after every await: a hangup/generation bump or a
+            // fastpath that ended the call (self-activation failure) must
+            // never attach a relay afterwards.
+            guard gen == self.generation, activeGatewayId == callId, !Task.isCancelled,
+                  !ended else {
+                // The replaced/ended call can never consume the candidate.
+                self.discardPendingPreflight()
+                throw CancellationError()
+            }
+            // The fastpath did not adopt: its preflight (if declined) must be
+            // discarded exactly once. pendingPreflightHandoff still owns it
+            // for the relay-first route controller when retained; releases
+            // happen in routeRelayDidConnect / discardPendingPreflight.
             try await establishWSMedia(
                 callId: callId, uuid: uuid, generation: gen, ice: ice,
                 selfManagedAudio: selfManagedAudio)
@@ -1233,6 +1571,7 @@ final class CallCoordinator: NSObject {
         session.onQuality = { [weak self] quality in
             Task { @MainActor in
                 guard let self, gen == self.generation else { return }
+                self.latestWebRTCQuality = quality
                 self.onQuality?(quality)
             }
         }
@@ -1337,9 +1676,23 @@ final class CallCoordinator: NSObject {
                 }
             }
         }
-        session.onQuality = { [weak self] quality in
+        session.onQuality = { [weak self, weak session] quality in
             Task { @MainActor in
-                guard let self, gen == self.generation else { return }
+                guard let self, gen == self.generation, self.wsMedia === session else { return }
+                // Build-38 false "音频已中断": the relay a route transaction
+                // just retired can still emit a terminal quality update
+                // (.disconnected/.closed/.failed) when the gateway closes it.
+                // That is the EXPECTED handover EOF consumed above for
+                // `onState`; the quality channel must swallow it with the same
+                // fence, or the retired transport's interruption banner
+                // survives on a healthy relay/direct path (the quality object
+                // has no recovery transition once the socket is gone).
+                if quality.phase == .disconnected || quality.phase == .closed
+                        || quality.phase == .failed,
+                   let route = self.route,
+                   route.consumeRelayState(quality.phase) {
+                    return
+                }
                 self.onQuality?(quality)
             }
         }
@@ -1375,6 +1728,7 @@ final class CallCoordinator: NSObject {
             // Staged rollback attach: handshake first, NO audio and NO
             // `wsMedia` replacement until the exclusive promotion. A failure
             // never disturbs the transport still carrying audio.
+            session.markAudioStaged()
             do {
                 try await session.connect(request: request)
             } catch {
@@ -1397,12 +1751,133 @@ final class CallCoordinator: NSObject {
 
     /// Creates the per-call route controller once direct is advertised and
     /// the relay is healthy.
-    private func routeRelayDidConnect(ice: ICEConfiguration, callId: String) {
-        guard directAdvertised, route == nil, conference == nil else {
-            route?.relayDidConnect(wsMedia: wsMedia)
-            return
+    /// Build-38 warm direct-first fastpath.
+    ///
+    /// A foreground preflight keeps a measured, connected direct peer warm
+    /// while the app is idle. Before build 38 every call attached the WSS
+    /// relay first and only considered that candidate later (or never in the
+    /// same call), so a healthy, already-connected direct path was always
+    /// followed by a relay-first interruption banner. When fresh evidence
+    /// shows the warm candidate is genuinely better (auto) or the user
+    /// explicitly chose direct, this commits it at call start instead.
+    ///
+    /// Safety:
+    /// * The decision needs FRESH measurements on both paths (idle relay
+    ///   probe vs the preflight); stale/missing/marginal evidence returns
+    ///   false and the normal relay-first flow runs, answer never blocked.
+    /// * A commit rejection, missing leg or post-adoption audio-gate failure
+    ///   is reconciled by the route controller's existing staged-relay
+    ///   fallback, which attaches a fresh WSS host — the call still has
+    ///   audio. The candidate is discarded on failure.
+    /// * The call relay is NEVER attached on this path (there is no relay to
+    ///   retire); the route controller starts directly on the direct peer.
+    @discardableResult
+    private func takeWarmDirectFastpath(
+        preflight handoff: RoutePreflightController.Handoff,
+        ice: ICEConfiguration, callId: String, uuid: UUID, gen: UInt64,
+        selfManagedAudio: Bool
+    ) async -> Bool {
+        guard directAdvertised, route == nil, conference == nil else { return false }
+        let probe = handoff.probe
+        guard probe.connected, probe.mediaReady else { return false }
+        // The decision is evaluated HERE (after the /ice await), not from a
+        // snapshot taken before it: both paths' samples carry timestamps and
+        // are re-validated for freshness at this moment, so a slow request
+        // can never act on an aged RTT or a merely-stale `connected` flag.
+        let now = Date()
+        let directSamples = probe.freshTimestampedQualitySamples(within: 10, now: now)
+        let decision = CallRouteController.evaluateWarmDirect(
+            mode: routeModeDefault,
+            candidateConnected: probe.connected,
+            candidateMediaReady: probe.mediaReady,
+            directSamples: directSamples,
+            relaySamples: idleRelaySamples,
+            echoStalls: probe.echoStallCount,
+            now: now)
+        guard decision.take else {
+            let directFresh = directSamples.filter {
+                now.timeIntervalSince($0.at) <= 10
+            }.count
+            DiagnosticsStore.shared.log("route",
+                "warm direct-first declined id=\(handoff.preflightId)"
+                + " mode=\(routeModeDefault.rawValue) reason=\(decision.reason)"
+                + " directSamples=\(directFresh) relaySamples=\(idleRelaySamples.count)"
+                + " stalls=\(probe.echoStallCount)")
+            return false
         }
-        let controller = CallRouteController(
+        // Re-check liveness immediately before the mutating commit: a hangup
+        // or generation bump during evaluation must not start a direct adopt.
+        guard gen == generation, activeGatewayId == callId, !Task.isCancelled else {
+            return false
+        }
+        DiagnosticsStore.shared.log("route",
+            "warm direct-first commit id=\(handoff.preflightId) reason=\(decision.reason)"
+            + " directSamples=\(directSamples.count) relaySamples=\(idleRelaySamples.count)")
+        // Commit the device-scoped preflight to THIS call. Unlike the
+        // relay-first flow there is no previous WSS host for the gateway to
+        // close: the call leg is parked/attached to the live session inside
+        // CommitProbe itself (takeParkedLeg/attachLineLeg).
+        do {
+            try await api.commitMediaProbe(callId: callId, preflightId: handoff.preflightId)
+        } catch {
+            guard gen == generation else { return false }
+            DiagnosticsStore.shared.log("route",
+                "warm direct-first commit failed: \(error.localizedDescription); relay-first")
+            // The candidate may or may not still be registered server-side;
+            // release it locally and let the relay-first route controller do
+            // its own bounded probe/promotion for this call.
+            probe.cancel()
+            pendingPreflightHandoff = nil
+            Task { [api] in try? await api.discardMediaPreflight(preflightId: handoff.preflightId) }
+            return false
+        }
+        guard gen == generation, !Task.isCancelled else {
+            // The call was torn down while the commit was parked: every
+            // generation-bump path (invalidate/activate/park) already discards
+            // the pending preflight and its peer server-side; never touch the
+            // route or attach a relay afterwards.
+            return false
+        }
+        pendingPreflightHandoff = nil
+        // Exclusive local adoption: hand the (already active, for a CallKit
+        // answer) audio session to the RTC peer, enable the mic track. A
+        // direct in-app answer self-activates; a failed self-activation is a
+        // real failure to surface, never a silent call.
+        if selfManagedAudio {
+            guard probe.activateAudioWithoutCallKit() else {
+                probe.cancel()
+                await failActiveCall(message: String(localized: "无法启用通话音频，请重试。"))
+                return false
+            }
+        } else if let activated = AudioSessionBridge.shared.activeSession {
+            probe.audioSessionActivated(activated)
+        }
+        probe.adopt(activatedSession: AudioSessionBridge.shared.activeSession)
+        probe.setMuted(muted)
+        if speaker { try? probe.setSpeakerphone(true) }
+        latestMedia = .connected
+        mediaRecoveryTask?.cancel()
+        mediaRecoveryTask = nil
+        // Build the route controller in direct-first mode. The coordinator
+        // hands it the committed peer (it is NOT a pending preflight anymore)
+        // and the controller owns the bounded audio gate + failure fallback.
+        let controller = makeRouteController(callId: callId, ice: ice, initialDirect: probe)
+        route = controller
+        controller.beginWithAdoptedDirect(probe)
+        publishPhase()
+        startMonitorIfNeeded(callId: callId, uuid: uuid, gen: gen)
+        return true
+    }
+
+    /// Builds the per-call route controller with all coordinator callbacks.
+    /// Shared by the relay-first entry (`initialDirect == nil`) and the warm
+    /// direct-first fastpath (the already-committed peer is passed in).
+    private func makeRouteController(
+        callId: String, ice: ICEConfiguration,
+        initialDirect: DirectProbeControlling?
+    ) -> CallRouteController {
+        let preflight = pendingPreflightHandoff
+        return CallRouteController(
             callId: callId,
             initialMode: routeModeDefault,
             api: api,
@@ -1430,6 +1905,19 @@ final class CallCoordinator: NSObject {
                 relayLatestSample: { [weak self] in
                     self?.wsMedia?.lastPingSample
                 },
+                relayTelemetry: { [weak self] in
+                    guard let self, let ws = self.wsMedia else { return .unknown }
+                    let samples = ws.freshPingSamples(within: 8)
+                    return RouteTransportTelemetry(
+                        rttSeconds: samples.last,
+                        jitterSeconds: MediaRouteAdvisor.jitter(of: samples),
+                        lossFraction: nil,
+                        localBufferSeconds: ws.playbackBufferSeconds,
+                        gatewayBufferSeconds: ws.gatewayBufferSeconds)
+                },
+                directLossFraction: { [weak self] in
+                    self?.latestWebRTCQuality?.packetLoss
+                },
                 onState: { [weak self] state in
                     Task { @MainActor in
                         self?.onRouteState?(state)
@@ -1440,10 +1928,46 @@ final class CallCoordinator: NSObject {
                     Task { @MainActor in self?.onRouteNotice?(message, offersAuto) }
                 }
             ),
-            preflight: routePreflight?.consumeHandoff()
+            preflight: preflight,
+            initialDirect: initialDirect,
+            probeFactory: routeProbeFactory,
+            cadence: routeCadence ?? CallRouteController.Cadence()
         )
+    }
+
+    /// Creates the per-call route controller once direct is advertised and
+    /// the relay is healthy (relay-first flow).
+    private func routeRelayDidConnect(ice: ICEConfiguration, callId: String) {
+        let preflight = pendingPreflightHandoff
+        pendingPreflightHandoff = nil
+        guard directAdvertised, route == nil, conference == nil else {
+            // This call cannot adopt a direct candidate: release the probe
+            // explicitly instead of leaving it to the server TTL.
+            if let preflight { discardPreflightHandoff(preflight) }
+            route?.relayDidConnect(wsMedia: wsMedia)
+            return
+        }
+        let controller = makeRouteController(callId: callId, ice: ice, initialDirect: nil)
         route = controller
         controller.relayDidConnect(wsMedia: wsMedia)
+    }
+
+    /// Releases a preflight candidate the coordinator owns but this call
+    /// cannot adopt (no direct path advertised, routing already built) or the
+    /// call ended before routing consumed it: close the peer and tell the
+    /// gateway to drop the device-scoped entry. The bounded server TTL is a
+    /// backstop, never the primary release.
+    private func discardPreflightHandoff(_ handoff: RoutePreflightController.Handoff) {
+        handoff.probe.cancel()
+        Task { [api] in
+            try? await api.discardMediaPreflight(preflightId: handoff.preflightId)
+        }
+    }
+
+    private func discardPendingPreflight() {
+        guard let handoff = pendingPreflightHandoff else { return }
+        pendingPreflightHandoff = nil
+        discardPreflightHandoff(handoff)
     }
 
     /// Stops the WSS transport after the gateway atomically adopted the
@@ -1456,6 +1980,11 @@ final class CallCoordinator: NSObject {
         mediaRecoveryTask?.cancel()
         mediaRecoveryTask = nil
         latestMedia = .connected
+        // Clear any interruption banner: the relay just retired is the source
+        // of the last MediaQuality; the adopted direct peer carries the call
+        // now and its health surfaces through route telemetry (build 38:
+        // never show "音频中断" while the active path is healthy).
+        onQuality?(MediaQuality(phase: .connected))
         publishPhase()
     }
 
@@ -1489,12 +2018,20 @@ final class CallCoordinator: NSObject {
         let superseded = stagedPreviousRelay
         stagedPreviousRelay = nil
         guard let session = wsMedia else { return }
+        // Exclusive promotion: this session may now open the capture graph
+        // (it was gated off while the previous transport carried audio).
+        session.promoteAudioOwnership()
         if let activated = AudioSessionBridge.shared.activeSession {
             session.audioActivated(with: activated)
         } else {
             session.activateAudio()
         }
         session.startPingSampling()
+        // The staged socket reached `.connected` during the handshake BEFORE
+        // it became `wsMedia`, so that quality emission was dropped by the
+        // identity fence; re-publish now so the interruption banner from the
+        // failing direct transport clears on the healthy relay (build 38).
+        session.republishCurrentQuality()
         superseded?.retireAfterHandover()
         peer?.closeTransport()
         publishPhase()
@@ -1703,6 +2240,8 @@ final class CallCoordinator: NSObject {
         latestMedia = .idle
         monitorStarted = false
         knownUUIDs.removeAll()
+        AudioSessionBridge.shared.callEnded()
+        publishAudioStatus(nil)
         delegate?.callGroupChanged()
         guard !ids.isEmpty else { return }
         Task { [weak self] in
@@ -1727,8 +2266,20 @@ final class CallCoordinator: NSObject {
         ended = true
         tracked.removeValue(forKey: gatewayId)
         knownUUIDs = knownUUIDs.filter { $0.value != gatewayId }
+        // No live call left: fence any pending audio recovery and clear the
+        // honest status so a late interruption/media-reset completion can
+        // never resurrect audio (or a notice) for the ended call.
+        releaseAudioOwnershipIfIdle()
         delegate?.callDidEnd(gatewayId: gatewayId, reason: reason)
         delegate?.callGroupChanged()
+    }
+
+    /// The coordinator owns no live call any more: fence pending audio
+    /// recovery. Called on every end/reset path that leaves no live call.
+    private func releaseAudioOwnershipIfIdle() {
+        guard !hasLiveCall, conference == nil else { return }
+        AudioSessionBridge.shared.callEnded()
+        publishAudioStatus(nil)
     }
 
     // MARK: Helpers
@@ -1751,6 +2302,20 @@ final class CallCoordinator: NSObject {
         // A new call kills any lingering progress tone (ringback or the
         // bounded busy burst from a previous call).
         progressTone.stopAll()
+        // Explicit live-call audio demand: bounded recovery is armed for THIS
+        // call and released when the last call ends.
+        AudioSessionBridge.shared.callStarted()
+        // Fresh call, fresh status: the bridge's interrupted flag reflects the
+        // real current session state (another app may still hold audio).
+        audioInterrupted = AudioSessionBridge.shared.isInterrupted
+        publishAudioStatus(nil)
+        // NOTE: the voice-chat session is NOT reconfigured here. `beginCall`
+        // runs on the incoming-push path BEFORE the system report; a
+        // synchronous `setCategory` there delays/blocks the report and runs
+        // audio work on the system callback's main thread. The session is
+        // configured where audio actually starts (outgoing dial start and
+        // `activate` for answers), and `AudioSessionBridge.didActivate`
+        // normalizes once more before any engine starts.
     }
 
     @discardableResult
@@ -1778,6 +2343,11 @@ final class CallCoordinator: NSObject {
         stagedPreviousRelay = nil
         route?.teardown()
         route = nil
+        discardPendingPreflight()
+        // The call is gone: idle relay measurement may resume (the probe's
+        // eligible gate re-checks no-live-call/foreground state, so this is a
+        // no-op when another call is still tracked or the app is background).
+        idleRelayProbe?.appDidEnterForeground()
         monitorStarted = false
         return generation
     }
@@ -1863,6 +2433,9 @@ final class CallCoordinator: NSObject {
             do { try wsMedia.setSpeakerphone(enabled) }
             catch { AppLog.call.notice("speaker route change failed") }
         }
+        // Warm direct-first (build 38): the active transport is an adopted
+        // direct probe with no WSS/ICE session object on the coordinator.
+        route?.setDirectSpeakerphone(enabled)
     }
 }
 

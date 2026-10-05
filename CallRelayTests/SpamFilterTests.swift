@@ -55,6 +55,24 @@ final class PhoneNormalizerTests: XCTestCase {
         XCTAssertEqual(PhoneNormalizer.dialable("  10086  "), "10086")
     }
 
+    func testExplicitNorthAmericanNumberNeverGainsMainlandAliases() {
+        // Physical third-line evidence: a Canadian +1 number has 11 digits
+        // starting with "1" and a second digit in 3-9, exactly the shape of a
+        // mainland mobile. An EXPLICIT "+1" must stay on the NANP plan: no
+        // +86/0086 alias may be fabricated, and dial/SMS must keep the +1.
+        let keys = Set(PhoneNormalizer.canonicalKeys("+1 (873) 288-1666"))
+        XCTAssertTrue(keys.contains("18732881666"))
+        XCTAssertFalse(keys.contains("8618732881666"), "no fabricated +86 alias for an explicit +1")
+        XCTAssertFalse(keys.contains("008618732881666"))
+        XCTAssertEqual(PhoneNormalizer.dialable("+1 (873) 288-1666"), "+18732881666")
+
+        // The domestic mainland shapes keep their existing aliases.
+        let cn = Set(PhoneNormalizer.canonicalKeys("138 1234 5678"))
+        XCTAssertTrue(cn.contains("8613812345678"))
+        XCTAssertTrue(cn.contains("008613812345678"))
+        XCTAssertEqual(PhoneNormalizer.dialable("+86 130 0313 2132"), "+8613003132132")
+    }
+
     func testDialableRejectsDigitlessInput() {
         XCTAssertNil(PhoneNormalizer.dialable("   "))
         XCTAssertNil(PhoneNormalizer.dialable("+"))

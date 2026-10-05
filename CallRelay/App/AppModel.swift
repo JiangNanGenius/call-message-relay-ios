@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UIKit
 import CloudKit
+import UserNotifications
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -11,8 +12,17 @@ final class AppModel: ObservableObject {
     }
     @Published var activeCall: ActiveCallViewState?
     @Published var quality: MediaQuality?
+    /// Honest, minimal copy while call audio ownership is temporarily
+    /// unavailable (another app holds the session, interruption pending,
+    /// audio server resetting). nil = no notice; never a fake success.
+    @Published var audioStatus: String?
     /// Live Auto/Direct/Relay routing snapshot for the active call.
     @Published var routeState: CallRouteState?
+    /// Per-path measured status for the connection UI (idle preflight + live
+    /// call samples, each keeping its own timestamp). Never crosses paths.
+    @Published private(set) var routeDiagnostics = RouteDiagnostics()
+    /// Throttle for persisting the last measured RTTs (relaunch history).
+    private var lastRouteMeasurementPersist = Date.distantPast
     /// One-shot notice from a failed forced route selection.
     @Published var routeNotice: String?
     /// When true the route notice offers a one-tap switch to auto.
@@ -27,6 +37,24 @@ final class AppModel: ObservableObject {
     @Published var lastError: String?
     @Published var voipTokenHex: String?
     @Published var apnsTokenHex: String?
+    /// Last push-registration outcome (idle/registering/registered/failed).
+    @Published private(set) var pushRegistration: PushRegistrationPhase = .idle
+    /// Anonymous gateway health push section; nil until fetched (unknown is
+    /// never rendered as ready).
+    @Published private(set) var gatewayPushHealth: GatewayPushHealth?
+    /// Last VoIP push actually received on this device (the only delivery
+    /// proof available app-side).
+    @Published private(set) var lastVoIPPushAt: Date?
+    /// Service alert (arrears / backup network) that should be surfaced or is
+    /// waiting for the user to view; set by a standard-notification tap.
+    @Published var pendingServiceAlert: ServiceAlertPayload?
+    @Published private(set) var lastServiceAlert: ServiceAlertPayload?
+    /// System notification permission for ordinary (non-VoIP) alerts.
+    @Published private(set) var alertPermission: AlertPermissionState = .unknown
+    /// Designated-backup availability/incident view fetched for Settings.
+    @Published private(set) var gatewayNotificationStatus: GatewayNotificationStatus?
+    /// Mobile→gateway contacts sync state (explicit user action only).
+    @Published private(set) var contactSyncStatus: ContactSyncStatus = .idle
     @Published var eventState: EventStream.StreamState = .closed
     @Published private(set) var inbox: MessageInbox?
     @Published var externalCallRequest: ExternalCallRequest?
@@ -118,6 +146,9 @@ final class AppModel: ObservableObject {
     private var eventStream: EventStream?
     /// Foreground direct-path preflight (created per gateway binding).
     private var routePreflight: RoutePreflightController?
+    /// Idle relay-path measurement (call-independent WSS ping/pong): keeps a
+    /// measured relay RTT on the route screen while no call is live.
+    private var relayIdleProbe: RelayIdleProbeController?
     private var driver: CallDriver?
     private var demoGateway: DemoGatewayAPI?
     private var pushRegistry: PushRegistry?
@@ -383,8 +414,12 @@ final class AppModel: ObservableObject {
             push.onTokenInvalidated = { [weak self] in
                 Task { @MainActor in
                     self?.voipTokenHex = nil
+                    self?.pushRegistration = .idle
                     DiagnosticsStore.shared.log("push", "voip token invalidated")
                 }
+            }
+            push.onVoIPPushReceived = { [weak self] in
+                Task { @MainActor in self?.recordVoIPPushReceived() }
             }
             pushRegistry = push
             push.start()
@@ -407,7 +442,12 @@ final class AppModel: ObservableObject {
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil, queue: .main
-        ) { [weak self] _ in Task { @MainActor in self?.routePreflight?.appDidEnterBackground() } }
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.routePreflight?.appDidEnterBackground()
+                self?.relayIdleProbe?.appDidEnterBackground()
+            }
+        }
     }
 
     private func handleForeground() {
@@ -421,16 +461,41 @@ final class AppModel: ObservableObject {
         recentsRunner?.kick()
         // Idle direct-path measurement resumes (no-op while a call is live).
         routePreflight?.appDidEnterForeground()
+        // Idle relay-path measurement resumes too (no-op during a call).
+        relayIdleProbe?.appDidEnterForeground()
         Task {
             await refreshLine()
             await reconcileAfterGap()
             inbox?.flushReadyOutbox()
             await contacts.refreshIfAuthorized()
+            await refreshAlertPermission()
+            await refreshNotificationStatus()
             await cloudSync?.applicationCameForeground()
         }
     }
 
     // MARK: Lifecycle
+
+    /// Explicit user re-measurement of the idle routes (Settings →
+    /// 音频线路). Bounded, foreground-only, no microphone/audio engine and no
+    /// call; while a call is live the route controller owns telemetry and
+    /// this is a no-op (eligible gate).
+    func recheckRouteMeasurement() {
+        routePreflight?.recheck()
+        relayIdleProbe?.recheck()
+    }
+
+    /// Persists the last measured direct/relay RTTs (with their timestamps)
+    /// for the next launch's age-labelled history rows. Throttled: the live
+    /// probes publish once per second, which does not need a disk write each
+    /// tick. Never stores anything but measured values and times.
+    private func persistRouteMeasurements() {
+        guard let scope = currentGatewayScope else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastRouteMeasurementPersist) >= 5 else { return }
+        lastRouteMeasurementPersist = now
+        RouteMeasurementMemory.save(routeDiagnostics, scope: scope)
+    }
 
     func bootstrap() {
         // Screenshot fixtures for the batched visual review: deterministic,
@@ -854,11 +919,24 @@ final class AppModel: ObservableObject {
         let tokens = tokenStore
         let http = HTTPGatewayAPI(origin: origin, tokens: tokens)
         api = http
+        // Readiness starts from THIS gateway's stored delivery evidence; the
+        // previous gateway's state must never bleed into the new row.
+        pushRegistration = .idle
+        gatewayPushHealth = nil
+        lastVoIPPushAt = Self.storedLastVoIPPush(for: binding.gatewayId, defaults: defaults)
         // PushKit starts at process launch, so the VoIP token can arrive
         // BEFORE this pairing session exists; flush the registration now that
         // an authenticated API is available (the token callback covers the
         // opposite ordering).
         registerPushIfReady()
+        refreshGatewayPushHealth(http)
+        // Ordinary service alerts: ask for permission once (the user
+        // authorized ongoing alerts in-app) and load the gateway's current
+        // availability view for Settings.
+        Task {
+            await requestAlertAuthorizationIfNeeded()
+            await refreshNotificationStatus()
+        }
         gatewayName = binding.gatewayName ?? binding.gatewayId
         preferredRouteMode = MediaRoutePreferenceStore.shared.mode(for: binding.gatewayId)
         currentGatewayScope = GatewayScope.identifier(gatewayID: binding.gatewayId)
@@ -958,20 +1036,47 @@ final class AppModel: ObservableObject {
 
         // Foreground direct-path preflight (no call, no mic, no audio
         // session): keeps fresh reachability/RTT measurements so dial and
-        // answer start from evidence instead of a cold probe. Never runs
-        // during calls or when the user pinned the relay preference.
-        let gatewayID = binding.gatewayId
+        // answer start from evidence instead of a cold probe. It runs
+        // whenever the app is foreground with no live call — including when
+        // the user's preferred mode is relay — because the route screen must
+        // be able to show MEASURED direct latency at any time (build-36
+        // field: "no values without a call").
         let preflight = RoutePreflightController(api: http, eligible: { [weak live] in
             guard let live else { return false }
             return !live.hasLiveCall
-                && MediaRoutePreferenceStore.shared.mode(for: gatewayID) != .relay
         })
+        preflight.onUpdate = { [weak self] snapshot in
+            self?.routeDiagnostics.apply(preflight: snapshot)
+            self?.persistRouteMeasurements()
+        }
         routePreflight = preflight
         live.routePreflight = preflight
         preflight.appDidEnterForeground()
 
+        // Idle relay-path probe: one authenticated relay WebSocket with
+        // app-level ping/pong, so the route screen also shows a MEASURED
+        // relay RTT without a call. Stopped for the duration of any call.
+        let relayProbe = RelayIdleProbeController(api: http, eligible: { [weak live] in
+            guard let live else { return false }
+            return !live.hasLiveCall
+        })
+        relayProbe.onUpdate = { [weak self] snapshot in
+            self?.routeDiagnostics.apply(relayProbe: snapshot)
+            self?.persistRouteMeasurements()
+        }
+        relayIdleProbe = relayProbe
+        live.idleRelayProbe = relayProbe
+        relayProbe.appDidEnterForeground()
+        // Show the previous launch's last measured values WITH their age while
+        // the fresh foreground probes warm up (never as a live reading).
+        RouteMeasurementMemory.restore(into: &routeDiagnostics,
+                                       scope: GatewayScope.identifier(gatewayID: binding.gatewayId))
+
         let outboxStore = OutboxStore(scopeIdentifier: binding.gatewayId)
-        let messages = MessageInbox(api: http, filter: spamFilter, outboxStore: outboxStore)
+        let messages = MessageInbox(
+            api: http, filter: spamFilter, outboxStore: outboxStore,
+            tombstoneScope: binding.gatewayId
+        )
         messages.lineReady = { [weak self] in self?.isSMSLineUsable ?? false }
         messages.lineReadyForEntry = { [weak self] lineID in self?.lineCanSendSMS(lineID) ?? false }
         messages.lineIdProvider = { [weak self] in self?.defaultLineId }
@@ -1050,6 +1155,9 @@ final class AppModel: ObservableObject {
         authRecoveryRequired = false
         authRecoveryMessage = nil
         callKitIssue = nil
+        pushRegistration = .idle
+        gatewayPushHealth = nil
+        lastVoIPPushAt = nil
         eventAuthRecoveryKicks = 0
         activeGatewayCallIds.removeAll()
         reportingIncomingIds.removeAll()
@@ -1057,6 +1165,13 @@ final class AppModel: ObservableObject {
         reservedCallIds.removeAll()
         activeCall = nil
         quality = nil
+        routeState = nil
+        audioStatus = nil
+        relayIdleProbe?.appDidEnterBackground()
+        relayIdleProbe = nil
+        routePreflight?.appDidEnterBackground()
+        routePreflight = nil
+        routeDiagnostics = RouteDiagnostics()
     }
 
     private func bindDriver(_ driver: CallDriver) {
@@ -1076,11 +1191,31 @@ final class AppModel: ObservableObject {
                 self.quality = quality
             }
         }
+        driver.onAudioStatus = { [weak self] message in
+            Task { @MainActor in
+                guard let self, boundGeneration == self.sessionGeneration else { return }
+                self.audioStatus = message
+            }
+        }
         driver.onRouteState = { [weak self] state in
             Task { @MainActor in
                 guard let self, boundGeneration == self.sessionGeneration else { return }
+                // A terminal route-state publication can race callDidEnd
+                // (both hop to the main actor). Without this guard the late
+                // state would resurrect `inCall` and leave the UI claiming a
+                // live, real-time call forever with a frozen sample (build-33
+                // screenshot). Route telemetry applies to a LIVE call only.
+                guard self.driver?.hasLiveCall == true
+                        || self.activeCall != nil
+                        || !self.activeGatewayCallIds.isEmpty else {
+                    self.routeState = nil
+                    self.routeDiagnostics.endCall()
+                    return
+                }
                 self.routeState = state
                 self.preferredRouteMode = state.mode
+                self.routeDiagnostics.apply(call: state)
+                self.persistRouteMeasurements()
             }
         }
         driver.onRouteNotice = { [weak self] message, offersAuto in
@@ -1101,9 +1236,13 @@ final class AppModel: ObservableObject {
                 self.quality = nil
                 self.routeState = nil
                 self.routeNotice = nil
-                // The call is over: idle direct-path measurement may resume
+                self.audioStatus = nil
+                self.routeDiagnostics.endCall()
+                self.persistRouteMeasurements()
+                // The call is over: idle direct+relay measurement may resume
                 // (eligibility re-checks foreground/no-call state).
                 self.routePreflight?.appDidEnterForeground()
+                self.relayIdleProbe?.appDidEnterForeground()
                 await self.refreshRecents()
             }
         }
@@ -1913,6 +2052,21 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Bulk conversation delete for the list's Edit mode. Sequential so a
+    /// failure cannot be lost in a fan-out: each accepted delete is applied
+    /// locally immediately, each rejected key stays visible and is reported.
+    func deleteThreads(_ keys: [String]) async -> BulkOperationResult {
+        var result = BulkOperationResult()
+        for key in keys {
+            if await deleteThread(key) {
+                result.succeeded.append(key)
+            } else {
+                result.failed.append(key)
+            }
+        }
+        return result
+    }
+
     private func isTrustedContact(_ peer: String) -> Bool {
         guard defaults.bool(forKey: DefaultsKey.contactWhitelist) else { return false }
         return contacts.name(forPeer: peer) != nil
@@ -2327,26 +2481,211 @@ final class AppModel: ObservableObject {
         AppLog.push.notice("APNs registration unavailable on this device/simulator")
     }
 
+    // MARK: Service alerts (ordinary notifications, never VoIP)
+
+    /// Reads the current system notification permission.
+    func refreshAlertPermission() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        alertPermission = Self.alertPermission(from: settings.authorizationStatus)
+    }
+
+    /// Requests notification permission the first time only. The user
+    /// authorized ongoing arrears/network alerts; a later denial is respected
+    /// (Settings links to the system page instead of re-prompting).
+    @discardableResult
+    func requestAlertAuthorizationIfNeeded() async -> AlertPermissionState {
+        await refreshAlertPermission()
+        if alertPermission == .notDetermined {
+            _ = try? await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .sound, .badge])
+            await refreshAlertPermission()
+        }
+        return alertPermission
+    }
+
+    /// Routes a standard-notification payload: remembers the alert, switches
+    /// to Settings (where the status row lives) and refreshes the live
+    /// gateway view. Non-alert payloads are ignored here (VoIP payloads are
+    /// handled exclusively by PushKit).
+    func handleServiceNotification(userInfo: [AnyHashable: Any]) {
+        guard let payload = ServiceAlertPayload.parse(userInfo: userInfo) else { return }
+        lastServiceAlert = payload
+        pendingServiceAlert = payload
+        selectedTab = .settings
+        DiagnosticsStore.shared.log("push", "service alert \(payload.alert.rawValue) line=\(payload.lineId ?? "-")")
+        Task {
+            await refreshAlertPermission()
+            await refreshNotificationStatus()
+        }
+    }
+
+    func clearPendingServiceAlert() {
+        pendingServiceAlert = nil
+    }
+
+    /// Loads the designated-backup availability view for Settings. A failure
+    /// leaves the previous value untouched and is not an alarm.
+    func refreshNotificationStatus() async {
+        guard !isDemo, let api else {
+            gatewayNotificationStatus = nil
+            return
+        }
+        gatewayNotificationStatus = try? await api.notificationsStatus()
+    }
+
+    private static func alertPermission(from status: UNAuthorizationStatus) -> AlertPermissionState {
+        switch status {
+        case .notDetermined: return .notDetermined
+        case .authorized: return .authorized
+        case .provisional, .ephemeral: return .provisional
+        case .denied: return .denied
+        @unknown default: return .unknown
+        }
+    }
+
+    // MARK: Contacts sync (explicit, upsert-only)
+
+    /// Uploads the current system-contacts snapshot to the pairing-key
+    /// principal. Repeated runs merge without duplicating; nothing is ever
+    /// deleted from the gateway by omission and the system Contacts store is
+    /// only read.
+    func syncContactsToGateway() {
+        guard !isDemo, let api else {
+            contactSyncStatus = .failed(String(localized: "请先连接网关。"))
+            return
+        }
+        guard contactSyncStatus != .syncing else { return }
+        contactSyncStatus = .syncing
+        Task { @MainActor in
+            if contacts.access == .notDetermined {
+                _ = await contacts.requestAccess()
+            }
+            guard contacts.access.canRead else {
+                contactSyncStatus = .failed(String(localized: "未授权通讯录，无法同步。"))
+                return
+            }
+            // Re-read the system snapshot so the upload is current.
+            _ = await contacts.refreshFromSystem()
+            let plan = ContactSyncPlanner.plan(from: contacts.contacts)
+            guard !plan.entries.isEmpty else {
+                contactSyncStatus = .failed("没有可同步的联系人。")
+                return
+            }
+            do {
+                var created = 0
+                var updated = 0
+                var unchanged = 0
+                var skipped = 0
+                for batch in ContactSyncPlanner.batches(plan.entries) {
+                    let result = try await api.syncContacts(
+                        ContactSyncRequest(contacts: batch),
+                        idempotencyKey: UUID().uuidString
+                    )
+                    created += result.created
+                    updated += result.updated
+                    unchanged += result.unchanged
+                    skipped += result.skipped
+                }
+                // A size-limited run is never shown as a complete success.
+                if plan.isComplete {
+                    contactSyncStatus = .synced(count: plan.entries.count, at: Date())
+                } else {
+                    contactSyncStatus = .partial(
+                        sent: plan.entries.count, omitted: plan.omitted,
+                        truncatedFields: plan.truncatedFields, at: Date()
+                    )
+                }
+                // Counts only: no names, numbers or tokens in diagnostics.
+                DiagnosticsStore.shared.log("contacts",
+                    "gateway sync uploaded=\(plan.entries.count) created=\(created) updated=\(updated) unchanged=\(unchanged) skipped=\(skipped) omitted=\(plan.omitted) truncated_fields=\(plan.truncatedFields)")
+            } catch {
+                let message = (error as? APIError)?.friendlyMessage ?? String(localized: "同步失败，请稍后重试。")
+                contactSyncStatus = .failed(message)
+                DiagnosticsStore.shared.log("contacts", "gateway sync failed: \(error)")
+            }
+        }
+    }
+
     private func registerPushIfReady() {
         guard let api, let voip = voipTokenHex, let apns = apnsTokenHex else { return }
         // The gateway sends to the APNs host named by this environment and
-        // rejects a target that disagrees with its broker; a TestFlight build
-        // is distributed-signed (production) and must never claim sandbox.
+        // rejects a target that disagrees with its configured broker; a TestFlight
+        // build is distributed-signed (production) and must never claim sandbox.
         let env = PushEnvironmentResolver.live()
         let registration = PushRegistration(
             apnsToken: apns, voipToken: voip, environment: env,
             locale: Locale.current.identifier
         )
+        pushRegistration = .registering
         Task {
             do {
                 try await api.registerPush(registration: registration, idempotencyKey: UUID().uuidString)
                 // Tokens themselves never reach the log; environment only.
+                pushRegistration = .registered
                 DiagnosticsStore.shared.log("push", "tokens registered environment=\(env)")
             } catch {
+                pushRegistration = .failed
                 DiagnosticsStore.shared.log("push", "token registration failed: \(error)")
             }
         }
     }
+
+    /// The strongest delivery evidence the app can hold: a VoIP push actually
+    /// reached PushKit on this device. APNs acceptance or an open WebSocket is
+    /// never treated as delivery.
+    private func recordVoIPPushReceived() {
+        let now = Date()
+        lastVoIPPushAt = now
+        if let gatewayID = bindingStore.current()?.gatewayId {
+            defaults.set(now.timeIntervalSince1970, forKey: Self.lastVoIPPushKey(gatewayID))
+        }
+        if pushRegistration == .idle || pushRegistration == .failed {
+            // A delivered push proves a registration existed; the next token
+            // callback re-registers authoritatively, but the row must not
+            // claim "failed" while pushes demonstrably arrive.
+            pushRegistration = .registered
+        }
+    }
+
+    private static func lastVoIPPushKey(_ gatewayID: String) -> String {
+        "callrelay.lastVoIPPush.\(gatewayID)"
+    }
+
+    private static func storedLastVoIPPush(for gatewayID: String, defaults: UserDefaults) -> Date? {
+        guard let stamp = defaults.object(forKey: lastVoIPPushKey(gatewayID)) as? Double else { return nil }
+        return Date(timeIntervalSince1970: stamp)
+    }
+
+    /// Best-effort anonymous health read; unknown stays unknown (nil) and is
+    /// never rendered as ready.
+    private func refreshGatewayPushHealth(_ client: HTTPGatewayAPI) {
+        let generation = sessionGeneration
+        Task { [weak self] in
+            guard let health = try? await client.gatewayHealth() else { return }
+            guard let self, generation == self.sessionGeneration else { return }
+            self.gatewayPushHealth = health.push
+        }
+    }
+
+    /// Truthful lock-screen readiness for Settings, from observable sources.
+    var pushReadiness: PushReadiness {
+        PushReadiness.evaluate(
+            isPaired: isPaired && !isDemo,
+            // A token can only exist with the entitlement, so a delivered
+            // token is itself entitlement evidence when the embedded profile
+            // cannot be parsed (Feather re-signs).
+            hasAPNsEntitlement: pushEntitlementPresent || voipTokenHex != nil,
+            voipToken: voipTokenHex,
+            phase: pushRegistration,
+            gatewayPush: gatewayPushHealth,
+            appEnvironment: pushEnvironment,
+            lastPushAt: lastVoIPPushAt
+        )
+    }
+
+    /// Signed-entitlement and environment are process constants; resolve once.
+    private lazy var pushEntitlementPresent = PushEnvironmentResolver.isEntitled()
+    private lazy var pushEnvironment = PushEnvironmentResolver.live()
 
     /// One factory for the system-call surface: LiveCommunicationKit on
     /// iOS 17.4+ (the owner's explicit choice), legacy CallKit below.
@@ -2437,8 +2776,20 @@ extension AppModel: VoIPPushHandling {
         // CallKit report, so a duplicate push/event converges instead of
         // presenting a second ring.
         let policy = pushPolicy ?? PushReceptionPolicy(expectedGatewayId: nil)
+        // A push is suppressed only while a report is actually in flight, the
+        // SYSTEM accepted the call, or the driver cannot attempt another
+        // bounded report. In-app tracking alone is NOT acceptance: a tracked
+        // call whose system report was rejected/never resolved must be
+        // re-reported by a repeated push instead of silently swallowed.
+        let trackedIds = activeGatewayCallIds.union(reservedCallIds)
+        let suppressibleIds = PushReportSuppression.suppressibleIds(
+            tracked: trackedIds,
+            reserved: reservedCallIds,
+            systemState: { driver?.systemReportState(gatewayId: $0) ?? .unknown },
+            canAttempt: { driver?.canAttemptSystemReport(gatewayId: $0) ?? false }
+        )
         let decision = policy.evaluate(
-            payload: payload, activeGatewayCallIds: activeGatewayCallIds.union(reservedCallIds)
+            payload: payload, activeGatewayCallIds: suppressibleIds
         )
 
         switch decision {
@@ -2487,9 +2838,28 @@ extension AppModel: VoIPPushHandling {
                 // A push completed after unpair/re-bind must not touch the new
                 // session's call sets.
                 guard voipGeneration == sessionGeneration else { return }
-                // The driver's report reflects CallKit acceptance.
-                reported = true
-                activeGatewayCallIds.insert(target.gatewayCallId)
+                // Truthful outcome: only the driver's system-report state says
+                // whether CallKit/LCK accepted the call. "Accepted" still does
+                // NOT prove the OS rang the user — it is the strongest signal
+                // the app can observe.
+                switch liveDriver.systemReportState(gatewayId: target.gatewayCallId) {
+                case .accepted:
+                    reported = true
+                    DiagnosticsStore.shared.log("push",
+                        "report accepted (system, UI not proven) call="
+                            + "\(Self.logPrefix(target.gatewayCallId))")
+                case .rejected:
+                    reported = false
+                    DiagnosticsStore.shared.log("push",
+                        "report rejected (no system ring) call="
+                            + "\(Self.logPrefix(target.gatewayCallId))")
+                case .unknown:
+                    reported = false
+                    DiagnosticsStore.shared.log("push",
+                        "report outcome unknown call="
+                            + "\(Self.logPrefix(target.gatewayCallId))")
+                }
+                if reported { activeGatewayCallIds.insert(target.gatewayCallId) }
             } else {
                 reported = false
             }
@@ -2498,10 +2868,8 @@ extension AppModel: VoIPPushHandling {
                 if mustReport { await reportPlaceholderCall() }
                 return
             }
-            // "report ok" only means reportNewIncomingCall returned without
-            // error; it does NOT by itself prove the system UI rang.
-            DiagnosticsStore.shared.log("push",
-                "report ok call=\(Self.logPrefix(target.gatewayCallId))")
+            // The system accepted the report (the OS screen itself is not
+            // directly observable here).
             reconcileIncoming(target.gatewayCallId, generation: voipGeneration, api: api)
             await applyScreening(handle: target.handle, gatewayId: target.gatewayCallId,
                                  generation: voipGeneration)

@@ -44,18 +44,41 @@ private struct MessageInboxView: View {
     /// Conversation awaiting the native delete confirmation.
     @State private var pendingDeleteKey: String?
     @State private var pendingDeletePeer = ""
+    /// Native Edit mode: multi-select conversations for bulk delete / mark read.
+    @State private var isEditing = false
+    @State private var selectedKeys = Set<String>()
+    @State private var bulkInProgress = false
+    @State private var showBulkDeleteConfirm = false
+    /// Honest result of a partial/complete bulk operation (nil = no notice).
+    @State private var bulkNotice: String?
+    /// Single-conversation failure notice.
+    @State private var deleteFailure: String?
+
+    private var editable: Bool { filter != .junk }
+
+    private var orderedSelectedKeys: [String] {
+        filteredThreads.map(\.key).filter { selectedKeys.contains($0) }
+    }
+
+    private var allVisibleSelected: Bool {
+        !filteredThreads.isEmpty && selectedKeys.count == filteredThreads.count
+    }
 
     var body: some View {
         NavigationStack {
             content(for: inbox)
                 .navigationTitle(navigationTitle)
                 .navigationBarTitleDisplayMode(.inline)
+                .safeAreaInset(edge: .bottom) {
+                    if isEditing { editActionBar }
+                }
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Menu {
                             ForEach(MessageFilter.allCases) { option in
                                 Button {
                                     filter = option
+                                    exitEditMode()
                                 } label: {
                                     Label(option.title, systemImage: filter == option ? "checkmark" : "")
                                 }
@@ -63,49 +86,86 @@ private struct MessageInboxView: View {
                         } label: {
                             Image(systemName: "line.3.horizontal.decrease.circle")
                         }
+                        .disabled(isEditing)
                         .accessibilityLabel("筛选短信")
                         .accessibilityIdentifier("messageFilterMenu")
                     }
-                    if model.authorizedLines.count > 1 {
+                    // "编辑" is a permanent, always-visible text action in
+                    // browse mode (the field report was that delete felt
+                    // undiscoverable). Secondary destinations are grouped
+                    // into ONE trailing menu so a real 2-line + voicemail
+                    // toolbar cannot overflow the Edit entry away.
+                    if editable {
                         ToolbarItem(placement: .topBarTrailing) {
-                            Menu {
-                                Button {
-                                    model.setLineFilter(nil)
-                                } label: {
-                                    Label("全部线路", systemImage: model.selectedLineFilter == nil ? "checkmark" : "")
+                            Button(isEditing ? String(localized: "完成") : String(localized: "编辑")) {
+                                if isEditing { exitEditMode() } else { isEditing = true }
+                            }
+                            .accessibilityIdentifier("messagesEditButton")
+                            .accessibilityLabel(isEditing
+                                                ? String(localized: "完成编辑")
+                                                : String(localized: "编辑短信"))
+                        }
+                    }
+                    if isEditing {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button(allVisibleSelected
+                                   ? String(localized: "取消全选")
+                                   : String(localized: "全选")) {
+                                if allVisibleSelected {
+                                    selectedKeys.removeAll()
+                                } else {
+                                    selectedKeys = Set(filteredThreads.map(\.key))
                                 }
-                                ForEach(model.authorizedLines) { line in
-                                    Button {
-                                        model.setLineFilter(line.id)
-                                    } label: {
-                                        Label(line.friendlyName, systemImage: model.selectedLineFilter == line.id ? "checkmark" : "")
+                            }
+                            .accessibilityIdentifier("messagesSelectAllButton")
+                        }
+                    }
+                    if !isEditing {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                composeRecipient = ""
+                                showCompose = true
+                            } label: {
+                                Image(systemName: "square.and.pencil")
+                            }
+                            .accessibilityLabel("新建短信")
+                            .accessibilityIdentifier("newMessageButton")
+                        }
+                        if !model.isDemo || model.authorizedLines.count > 1 {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Menu {
+                                    if !model.isDemo {
+                                        NavigationLink {
+                                            VoicemailView()
+                                        } label: {
+                                            Label("语音留言", systemImage: "recordingtape")
+                                        }
                                     }
+                                    if model.authorizedLines.count > 1 {
+                                        Section {
+                                            Button {
+                                                model.setLineFilter(nil)
+                                            } label: {
+                                                Label("全部线路", systemImage: model.selectedLineFilter == nil ? "checkmark" : "")
+                                            }
+                                            ForEach(model.authorizedLines) { line in
+                                                Button {
+                                                    model.setLineFilter(line.id)
+                                                } label: {
+                                                    Label(line.friendlyName, systemImage: model.selectedLineFilter == line.id ? "checkmark" : "")
+                                                }
+                                            }
+                                        } header: {
+                                            Text(String(localized: "按线路筛选"))
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis.circle")
                                 }
-                            } label: {
-                                Image(systemName: "simcard.2")
+                                .accessibilityLabel("更多")
+                                .accessibilityIdentifier("messagesMoreMenu")
                             }
-                            .accessibilityLabel("按线路筛选")
                         }
-                    }
-                    if !model.isDemo {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            NavigationLink {
-                                VoicemailView()
-                            } label: {
-                                Image(systemName: "recordingtape")
-                            }
-                            .accessibilityLabel("语音留言")
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            composeRecipient = ""
-                            showCompose = true
-                        } label: {
-                            Image(systemName: "square.and.pencil")
-                        }
-                        .accessibilityLabel("新建短信")
-                        .accessibilityIdentifier("newMessageButton")
                     }
                 }
                 .sheet(isPresented: $showCompose) {
@@ -126,11 +186,45 @@ private struct MessageInboxView: View {
                     Button(String(localized: "删除对话"), role: .destructive) {
                         guard let key = pendingDeleteKey else { return }
                         pendingDeleteKey = nil
-                        Task { await model.deleteThread(key) }
+                        Task {
+                            if !(await model.deleteThread(key)) {
+                                deleteFailure = String(localized: "删除对话失败，请检查网络后重试。")
+                            }
+                        }
                     }
                     Button(String(localized: "取消"), role: .cancel) { pendingDeleteKey = nil }
                 } message: {
                     Text(String(localized: "删除后所有设备将不再显示这段对话历史。"))
+                }
+                // Bulk delete shares the gateway tombstone semantics: only the
+                // conversations the gateway accepted are removed locally.
+                .confirmationDialog(
+                    String(localized: "删除选中的 \(selectedKeys.count) 个对话？"),
+                    isPresented: $showBulkDeleteConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button(String(localized: "删除对话"), role: .destructive) {
+                        Task { await performBulkDelete() }
+                    }
+                    Button(String(localized: "取消"), role: .cancel) {}
+                } message: {
+                    Text(String(localized: "删除后所有设备将不再显示这些对话历史。"))
+                }
+                .alert(String(localized: "操作未全部完成"), isPresented: Binding(
+                    get: { bulkNotice != nil },
+                    set: { if !$0 { bulkNotice = nil } }
+                )) {
+                    Button(String(localized: "知道了"), role: .cancel) { bulkNotice = nil }
+                } message: {
+                    Text(bulkNotice ?? "")
+                }
+                .alert(String(localized: "删除失败"), isPresented: Binding(
+                    get: { deleteFailure != nil },
+                    set: { if !$0 { deleteFailure = nil } }
+                )) {
+                    Button(String(localized: "知道了"), role: .cancel) { deleteFailure = nil }
+                } message: {
+                    Text(deleteFailure ?? "")
                 }
                 .onChange(of: model.pendingComposePeer) { _, peer in
                     guard let peer, !peer.isEmpty else { return }
@@ -138,13 +232,94 @@ private struct MessageInboxView: View {
                     showCompose = true
                     _ = model.consumePendingComposePeer()
                 }
+                .onChange(of: filteredThreads.map(\.key)) { _, keys in
+                    // Refresh/new-message/delete races: selection is stable
+                    // thread keys, and keys that left the visible list can no
+                    // longer be acted on optimistically.
+                    selectedKeys.formIntersection(Set(keys))
+                    if keys.isEmpty { isEditing = false }
+                }
                 .onAppear {
                     if let peer = model.consumePendingComposePeer() {
                         composeRecipient = peer
                         showCompose = true
                     }
                 }
+        }
+    }
+
+    /// Native Messages-style bottom bar while editing: mark read + delete for
+    /// the current stable-key selection, disabled for an empty selection and
+    /// during an in-flight operation.
+    @ViewBuilder
+    private var editActionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack {
+                Button {
+                    Task { await performBulkMarkRead() }
+                } label: {
+                    Label(String(localized: "标记已读"), systemImage: "envelope.open")
+                }
+                .disabled(selectedKeys.isEmpty || bulkInProgress)
+                .accessibilityIdentifier("bulkMarkReadButton")
+                Spacer()
+                if bulkInProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Spacer()
+                Button(role: .destructive) {
+                    showBulkDeleteConfirm = true
+                } label: {
+                    Label(selectedKeys.isEmpty
+                          ? String(localized: "删除")
+                          : String(localized: "删除 (\(selectedKeys.count))"),
+                          systemImage: "trash")
+                }
+                .disabled(selectedKeys.isEmpty || bulkInProgress)
+                .accessibilityIdentifier("bulkDeleteButton")
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.bar)
+        }
+    }
+
+    private func exitEditMode() {
+        isEditing = false
+        selectedKeys.removeAll()
+    }
+
+    private func performBulkDelete() async {
+        let keys = orderedSelectedKeys
+        guard !keys.isEmpty else { return }
+        bulkInProgress = true
+        let result = await model.deleteThreads(keys)
+        bulkInProgress = false
+        exitEditMode()
+        if !result.failed.isEmpty {
+            bulkNotice = result.succeeded.isEmpty
+                ? String(localized: "删除失败，请检查网络后重试。")
+                : String(localized: "已删除 \(result.succeeded.count) 个对话，\(result.failed.count) 个删除失败，请重试。")
+        }
+    }
+
+    private func performBulkMarkRead() async {
+        let keys = orderedSelectedKeys
+        guard !keys.isEmpty else { return }
+        bulkInProgress = true
+        let result = await inbox.markThreadsRead(keys)
+        bulkInProgress = false
+        selectedKeys.removeAll()
+        guard !result.isEmpty else { return }
+        if !result.failed.isEmpty {
+            bulkNotice = result.succeeded.isEmpty
+                ? String(localized: "标记已读失败，请检查网络后重试。")
+                : String(localized: "已标记 \(result.succeeded.count) 个对话，\(result.failed.count) 个失败，请重试。")
+        } else {
+            bulkNotice = String(localized: "已将 \(result.succeeded.count) 个对话标记为已读。")
+        }
     }
 
     private var navigationTitle: String {
@@ -185,8 +360,24 @@ private struct MessageInboxView: View {
                 )
                 .accessibilityIdentifier("messagesEmpty")
             } else {
-                List {
-                    if !model.isDemo {
+                List(selection: isEditing ? $selectedKeys : nil) {
+                    // Content-level management entry, independent of the
+                    // navigation toolbar (field report: the toolbar Edit was
+                    // not findable). Tapping enters the SAME native edit
+                    // mode with selection and the bottom mark-read/delete
+                    // bar; hidden again while editing.
+                    if !isEditing {
+                        Section {
+                            Button {
+                                isEditing = true
+                            } label: {
+                                Label("管理信息", systemImage: "checklist")
+                            }
+                            .accessibilityIdentifier("messagesManageEntry")
+                            .accessibilityLabel("管理信息：批量标记已读或删除")
+                        }
+                    }
+                    if !model.isDemo, !isEditing {
                         Section {
                             NavigationLink {
                                 VoicemailView()
@@ -197,29 +388,55 @@ private struct MessageInboxView: View {
                         }
                     }
                     ForEach(filteredThreads) { thread in
-                        NavigationLink {
-                            ThreadDetailView(inbox: inbox, threadKey: thread.key, peer: thread.peer)
-                        } label: {
-                            ThreadRow(thread: thread,
-                                      displayName: model.contacts.name(forPeer: thread.peer))
-                        }
-                        .accessibilityIdentifier("thread-\(thread.key)")
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                        .listRowSeparator(.automatic)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                pendingDeleteKey = thread.key
-                                pendingDeletePeer = model.contacts.name(forPeer: thread.peer) ?? thread.peer
-                            } label: {
-                                Label("删除", systemImage: "trash")
-                            }
-                            .accessibilityIdentifier("delete-thread-\(thread.key)")
-                        }
+                        threadListRow(thread)
                     }
                 }
+                .environment(\.editMode, .constant(isEditing ? .active : .inactive))
                 .listStyle(.plain)
                 .accessibilityIdentifier("messageThreadList")
                 .refreshable { await inbox.refreshThreads() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func threadListRow(_ thread: MessageThread) -> some View {
+        if isEditing {
+            // Selection rows use the stable thread key (never list offsets),
+            // so a refresh or a newly arrived message cannot shift a pending
+            // bulk action onto another conversation.
+            ThreadRow(thread: thread, displayName: model.contacts.name(forPeer: thread.peer))
+                .tag(thread.key)
+                .accessibilityIdentifier("thread-\(thread.key)")
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        } else {
+            NavigationLink {
+                ThreadDetailView(inbox: inbox, threadKey: thread.key, peer: thread.peer)
+            } label: {
+                ThreadRow(thread: thread,
+                          displayName: model.contacts.name(forPeer: thread.peer))
+            }
+            .accessibilityIdentifier("thread-\(thread.key)")
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .listRowSeparator(.automatic)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
+                    pendingDeleteKey = thread.key
+                    pendingDeletePeer = model.contacts.name(forPeer: thread.peer) ?? thread.peer
+                } label: {
+                    Label("删除", systemImage: "trash")
+                }
+                .accessibilityIdentifier("delete-thread-\(thread.key)")
+            }
+            // Long-press convenience entry, mirroring the system Messages
+            // list where a conversation can be deleted without opening it.
+            .contextMenu {
+                Button(role: .destructive) {
+                    pendingDeleteKey = thread.key
+                    pendingDeletePeer = model.contacts.name(forPeer: thread.peer) ?? thread.peer
+                } label: {
+                    Label("删除对话", systemImage: "trash")
+                }
             }
         }
     }
