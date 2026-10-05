@@ -223,16 +223,23 @@ final class AudioTransportConcurrencyTests: XCTestCase {
         let second = FakeMediaSocket()
         second.scripted = [.message(.success(.string(Self.readyMessage()))), .park]
         let media2 = WebSocketCallMedia(socketFactory: { _, _ in second }, audioGraph: graph)
+        func dataSends(_ socket: FakeMediaSocket) -> Int {
+            socket.sends.filter { if case .data = $0.message { return true }; return false }.count
+        }
         try awaitConnect(media2)
+        // Baseline the census and both socket counters at the SAME synchronous
+        // main-actor instant: the connect handshake can span several 20 ms
+        // capture ticks on a loaded CI runner (observed: ~0.9 s), so frames
+        // sent before the census reset must not be compared against post-reset
+        // sends.
+        let baseFirst = dataSends(first)
+        let baseSecond = dataSends(second)
         DiagnosticsCensus.shared.reset()
         settle(for: 1.0)
         settle(for: 0.4)
         let emitted = DiagnosticsCensus.shared.snapshot()["audio.micFrames"] ?? 0
-        func dataSends(_ socket: FakeMediaSocket) -> Int {
-            socket.sends.filter { if case .data = $0.message { return true }; return false }.count
-        }
-        let firstSends = dataSends(first)
-        let secondSends = dataSends(second)
+        let firstSends = dataSends(first) - baseFirst
+        let secondSends = dataSends(second) - baseSecond
         graph.stop()
         media2.close()
         XCTAssertGreaterThan(emitted, 10)

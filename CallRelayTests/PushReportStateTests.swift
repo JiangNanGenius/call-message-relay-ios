@@ -8,13 +8,18 @@ import XCTest
 /// re-reportable within a bounded attempt budget, and the report outcome is
 /// observable instead of being logged as an unconditional "ok".
 final class PushReportStateTests: XCTestCase {
-    private let payload = VoIPPushPayload(
-        callUUIDRaw: "11111111-2222-3333-4444-555555555555",
-        callId: "line1:abc",
-        handle: "",
-        gatewayId: "gw",
-        issuedAt: Int64(Date().addingTimeInterval(-1).timeIntervalSince1970)
-    )
+    /// Computed per use: a stored payload timestamp would age past the
+    /// freshness window while the suite waits behind hundreds of earlier
+    /// tests (observed on CI: the same payload became `staleReconcile`).
+    private var payload: VoIPPushPayload {
+        VoIPPushPayload(
+            callUUIDRaw: "11111111-2222-3333-4444-555555555555",
+            callId: "line1:abc",
+            handle: "",
+            gatewayId: "gw",
+            issuedAt: Int64(Date().addingTimeInterval(-1).timeIntervalSince1970)
+        )
+    }
 
     func testAcceptedReportSuppressesRepeatedPush() {
         let suppressible = PushReportSuppression.suppressibleIds(

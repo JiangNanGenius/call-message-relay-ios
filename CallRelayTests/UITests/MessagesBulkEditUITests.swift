@@ -7,6 +7,14 @@ import XCTest
 final class MessagesBulkEditUITests: XCTestCase {
     private var app: XCUIApplication!
 
+    /// XCTest has no built-in hittability wait; a loaded CI runner can still
+    /// be animating the edit-mode transition when the row is first queried.
+    private func waitForHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isHittable == true"), object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
@@ -43,11 +51,23 @@ final class MessagesBulkEditUITests: XCTestCase {
         XCTAssertFalse(bulkDelete.isEnabled, "empty selection must disable delete")
 
         // Selecting a stable thread key enables the actions. In edit mode the
-        // row is a selectable list row, not a NavigationLink button.
-        let selectableRow = app.descendants(matching: .any)
-            .matching(identifier: "thread-555-0123").firstMatch
-        XCTAssertTrue(selectableRow.waitForExistence(timeout: 5))
-        selectableRow.tap()
+        // row is a selectable list row, not a NavigationLink button, and the
+        // same stable identifier is also carried by the avatar image. Pick the
+        // first HITTABLE match instead of `firstMatch`: on a loaded CI runner
+        // `firstMatch` resolved to the non-hittable avatar and the tap failed
+        // while the edit transition was still settling.
+        let rowCandidates = app.descendants(matching: .any)
+            .matching(identifier: "thread-555-0123").allElementsBoundByIndex
+        XCTAssertFalse(rowCandidates.isEmpty, "seeded demo thread row must exist in edit mode")
+        var selectableRow = rowCandidates.first(where: { $0.isHittable })
+        if selectableRow == nil {
+            let cell = app.cells.containing(.image, identifier: "thread-555-0123").firstMatch
+            if cell.waitForExistence(timeout: 5) { selectableRow = cell }
+        }
+        XCTAssertNotNil(selectableRow, "the thread row must expose a hittable element")
+        XCTAssertTrue(waitForHittable(selectableRow!, timeout: 5),
+                      "the row must become hittable after entering edit mode")
+        selectableRow!.tap()
         XCTAssertTrue(bulkDelete.isEnabled, "selection must enable delete")
         XCTAssertTrue(markRead.isEnabled, "selection must enable mark read")
 
