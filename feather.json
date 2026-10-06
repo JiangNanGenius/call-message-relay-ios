@@ -11,11 +11,21 @@
    "bundleIdentifier": "com.jiangnangenius.callrelay",
    "developerName": "JiangNanGenius",
    "subtitle": "Linux 蜂窝电话网关的 iPhone 客户端",
-   "localizedDescription": "CallRelay 0.3.35（build 42）纯原生版：不含任何网页推送桥接。未签名 IPA，需自行使用证书与描述文件签名后安装。",
+   "localizedDescription": "CallRelay 0.3.36（build 43）纯原生版：不含任何网页推送桥接。未签名 IPA，需自行使用证书与描述文件签名后安装。",
    "iconURL": "https://raw.githubusercontent.com/JiangNanGenius/call-message-relay-ios/main/CallRelay/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
    "tintColor": "135CDC",
    "beta": true,
    "versions": [
+    {
+     "version": "0.3.36",
+     "buildVersion": "43",
+     "date": "2026-10-06T09:56:18Z",
+     "minOSVersion": "17.0",
+     "size": 14166359,
+     "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.36/CallRelay-Feather-Native-0.3.36-43-unsigned.ipa",
+     "localizedDescription": "CallRelay 0.3.36（build 43）纯原生版：不含任何网页推送桥接。未签名 IPA，需自行使用证书与描述文件签名后安装。",
+     "sha256": "78b22735fef4c703b3dfaefddaf836ebb29ebfeb09f15b13fce5a356bf88d1b9"
+    },
     {
      "version": "0.3.35",
      "buildVersion": "42",
@@ -167,10 +177,10 @@
      "sha256": "af1fc9596e8a7b7b3263f5b1cc2471fe5c025acf50799ecc9a68be65bc877669"
     }
    ],
-   "version": "0.3.35",
-   "versionDate": "2026-10-06T05:25:26Z",
-   "size": 14153808,
-   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.35/CallRelay-Feather-Native-0.3.35-42-unsigned.ipa",
+   "version": "0.3.36",
+   "versionDate": "2026-10-06T09:56:18Z",
+   "size": 14166359,
+   "downloadURL": "https://github.com/JiangNanGenius/call-message-relay-ios/releases/download/v0.3.36/CallRelay-Feather-Native-0.3.36-43-unsigned.ipa",
    "appPermissions": {
     "entitlements": [
      "aps-environment"
