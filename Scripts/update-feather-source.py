@@ -35,6 +35,22 @@ DEFAULT_DESCRIPTION = (
 NATIVE_FORBIDDEN_BINARY = re.compile(
     rb"(?i)bark|webpush|web push|IncomingCallChecker|CheckIncomingCallIntent|callrelay://incoming"
 )
+# Swift symbol mangling artifact: identifiers ending in lowercase "bar"
+# ("Toolbar", "Tabbar", ...) adjacent to the kind letter K produce the exact
+# bytes "barK" (e.g. `AA07ToolbarK0Rd__lF`). Verified false positive — this
+# exact spelling is excluded; EVERY other case (Bark, bark:// endpoints,
+# BARK, WebPush, ...) still fails the check.
+BARK_MANGLE_ARTIFACT = re.compile(rb"barK")
+
+
+def has_bridge_content(data: bytes) -> bool:
+    """True when a bridge-specific identifier/endpoint is present. Only the
+    exact `barK` mangling artifact is ignored; real bark/Bark markers in any
+    other case still reject the package."""
+    for match in NATIVE_FORBIDDEN_BINARY.finditer(data):
+        if BARK_MANGLE_ARTIFACT.fullmatch(match.group()) is None:
+            return True
+    return False
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("ipa", type=Path)
@@ -78,7 +94,7 @@ with zipfile.ZipFile(args.ipa) as archive:
     meta_prefix = app_prefix + "Metadata.appintents/"
     meta_files = [n for n in names if n.startswith(meta_prefix) and not n.endswith("/")]
     for name in meta_files:
-        if NATIVE_FORBIDDEN_BINARY.search(archive.read(name)):
+        if has_bridge_content(archive.read(name)):
             parser.error(
                 "IPA is not the pure native edition (bridge reference in "
                 f"{name.replace(app_prefix, '')})"
@@ -90,7 +106,7 @@ with zipfile.ZipFile(args.ipa) as archive:
     archive.getinfo(app_prefix + executable)
     archive.getinfo(app_prefix + "Frameworks/WebRTC.framework/WebRTC")
     binary = archive.read(app_prefix + executable)
-    if NATIVE_FORBIDDEN_BINARY.search(binary):
+    if has_bridge_content(binary):
         parser.error("IPA is not the pure native edition (bridge symbols in the binary)")
 
 version = info["CFBundleShortVersionString"]
