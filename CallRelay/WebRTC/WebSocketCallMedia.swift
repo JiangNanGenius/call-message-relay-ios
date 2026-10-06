@@ -45,10 +45,15 @@ final class WebSocketCallMedia: NSObject {
         func pushSyntheticPlayback(_ frame: [Int16])
         /// Real-downlink silence age (ms); `.max` when never played.
         var playbackIdleMilliseconds: Int { get }
-        /// Current playback-buffer depth in 20 ms frames (0 when unknown);
-        /// reported to the gateway in the ping so its downlink controller
-        /// sees the freshest end-to-end delay evidence.
+        /// Wire-compatible playback-buffer depth in 20 ms frames (0 when
+        /// unknown): the QUEUED frame count, the value the deployed gateway
+        /// controller consumes from the ping `buf` field. Semantics are
+        /// frozen for remote compatibility.
         var playbackBufferedFrames: Int { get }
+        /// TOTAL local playout depth in 20 ms frames: queued plus buffers
+        /// already handed to the player. Used for UI telemetry and the
+        /// additive ping `depth` field; never replaces `buf`.
+        var playbackTotalBufferedFrames: Int { get }
         /// OSStatus-style code of the most recent `startIfNeeded` failure
         /// (privacy-safe numeric; nil when the last start succeeded or no
         /// start ran). Lightweight fakes default to nil.
@@ -160,8 +165,11 @@ final class WebSocketCallMedia: NSObject {
     /// clear a stale displayed value instead of indefinitely holding it.
     var lastPingSample: PingSample? { pingSampleLog.last }
     /// LOCAL playback-buffer delay in seconds from the audio graph's own
-    /// depth (20 ms frames). Zero-cost read of an existing counter.
-    var playbackBufferSeconds: Double { Double(audioIO.playbackBufferedFrames) * 0.02 }
+    /// depth (20 ms frames): queued plus scheduled-ahead. Zero-cost read of
+    /// an existing counter. This is a local-buffering number, NOT a
+    /// mouth-to-ear or network measurement, and its value is UI telemetry —
+    /// the wire `buf` contract stays queue-only.
+    var playbackBufferSeconds: Double { Double(audioIO.playbackTotalBufferedFrames) * 0.02 }
     /// Last gateway pong host-buffer evidence with arrival date (relay
     /// telemetry only; nil until a pong arrives).
     private var lastGatewayBuffer: (frames: Int, at: Date)?
@@ -708,14 +716,20 @@ final class WebSocketCallMedia: NSObject {
         pendingPings[pingSequence] = Date()
         if pendingPings.count > 8 { pendingPings.removeAll() }
         let tag = pingSequence
-        // Downlink evidence for the gateway's controller: playback-buffer
-        // depth (frames) and the worst inter-arrival gap over the last
-        // second. Rotating the gap window here (main actor) keeps the
-        // nonisolated receive path lock-free.
+        // Downlink evidence for the gateway's controller. CONTRACT: `buf`
+        // stays QUEUED frames only — the deployed gateway's WSS bitrate/FEC
+        // controller consumes it against fixed thresholds (wsAppBufHigh/Low),
+        // so its semantics must not change silently. `depth` is an additive
+        // field carrying the TOTAL local playout depth (queued + scheduled
+        // ahead) for future gateway use; the current parser ignores unknown
+        // fields, and `gap` remains the worst inter-arrival gap. Rotating
+        // the gap window here (main actor) keeps the nonisolated receive
+        // path lock-free.
         let bufFrames = audioIO.playbackBufferedFrames
+        let totalFrames = audioIO.playbackTotalBufferedFrames
         let gap = wssCodec.consumeDownlinkGapForPing()
         let generation = receiveGeneration
-        socket.send(.string("{\"type\":\"ping\",\"t\":\(tag),\"buf\":\(bufFrames),\"gap\":\(gap)}")) { [weak self] error in
+        socket.send(.string("{\"type\":\"ping\",\"t\":\(tag),\"buf\":\(bufFrames),\"depth\":\(totalFrames),\"gap\":\(gap)}")) { [weak self] error in
             guard error != nil else { return }
             Task { @MainActor in
                 guard let self, self.receiveGeneration == generation else { return }
@@ -1158,6 +1172,8 @@ extension WebSocketCallMedia.WSAudioGraphing {
     func pushSyntheticPlayback(_ frame: [Int16]) { pushPlayback(frame) }
     var playbackIdleMilliseconds: Int { .max }
     var playbackBufferedFrames: Int { 0 }
+    /// Lightweight fakes have no separate scheduled-ahead depth.
+    var playbackTotalBufferedFrames: Int { playbackBufferedFrames }
     /// Route-change revalidation hook: the real graph re-checks the live
     /// input format and rebuilds the capture pipeline when the route changed
     /// it; lightweight fakes do nothing.

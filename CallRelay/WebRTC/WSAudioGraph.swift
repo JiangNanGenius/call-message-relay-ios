@@ -374,9 +374,20 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             // of the starvation evidence.
             DiagnosticsCensus.shared.minimize("audio.capConservationMinPct", feedMinConservation)
         }
+        // Per-run playlist-depth evidence for the next physical call:
+        // total queued + scheduled-ahead frames, plus the trim/drop/PLC
+        // counters, so a 46 log proves the local playout bound instead of
+        // inferring it from RTT. The census values are cross-run maxima /
+        // sums and never contain audio.
+        let playDepthMax = playback.maxTotalDepthFrames
+        DiagnosticsCensus.shared.maximize("audio.playDepthFramesMax", playDepthMax)
+        DiagnosticsCensus.shared.add("audio.playTrimmed", playback.trimmedFrames)
+        DiagnosticsCensus.shared.add("audio.playDropped", playback.droppedFrames)
+        DiagnosticsCensus.shared.add("audio.playConcealed", playback.concealedFrames)
         let stopSummary = "graph stop capDropped=\(capDropped) "
             + "playDropped=\(playback.droppedFrames) playTrimmed=\(playback.trimmedFrames)"
             + " playConcealed=\(playback.concealedFrames)"
+            + " playDepthMax=\(playDepthMax)"
             + " inFlight=\(playback.framesInFlight)"
             + " tapDeliveries=\(tapDeliveries) tapGapMsMax=\(tapGapMs) tapFramesMax=\(tapFramesMax)"
             + " tapCallbacks=\(tapCallbacks) tapUnusable=\(tapUnusable)"
@@ -932,11 +943,21 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         playback.enqueueSynthetic(frame)
     }
 
-    /// Current playback-buffer depth in 20 ms frames; reported to the
-    /// gateway in the WSS ping so its downlink controller sees the freshest
-    /// end-to-end delay evidence.
+    /// Wire-compatible ping depth in 20 ms frames: the QUEUED frames only.
+    /// This is the value the deployed gateway's WSS controller consumes
+    /// (`buf` → app-buffer pressure thresholds); changing its meaning would
+    /// silently retune the remote bitrate/FEC loop, so the contract is
+    /// preserved. UI telemetry and the additive ping `depth` field use
+    /// `playbackTotalBufferedFrames`.
     nonisolated var playbackBufferedFrames: Int {
         playback.queuedFrames
+    }
+
+    /// TOTAL local playout depth in 20 ms frames: queued PLUS buffers
+    /// already handed to the player and not yet played. Honest local
+    /// buffering evidence for the UI and for the additive ping field.
+    nonisolated var playbackTotalBufferedFrames: Int {
+        playback.totalBufferedFrames
     }
 
     /// How long the real downlink has been silent (milliseconds); the call
@@ -952,6 +973,10 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     var queuedPlaybackFrames: Int { playback.queuedFrames }
     var framesInFlight: Int { playback.framesInFlight }
     var playbackDroppedFrames: Int { playback.droppedFrames }
+    /// Total playout depth (queued + scheduled ahead) right now.
+    var playbackTotalDepthFrames: Int { playback.totalBufferedFrames }
+    /// Highest total playout depth observed this run (test/evidence seam).
+    var maxTotalDepthFramesForTest: Int { playback.maxTotalDepthFrames }
     /// Adaptive high-water catch-up trims this run (evidence).
     var playbackTrimmedForTest: Int { playback.trimmedFrames }
     /// PLC concealment inserts this run (evidence).

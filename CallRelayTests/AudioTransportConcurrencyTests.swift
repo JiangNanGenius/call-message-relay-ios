@@ -133,10 +133,11 @@ final class AudioTransportConcurrencyTests: XCTestCase {
 
         // While main is occupied, deliver frames from a background queue;
         // the sink must see them without any main-queue service. The
-        // scheduler caps in-flight buffers at 8 (it never sees completions
-        // from this counting sink), so 8 scheduled proves the path.
+        // scheduler hands the player at most the adaptive schedule-ahead
+        // target (its floor is 4 frames) and this counting sink never fires
+        // completions, so the floor being reached proves the path.
         let received = expectation(description: "frames reached the sink during main stall")
-        sink.expectAtLeast(8) { received.fulfill() }
+        sink.expectAtLeast(4) { received.fulfill() }
         DispatchQueue.global().async {
             for _ in 0..<30 {
                 Self.deliverWhenParked(socket, .success(.data(Self.frameData())), timeout: 5)
@@ -146,7 +147,7 @@ final class AudioTransportConcurrencyTests: XCTestCase {
         wait(for: [received], timeout: 15)
         media.close()
         graph.stop()
-        XCTAssertGreaterThanOrEqual(sink.count, 8)
+        XCTAssertGreaterThanOrEqual(sink.count, 4)
     }
 
     // MARK: 3. Exact-once mic frame delivery

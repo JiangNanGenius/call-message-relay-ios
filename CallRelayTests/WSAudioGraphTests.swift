@@ -639,7 +639,7 @@ extension WSAudioGraphTests {
         // ends; the REAL frames must all have played.
         XCTAssertGreaterThanOrEqual(played, remaining)
         XCTAssertLessThanOrEqual(graph.playbackConcealedForTest, 5)
-        XCTAssertEqual(remaining, 12, "40-frame burst trims to the adaptive target (4 queued + 8 in flight)")
+        XCTAssertEqual(remaining, 13, "40-frame burst trims to the adaptive target (12 in flight + 1 queued at the high water)")
         graph.stop()
     }
 
@@ -801,18 +801,21 @@ final class WSAudioGraphTests: XCTestCase {
         for index in 0..<120 {
             graph.pushPlayback([Int16](repeating: Int16(index % 32), count: 160))
         }
-        // 2026-10-05 adaptive buffer: bursts past the high-water mark (25)
-        // are caught up by trimming to the 16-frame target — accumulated
-        // delay stays bounded far below the old 50-frame cap.
-        XCTAssertLessThanOrEqual(graph.queuedPlaybackFrames, 25)
-        XCTAssertLessThanOrEqual(graph.framesInFlight, 8)
+        // 2026-10-06 adaptive buffer: the batch estimator raises the target
+        // to the adaptive maximum for a tight 120-frame burst, so the
+        // scheduled-ahead depth stays inside that bound and the remainder
+        // is caught up by trimming — accumulated delay stays bounded far
+        // below the old 50-frame cap.
+        XCTAssertLessThanOrEqual(graph.queuedPlaybackFrames, 12)
+        XCTAssertLessThanOrEqual(graph.framesInFlight, 12)
         XCTAssertGreaterThan(graph.playbackTrimmedForTest, 0,
                              "an over-target burst must be caught up by trimming")
         let survivors = graph.queuedPlaybackFrames + graph.framesInFlight + sink.firedCount
         XCTAssertLessThanOrEqual(survivors, 33)
-        // The hard cap remains as a safety bound: pin the adaptive target AT
-        // the cap so the cap binds before the adaptive high water.
-        let raw = WSPlaybackScheduler(maxQueuedFrames: 4, maxScheduledFrames: 2,
+        // The hard cap remains as a memory safety bound: with the queue cap
+        // BELOW the adaptive target the cap binds before the latency trim
+        // and drops the oldest backlog.
+        let raw = WSPlaybackScheduler(maxQueuedFrames: 2, maxScheduledFrames: 2,
                                       refillThreshold: 2, minTargetFrames: 4, maxTargetFrames: 4)
         let rawSink = RecordingPlaybackSink()
         raw.configure(sink: rawSink, format: playback48k)
@@ -820,6 +823,24 @@ final class WSAudioGraphTests: XCTestCase {
         for index in 0..<12 { raw.enqueue([Int16](repeating: Int16(index), count: 160)) }
         XCTAssertGreaterThan(raw.droppedFrames, 0, "hard cap must drop the oldest backlog")
         raw.flush()
+    }
+
+    /// Stop-time depth evidence: the per-run maximum total playout depth
+    /// (queued + scheduled ahead) is recorded in the diagnostics census
+    /// BEFORE `playback.flush()` resets it, so the next field log proves the
+    /// local bound instead of inferring it from network RTT.
+    func testStopRecordsPlaybackDepthAndTrimEvidence() {
+        DiagnosticsCensus.shared.reset()
+        let (graph, _) = makeHeadlessGraph()
+        for _ in 0..<6 { graph.pushPlayback([Int16](repeating: 3000, count: 160)) }
+        XCTAssertGreaterThanOrEqual(graph.maxTotalDepthFramesForTest, 5,
+                                    "the run gauge must hold the observed total depth")
+        graph.stop()
+        let snapshot = DiagnosticsCensus.shared.snapshot()
+        XCTAssertGreaterThanOrEqual(snapshot["audio.playDepthFramesMax"] ?? 0, 5,
+                                    "stop must record the depth gauge before flush")
+        XCTAssertGreaterThanOrEqual(snapshot["audio.playTrimmed"] ?? 0, 0)
+        XCTAssertGreaterThanOrEqual(snapshot["audio.playConcealed"] ?? 0, 0)
     }
 
     func testLateCompletionsAfterStopRestartDoNotChurnNewRun() {

@@ -142,6 +142,7 @@
 		AED3D3EE52979A53FCE2C9E5 /* MediaRouteAdvisorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 259B4CB6281ACB4445F6B74C /* MediaRouteAdvisorTests.swift */; };
 		AFBC8312DA10813FDA7079D2 /* RetryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = F03311AAD0BE8B5012CE8DE3 /* RetryPolicy.swift */; };
 		B060B01110E082DF9AD132F8 /* LiveCallDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5414A860CAFDFACE2D75C624 /* LiveCallDriver.swift */; };
+		B1C5247E1AB87F2956198036 /* WSPlaybackLatencyModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFFDE409CE42AECD864C7A0B /* WSPlaybackLatencyModelTests.swift */; };
 		B256B95DC33274B95900EF26 /* EventStreamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A9B2A41BD38902A3FF52D4F /* EventStreamTests.swift */; };
 		B25E95F679A71598C09445BC /* Fakes.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEF5C45E75AC8A3B3ED95D63 /* Fakes.swift */; };
 		B28B1D394FDD26A023937964 /* CKCloudSyncTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7D36C32C39D67D00792E85B /* CKCloudSyncTransport.swift */; };
@@ -468,6 +469,7 @@
 		FED147AF8C4E97E5632501D8 /* CloudSyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncEngine.swift; sourceTree = "<group>"; };
 		FED4DCDF083D3E2962363EB3 /* IdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityTests.swift; sourceTree = "<group>"; };
 		FF9E2D4EA8C019A6CFAD5B79 /* WebRTC */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WebRTC; path = Vendor/WebRTC; sourceTree = SOURCE_ROOT; };
+		FFFDE409CE42AECD864C7A0B /* WSPlaybackLatencyModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSPlaybackLatencyModelTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -673,6 +675,7 @@
 				5A57126F8A092AB3299D67CA /* WireCompatibilityTests.swift */,
 				3BB1A7EA52ED05399F8C3D2A /* WSAudioGraphTests.swift */,
 				6B878F994E37E7C00C8C0798 /* WSCaptureContinuityTests.swift */,
+				FFFDE409CE42AECD864C7A0B /* WSPlaybackLatencyModelTests.swift */,
 				70C81D49FBCE98878D4A2F07 /* WSSAudioHandoffTests.swift */,
 				FE5699E5B691A1996A715AFD /* WSSCodecTests.swift */,
 				E97BA4B491FEE0BE9FF8BEB8 /* WSSFrameCodecTests.swift */,
@@ -1128,6 +1131,7 @@
 				F627C7D82E267828162473C2 /* VoicemailPlaybackTests.swift in Sources */,
 				FE6B6F47D29D5F2D0C770A6E /* WSAudioGraphTests.swift in Sources */,
 				B40A89443963CA96660DCA70 /* WSCaptureContinuityTests.swift in Sources */,
+				B1C5247E1AB87F2956198036 /* WSPlaybackLatencyModelTests.swift in Sources */,
 				2604621D7090D6A6DBE80545 /* WSSAudioHandoffTests.swift in Sources */,
 				7B7AA9C48316AE8BE3A912B9 /* WSSCodecTests.swift in Sources */,
 				4E99991FC749AC616E2C1C73 /* WSSFrameCodecTests.swift in Sources */,

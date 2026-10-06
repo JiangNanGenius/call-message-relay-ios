@@ -116,6 +116,9 @@ final class FakeAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     private(set) var stopCount = 0
     private(set) var muted: [Bool] = []
     private(set) var pushedFrames = 0
+    /// Wire-contract probe: queued (buf) and total (depth) playout depth.
+    var queuedFramesForTest = 0
+    var totalFramesForTest = 0
 
     init(startResult: Bool = true) { self.startResult = startResult }
 
@@ -132,6 +135,8 @@ final class FakeAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         XCTAssertEqual(frame.count, 160)
         pushedFrames += 1
     }
+    var playbackBufferedFrames: Int { queuedFramesForTest }
+    var playbackTotalBufferedFrames: Int { totalFramesForTest }
 }
 
 // MARK: - Lifecycle / handshake / pong / fencing
@@ -183,6 +188,32 @@ final class WebSocketCallMediaLifecycleTests: XCTestCase {
 
         media.close()
         XCTAssertEqual(states.last, .closed)
+    }
+
+    /// Wire contract (2026-10-06 latency review): the deployed gateway's WSS
+    /// controller consumes the ping `buf` field as the QUEUED depth; the
+    /// total local playout depth (queued + scheduled ahead) rides the
+    /// additive `depth` field so the remote control loop's semantics do not
+    /// change silently. The current gateway parser ignores unknown fields.
+    func testPingKeepsQueueOnlyBufAndAddsTotalDepth() async throws {
+        let socket = FakeMediaSocket()
+        socket.scripted = [.message(.success(.string(#"{"type":"ready"}"#))), .park]
+        let graph = FakeAudioGraph()
+        graph.queuedFramesForTest = 3
+        graph.totalFramesForTest = 9
+        let media = WebSocketCallMedia(socketFactory: { _, _ in socket }, audioGraph: graph)
+        try await media.connect(request: URLRequest(url: readyURL))
+
+        media.sendPingForTest()
+        let ping = socket.sends.compactMap { send -> String? in
+            if case .string(let text) = send.message, text.contains("\"type\":\"ping\"") { return text }
+            return nil
+        }.first
+        let text = try XCTUnwrap(ping)
+        XCTAssertTrue(text.contains("\"buf\":3"), "buf must stay the queued depth: \(text)")
+        XCTAssertTrue(text.contains("\"depth\":9"), "depth must carry the total local depth: \(text)")
+        XCTAssertTrue(text.contains("\"gap\":"), "gap evidence must stay present: \(text)")
+        media.close()
     }
 
     // MARK: Send backpressure (bounded uplink delay)

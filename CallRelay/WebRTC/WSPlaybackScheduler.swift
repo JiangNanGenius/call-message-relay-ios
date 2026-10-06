@@ -23,8 +23,12 @@ import AVFoundation
 /// Rules:
 /// * The queue is bounded (~1 s): beyond the cap the OLDEST frame is
 ///   dropped so a stalled tunnel cannot accumulate latency.
-/// * At most `refillThreshold` buffers are in flight; the sink calls its
-///   completion exactly once per scheduled buffer and that pumps refills.
+/// * At most `scheduleAheadFrames` buffers are handed to the player ahead of
+///   the render cursor; the sink calls its completion exactly once per
+///   scheduled buffer and that pumps refills. The bound is the adaptive
+///   target (measured inter-arrival spacing AND measured delivery batches),
+///   never a fixed constant, so a jittery transport keeps its (bounded)
+///   depth while a smooth one is not held back by a burst-sized runway.
 /// * Every completion is generation-fenced: stop/restart bumps the
 ///   generation, so late callbacks from a previous run only decrement
 ///   their own accounting and can never schedule into the new run.
@@ -51,21 +55,53 @@ final class WSPlaybackScheduler: @unchecked Sendable {
     private let maxQueuedFrames: Int
     /// Adaptive bounded-jitter target (2026-10-05 review: a FIXED 25/16
     /// water mark is a bound, not adaptation, and 500 ms+ is too much
-    /// latency). The target follows the measured inter-arrival spacing
-    /// (EWMA): steady 20 ms streams hold ~4-6 frames (~100 ms), bursty
-    /// transports earn up to `maxTargetFrames`; latency is bounded by
-    /// construction. The hard cap stays as the safety bound.
+    /// latency; 2026-10-06: the target also follows measured delivery
+    /// batches, see below). A steady 20 ms stream holds the floor (4 frames,
+    /// ~80 ms of local playout depth); a bursty transport earns up to
+    /// `maxTargetFrames`; latency is bounded by construction. The hard cap
+    /// stays as the safety bound.
     private let minTargetFrames: Int
     private let maxTargetFrames: Int
     private var targetFrames: Int
     private var interArrivalEWMA: TimeInterval = 0.02
+    private var haveArrivalSpacing = false
     private var lastArrivalUptime: TimeInterval?
+    /// Recent-batch estimator (2026-10-06 latency review): frames that
+    /// arrive inside one ~25 ms window are ONE transport batch (the build-44
+    /// field log showed sustained multi-frame batches, with playTrimmed
+    /// >250 in a 46 s call). Spacing-only adaptation under-responds to
+    /// batched delivery — intra-batch gaps are ~1 ms, driving the estimate
+    /// DOWN exactly when more buffer is needed — so the target also tracks
+    /// the largest rolling-window batch. The estimate decays by one frame
+    /// per later arrival, so a burst is forgotten shortly after smooth
+    /// delivery resumes instead of holding latency forever.
+    private var recentArrivalUptimes: [TimeInterval] = []
+    private var recentBatchFrames = 0
+    /// Bounded size of the batch window state (a pathological burst cannot
+    /// grow the per-arrival bookkeeping without limit).
+    private let batchWindowSeconds: TimeInterval = 0.025
+    private let batchWindowMaxEntries = 64
     /// One frame past the adaptive target is the high water: beyond it the
-    /// backlog is caught up by trimming to the target.
+    /// backlog is caught up by trimming to the target. The latency bound is
+    /// enforced on TOTAL playout depth (queued + already scheduled ahead),
+    /// not on the queue alone — buffers handed to the player are still
+    /// unplayed audio and count toward mouth-to-ear delay.
     private var highWaterFrames: Int { targetFrames + 1 }
     private var inFlight = 0
     private let maxScheduledFrames: Int
+    /// Upper bound on buffers handed to the player (safety cap). The
+    /// effective schedule-ahead target is `scheduleAheadFrames` below.
     private let refillThreshold: Int
+    /// Highest total playout depth (queued + scheduled ahead) observed this
+    /// run; field evidence for the next physical call.
+    private var maxTotalDepth = 0
+
+    /// Monotonic clock seam. Production uses the process uptime; the
+    /// deterministic latency model injects a virtual clock so arrival
+    /// spacing, batch windows and PLC freshness are reproducible without
+    /// sleeps (the same discipline as the sink seam).
+    private let uptimeProvider: () -> TimeInterval
+    private var now: TimeInterval { uptimeProvider() }
 
     /// Bumped on every start/flush; stale completions bail.
     private(set) var generation: UInt64 = 0
@@ -92,17 +128,27 @@ final class WSPlaybackScheduler: @unchecked Sendable {
     private let maxConcealmentFrames = 5
     private var lastNetworkArrivalUptime: TimeInterval?
 
+    /// `refillThreshold` is a callers' safety cap on top of the adaptive
+    /// schedule-ahead target (default equals `maxScheduledFrames`, so the
+    /// adaptive target governs); `scheduleAheadFrames` is the effective
+    /// number of buffers handed to the player.
+    private var scheduleAheadFrames: Int {
+        max(1, min(targetFrames, maxScheduledFrames, refillThreshold))
+    }
+
     init(maxQueuedFrames: Int = 50,
          maxScheduledFrames: Int = 24,
-         refillThreshold: Int = 8,
+         refillThreshold: Int = 24,
          minTargetFrames: Int = 4,
-         maxTargetFrames: Int = 12) {
+         maxTargetFrames: Int = 12,
+         uptimeProvider: (() -> TimeInterval)? = nil) {
         self.maxQueuedFrames = maxQueuedFrames
         self.maxScheduledFrames = maxScheduledFrames
         self.refillThreshold = refillThreshold
         self.minTargetFrames = minTargetFrames
         self.maxTargetFrames = maxTargetFrames
         self.targetFrames = minTargetFrames
+        self.uptimeProvider = uptimeProvider ?? { ProcessInfo.processInfo.systemUptime }
     }
 
     func configure(sink: WSPlaybackScheduling, format: AVAudioFormat) {
@@ -127,7 +173,11 @@ final class WSPlaybackScheduler: @unchecked Sendable {
             lastNetworkArrivalUptime = nil
             lastArrivalUptime = nil
             interArrivalEWMA = 0.02
+            haveArrivalSpacing = false
+            recentArrivalUptimes.removeAll(keepingCapacity: false)
+            recentBatchFrames = 0
             targetFrames = minTargetFrames
+            maxTotalDepth = 0
             sink?.startPlaying()
             drain()
         }
@@ -147,7 +197,11 @@ final class WSPlaybackScheduler: @unchecked Sendable {
             lastNetworkArrivalUptime = nil
             lastArrivalUptime = nil
             interArrivalEWMA = 0.02
+            haveArrivalSpacing = false
+            recentArrivalUptimes.removeAll(keepingCapacity: false)
+            recentBatchFrames = 0
             targetFrames = minTargetFrames
+            maxTotalDepth = 0
             sink?.stopPlaying()
         }
     }
@@ -158,6 +212,15 @@ final class WSPlaybackScheduler: @unchecked Sendable {
 
     var framesInFlight: Int {
         ownerQueue.sync { inFlight }
+    }
+
+    /// Total buffered playout depth in 20 ms frames: queued frames PLUS
+    /// buffers already handed to the sink but not yet finished playing.
+    /// Both are unplayed audio and both count toward the local playout
+    /// delay; reporting only the queue understates it by the scheduled-ahead
+    /// runway.
+    var totalBufferedFrames: Int {
+        ownerQueue.sync { queue.count + inFlight }
     }
 
     var isRunning: Bool {
@@ -195,19 +258,40 @@ final class WSPlaybackScheduler: @unchecked Sendable {
     func enqueueNetwork(_ frame: [Int16]) {
         ownerQueue.sync {
             guard running, frame.count == 160 else { return }
-            let now = ProcessInfo.processInfo.systemUptime
+            let timestamp = now
             if let last = lastArrivalUptime {
-                let spacing = max(0.001, now - last)
-                interArrivalEWMA = interArrivalEWMA == 0.02
-                    ? spacing
-                    : interArrivalEWMA * 0.8 + spacing * 0.2
-                let measured = Int((interArrivalEWMA / 0.02).rounded()) + 2
-                targetFrames = max(minTargetFrames, min(maxTargetFrames, measured))
+                let spacing = max(0.001, timestamp - last)
+                interArrivalEWMA = haveArrivalSpacing
+                    ? interArrivalEWMA * 0.8 + spacing * 0.2
+                    : spacing
+                haveArrivalSpacing = true
             }
-            lastArrivalUptime = now
-            lastNetworkArrivalUptime = now
+            lastArrivalUptime = timestamp
+            lastNetworkArrivalUptime = timestamp
+            updateTargetFrames(now: timestamp)
             enqueueLocked(frame)
         }
+    }
+
+    /// Owner-queue only. Adaptive target = max(spacing estimate, recent
+    /// batch size), clamped to [minTargetFrames, maxTargetFrames]. The
+    /// spacing estimate is `EWMA / 20 ms + 2` (one frame of smoothing plus
+    /// one of headroom), the same contract as before; the batch estimate
+    /// counters transports that coalesce several frames into one delivery.
+    private func updateTargetFrames(now: TimeInterval) {
+        recentArrivalUptimes.append(now)
+        while let first = recentArrivalUptimes.first,
+              now - first > batchWindowSeconds {
+            recentArrivalUptimes.removeFirst()
+        }
+        if recentArrivalUptimes.count > batchWindowMaxEntries {
+            recentArrivalUptimes.removeFirst(recentArrivalUptimes.count - batchWindowMaxEntries)
+        }
+        let batch = recentArrivalUptimes.count
+        recentBatchFrames = max(batch, recentBatchFrames - 1)
+        var measured = Int((interArrivalEWMA / 0.02).rounded()) + 2
+        measured = max(measured, recentBatchFrames)
+        targetFrames = max(minTargetFrames, min(maxTargetFrames, measured))
     }
 
     /// Synthetic fill entry (call-progress tone): plain queueing; no arrival
@@ -232,15 +316,18 @@ final class WSPlaybackScheduler: @unchecked Sendable {
         if queue.count >= maxQueuedFrames {
             queue.removeFirst()
             dropped += 1
-        } else if queue.count >= highWaterFrames {
-            // Adaptive catch-up: the backlog exceeded the (adaptive) target;
-            // trim back to it so latency stays bounded by the measured
-            // jitter, not by the burst.
-            let excess = queue.count - targetFrames + 1
-            queue.removeFirst(excess)
-            trimmed += excess
         }
         queue.append(frame)
+        // Adaptive catch-up on TOTAL playout depth: queued frames and
+        // already-scheduled (unplayable) buffers both contribute to
+        // mouth-to-ear delay, so the high-water bound covers both. Only
+        // queued frames can be dropped; scheduled ones drain at the fixed
+        // 20 ms playout rate.
+        while queue.count + inFlight > highWaterFrames, !queue.isEmpty {
+            queue.removeFirst()
+            trimmed += 1
+        }
+        noteDepthLocked()
         drain()
     }
 
@@ -266,7 +353,7 @@ final class WSPlaybackScheduler: @unchecked Sendable {
            concealmentsInARow < maxConcealmentFrames,
            let seed = plcSeed,
            let arrival = lastNetworkArrivalUptime,
-           ProcessInfo.processInfo.systemUptime - arrival < 0.5 {
+           now - arrival < 0.5 {
             concealmentsInARow += 1
             concealed += 1
             let gain = pow(0.8, Double(concealmentsInARow))
@@ -277,6 +364,7 @@ final class WSPlaybackScheduler: @unchecked Sendable {
             guard let buffer = render(frame: frame, format: format) else { return }
             inFlight += 1
             scheduled += 1
+            noteDepthLocked()
             let scheduledGeneration = generation
             sink.schedule(buffer: buffer) { [weak self] in
                 guard let self else { return }
@@ -287,7 +375,7 @@ final class WSPlaybackScheduler: @unchecked Sendable {
             sink.startPlaying()
             return
         }
-        while inFlight < min(refillThreshold, maxScheduledFrames), !queue.isEmpty {
+        while inFlight < scheduleAheadFrames, !queue.isEmpty {
             let frame = queue.removeFirst()
             // The seed follows the PLAYBACK timeline: every frame that
             // enters playback replaces it; a silent frame clears it.
@@ -295,6 +383,7 @@ final class WSPlaybackScheduler: @unchecked Sendable {
             guard let buffer = render(frame: frame, format: format) else { continue }
             inFlight += 1
             scheduled += 1
+            noteDepthLocked()
             let scheduledGeneration = generation
             sink.schedule(buffer: buffer) { [weak self] in
                 // Render-thread hop: a lightweight, generation-fenced event
@@ -307,6 +396,18 @@ final class WSPlaybackScheduler: @unchecked Sendable {
             }
             sink.startPlaying()
         }
+    }
+
+    /// Owner-queue only: records the highest total playout depth observed
+    /// (queued + scheduled ahead) for per-run field evidence.
+    private func noteDepthLocked() {
+        let depth = queue.count + inFlight
+        if depth > maxTotalDepth { maxTotalDepth = depth }
+    }
+
+    /// Highest total playout depth this run (frames; evidence).
+    var maxTotalDepthFrames: Int {
+        ownerQueue.sync { maxTotalDepth }
     }
 
     /// Owner-queue only.
