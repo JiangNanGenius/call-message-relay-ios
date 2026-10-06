@@ -621,6 +621,168 @@ final class CallRouteControllerTests: XCTestCase {
         h.controller.teardown()
     }
 
+    // MARK: Relay-first call: live auto/manual-direct after pinning
+
+    /// Build-44 field defect (exact Wi-Fi occurrence): the call BEGAN in the
+    /// persisted relay mode and pinned immediately — no evaluation ran.
+    /// Switching to AUTO used to be a silent next-call preference: probing
+    /// stayed false forever even with a ready, materially-better direct
+    /// candidate. The explicit selection must run ONE fresh bounded
+    /// evaluation and promote on measured advantage.
+    func testAutoSelectionRunsOneBoundedEvaluationAndPromotes() async throws {
+        let h = Harness()
+        h.configureProbe = { $0.samplesToReturn = Array(repeating: 0.02, count: 4) }
+        h.relaySamples = Array(repeating: 0.10, count: 8)
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.relay)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.pinned }
+        XCTAssertEqual(h.controller.routeState.active, .relay)
+        await h.controller.setMode(.auto)
+        await waitUntil(timeout: 3) { h.controller.routeState.active == .direct }
+        XCTAssertEqual(h.probes.count, 1, "one probe for the one evaluation")
+        XCTAssertEqual(h.api.commitCalls.count, 1)
+        XCTAssertEqual(h.retiredRelay, 1)
+        XCTAssertFalse(h.controller.routeState.pendingModeChange,
+                       "an explicit auto evaluation is live, not next-call")
+        XCTAssertTrue(h.controller.routeState.pinned)
+        h.controller.teardown()
+    }
+
+    /// Explicit AUTO after the startup window still evaluates once: the
+    /// bounded measurement window starts when the candidate becomes ready,
+    /// not from call connect. Picking auto again afterwards never re-probes
+    /// (no continuous mid-call quality flapping).
+    func testExplicitAutoAfterStartupWindowEvaluatesOnce() async throws {
+        let h = Harness()
+        h.makeController(.relay)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.pinned }
+        await pump(1.2) // past startupOpportunityTimeout (1.0)
+        // Candidate without material advantage: the relay is kept.
+        h.configureProbe = { $0.samplesToReturn = Array(repeating: 0.095, count: 6) }
+        await h.controller.setMode(.auto)
+        await waitUntil(timeout: 3) { h.probes.count == 1 }
+        await pump(0.8) // let the bounded evaluation settle
+        XCTAssertEqual(h.api.commitCalls.count, 0, "marginal candidate never promotes")
+        XCTAssertEqual(h.controller.routeState.active, .relay, "incumbent relay kept")
+        XCTAssertFalse(h.controller.routeState.pendingModeChange,
+                       "the evaluation was live; this is not a deferred flag")
+        // Picking auto while already auto never starts another probe.
+        await h.controller.setMode(.auto)
+        await pump(0.4)
+        XCTAssertEqual(h.probes.count, 1, "no repeat evaluation without an explicit retry")
+        h.controller.teardown()
+    }
+
+    /// Explicit manual DIRECT on a pinned relay call is a LIVE action,
+    /// symmetric with the manual relay escape (build-44 field: the menu
+    /// accepted "direct" but the relay stayed because non-escape pinned
+    /// changes were deferred to the next call).
+    func testManualDirectOnPinnedRelaySwitchesLive() async throws {
+        let h = Harness()
+        h.configureProbe = { $0.samplesToReturn = Array(repeating: 0.02, count: 4) }
+        h.relaySamples = Array(repeating: 0.10, count: 8)
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.relay)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.pinned }
+        // Pumping past the startup window proves an explicit direct switch is
+        // live regardless of timing (a manual action, not quality flapping).
+        await pump(1.2)
+        await h.controller.setMode(.direct)
+        await waitUntil(timeout: 3) { h.controller.routeState.active == .direct }
+        XCTAssertEqual(h.probes.count, 1)
+        XCTAssertEqual(h.api.commitCalls.count, 1)
+        XCTAssertEqual(h.retiredRelay, 1)
+        XCTAssertFalse(h.controller.routeState.pendingModeChange)
+        h.controller.teardown()
+    }
+
+    /// A failed live direct switch keeps the relay audible and reports the
+    /// failure truthfully — never claims direct and never hangs up.
+    func testManualDirectFailureOnPinnedRelayKeepsRelayAndReports() async throws {
+        let h = Harness()
+        h.makeController(.relay)
+        h.api.attachProbeResult = .failure(
+            APIError.http(status: 502, code: "CB-V2-502", message: "not connected"))
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.pinned }
+        await h.controller.setMode(.direct)
+        await waitUntil(timeout: 3) { !h.notices.isEmpty }
+        await pump(0.3)
+        XCTAssertEqual(h.controller.routeState.active, .relay)
+        XCTAssertEqual(h.controller.routeState.mode, .direct)
+        XCTAssertFalse(h.controller.routeState.pendingModeChange,
+                       "the live attempt happened; this is not a next-call flag")
+        XCTAssertEqual(h.notices.first?.1, true)
+        h.controller.teardown()
+    }
+
+    /// After a failed manual DIRECT switch (mode stays direct, relay active),
+    /// tapping DIRECT again is a same-mode retry symmetric with the relay
+    /// escape: it probes again and can succeed.
+    func testManualDirectSameModeRetryAfterFailureSucceeds() async throws {
+        let h = Harness()
+        h.api.attachProbeResultQueue = [
+            .failure(APIError.http(status: 502, code: "CB-V2-502", message: "no")),
+            .success(WebRTCAnswer(sdp: "v=0\r\n", type: "answer", iceMode: "all"))
+        ]
+        h.configureProbe = { $0.samplesToReturn = Array(repeating: 0.02, count: 4) }
+        h.relaySamples = Array(repeating: 0.10, count: 8)
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.relay)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.pinned }
+
+        await h.controller.setMode(.direct)
+        await waitUntil(timeout: 3) { !h.notices.isEmpty }
+        await pump(0.2)
+        XCTAssertEqual(h.controller.routeState.active, .relay, "first attempt failed")
+        XCTAssertEqual(h.api.attachProbeCalls.count, 1)
+
+        // Same-mode tap: retry must not be swallowed.
+        await h.controller.setMode(.direct)
+        await waitUntil(timeout: 3) { h.controller.routeState.active == .direct }
+        XCTAssertEqual(h.api.attachProbeCalls.count, 2)
+        XCTAssertEqual(h.api.commitCalls.count, 1)
+        XCTAssertEqual(h.retiredRelay, 1)
+        h.controller.teardown()
+    }
+
+    /// The automatic startup budget and deliberate user transitions are
+    /// separate: after the startup opportunity was spent without promotion,
+    /// relay→auto still runs ONE fresh evaluation and can promote.
+    func testStartupOpportunitySpentThenAutoTransitionStillEvaluates() async throws {
+        let h = Harness()
+        var created = 0
+        h.configureProbe = { probe in
+            created += 1
+            // Startup candidate is marginal; the later explicit one wins.
+            probe.samplesToReturn = Array(repeating: created == 1 ? 0.095 : 0.02, count: 6)
+        }
+        h.relaySamples = Array(repeating: 0.10, count: 8)
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.auto)
+        h.controller.relayDidConnect(wsMedia: nil)
+        // Startup opportunity spends its budget without promoting.
+        await waitUntil(timeout: 3) { h.probes.count == 1 }
+        await pump(1.0)
+        XCTAssertEqual(h.controller.routeState.active, .relay)
+        XCTAssertEqual(h.api.commitCalls.count, 0)
+
+        // Relay (actual transition) then auto (actual transition): the fresh
+        // deliberate evaluation promotes.
+        await h.controller.setMode(.relay)
+        await pump(0.2)
+        await h.controller.setMode(.auto)
+        await waitUntil(timeout: 3) { h.controller.routeState.active == .direct }
+        XCTAssertEqual(h.probes.count, 2, "a fresh probe for the deliberate evaluation")
+        XCTAssertEqual(h.api.commitCalls.count, 1)
+        XCTAssertEqual(h.retiredRelay, 1)
+        h.controller.teardown()
+    }
+
     /// The data-channel echo is NOT audio proof: an adopted peer that never
     /// receives gateway audio RTP within the bounded gate falls back to the
     /// relay (staged fresh WSS first) with a truthful notice.
@@ -1073,7 +1235,11 @@ final class CallRouteControllerTests: XCTestCase {
         h.controller.teardown()
     }
 
-    func testCancelledAttemptThenAutoChangeIsNextCallOnly() async throws {
+    /// After the parked direct attempt is cancelled by a relay selection and
+    /// the call pins, an explicit AUTO selection still runs ONE fresh
+    /// bounded evaluation even after the startup window; a candidate without
+    /// measured advantage leaves the relay and is not a deferred flag.
+    func testCancelledAttemptThenAutoRunsOneFreshEvaluation() async throws {
         let h = Harness()
         h.gateOffers = true
         h.makeController(.direct)
@@ -1083,23 +1249,28 @@ final class CallRouteControllerTests: XCTestCase {
         let relayTask = Task { await h.controller.setMode(.relay) }
         await waitUntil(timeout: 2) { h.probes.first?.cancelCount == 1 }
         await relayTask.value
-        await pump(0.3)
+        await pump(1.2) // past the startup window
         XCTAssertTrue(h.controller.routeState.pinned)
 
-        // After pinning, a mode change is next-call only: no probing, no
-        // attach, just the pending flag.
+        // New transitions must not inherit the parked-offer scripting.
+        h.gateOffers = false
         await h.controller.setMode(.auto)
-        await pump(0.5)
-        XCTAssertEqual(h.probes.count, 1, "no new probe is created mid-call")
-        XCTAssertEqual(h.api.commitCalls.count, 0)
+        await waitUntil(timeout: 3) { h.probes.count == 2 }
+        await pump(0.8) // let the fresh bounded evaluation settle
+        XCTAssertEqual(h.api.commitCalls.count, 0, "an unmeasured candidate never promotes")
         XCTAssertEqual(h.controller.routeState.active, .relay)
-        XCTAssertTrue(h.controller.routeState.pendingModeChange)
+        XCTAssertFalse(h.controller.routeState.pendingModeChange,
+                       "the evaluation ran live; incumbent relay is an outcome, not a deferral")
         h.controller.teardown()
     }
 
-    func testCancelDirectThenSelectDirectAfterSettleIsNextCallOnly() async throws {
+    /// Re-picking DIRECT after the relay selection pinned is a LIVE switch
+    /// (symmetric with the relay escape), even though the earlier parked
+    /// attempt was cancelled.
+    func testCancelDirectThenReSelectDirectAfterSettleSwitchesLive() async throws {
         let h = Harness()
         h.gateOffers = true
+        h.api.onCommit = { h.transportReported = "ice" }
         h.makeController(.direct)
         h.controller.relayDidConnect(wsMedia: nil)
         await waitUntil(timeout: 2) { h.probes.first?.makeOfferCount == 1 }
@@ -1113,14 +1284,14 @@ final class CallRouteControllerTests: XCTestCase {
         XCTAssertTrue(h.controller.routeState.pinned)
         XCTAssertEqual(h.controller.routeState.active, .relay)
 
-        // Re-picking direct after the route pinned is a NEXT-CALL
-        // preference: no new probe, no commit, the live relay continues.
+        // Explicit direct after pin: fresh probe + commit + adopt, live.
+        h.gateOffers = false
         await h.controller.setMode(.direct)
-        await pump(0.4)
-        XCTAssertEqual(h.probes.count, 1, "no fresh probe is created mid-call")
-        XCTAssertEqual(h.api.commitCalls.count, 0)
-        XCTAssertEqual(h.controller.routeState.active, .relay)
-        XCTAssertTrue(h.controller.routeState.pendingModeChange)
+        await waitUntil(timeout: 3) { h.controller.routeState.active == .direct }
+        XCTAssertEqual(h.probes.count, 2, "a fresh probe is created for the live switch")
+        XCTAssertEqual(h.api.commitCalls.count, 1)
+        XCTAssertEqual(h.retiredRelay, 1)
+        XCTAssertFalse(h.controller.routeState.pendingModeChange)
         h.controller.teardown()
     }
 

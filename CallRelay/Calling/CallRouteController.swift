@@ -22,8 +22,14 @@ import AVFoundation
 /// is the ONLY relay→direct attempt; after it settles the route is pinned and
 /// changes ONLY on an actual path failure (transport failure, sustained
 /// instability, missing direct audio, ICE disconnect, server reconciliation).
-/// A manual mode change during the call updates the PERSISTED preference and
-/// applies to the NEXT call (the UI says so), never hijacking the live call.
+/// Explicit user selections of DIRECT or RELAY are always LIVE actions (the
+/// relay escape from a direct call and, symmetrically, a direct switch from
+/// the relay — single user actions, never quality-driven flapping); choosing
+/// AUTO on a relay call is likewise ONE deliberate, fresh bounded evaluation
+/// (incumbent kept until the candidate is measured ready and advantageous).
+/// Every other pinned change (auto after the one evaluation, auto on a
+/// direct call) is a PERSISTED preference for the NEXT call and the UI says
+/// so, never hijacking the live call.
 ///
 /// Ordered handovers: the relay keeps carrying audio until the gateway's
 /// atomic commit has installed the direct peer; a direct→relay rollback
@@ -471,15 +477,24 @@ final class CallRouteController {
         // route stayed direct because the choice was treated as next-call
         // preference only — there was no way out of a direct path that had
         // RTP but no audible audio. Pressing relay again while a previous
-        // escape attempt failed retries it; every other mode change stays
-        // next-call preference.
+        // escape attempt failed retries it. Manual DIRECT and one explicit
+        // AUTO evaluation on a relay call are live too (below).
+        // Same-mode explicit retries after a FAILED live attempt:
+        // * relay while on direct (build-36 escape, retry when the previous
+        //   staged handover failed), and
+        // * direct while on the relay (symmetric: retry a failed probe).
+        // Same-mode AUTO taps never retrigger — a deliberate auto evaluation
+        // runs exactly once per actual transition INTO auto (see below).
         let manualRelayEscape = newMode == .relay && transport == .direct && !routeState.switching
-        guard newMode != mode || manualRelayEscape else { return }
+        let manualDirectRetry = newMode == .direct && transport == .relay && !routeState.switching
+        guard newMode != mode || manualRelayEscape || manualDirectRetry else { return }
         // Pinned state is captured at ENTRY: a mode change issued while the
         // call-start selection is still in flight (e.g. during a commit)
         // applies to that selection's outcome, whereas one issued after the
-        // route pinned only marks the persisted next-call preference.
+        // route pinned runs the matching explicit-action path below or marks
+        // a next-call preference.
         let applyToSelection = !pinned
+        let actualTransition = newMode != mode
         mode = newMode
         advisor = makeAdvisor()
         selectionEpoch &+= 1
@@ -497,6 +512,50 @@ final class CallRouteController {
                 }
                 await withTransaction { [weak self] in
                     await self?.performRelayHandover(trigger: .user)
+                }
+                return
+            }
+            // Manual DIRECT on a pinned relay-first call is an explicit LIVE
+            // action, symmetric with the relay escape above. Build-44 field:
+            // the menu accepted "direct" but the relay stayed — the only live
+            // pinned exception used to be relay-on-direct, so an explicit
+            // direct selection was silently deferred to the next call. A
+            // manual switch is not quality-driven flapping: it probes,
+            // commits and adopts through the existing forced-direct path and
+            // failures are reported truthfully.
+            if newMode == .direct, transport == .relay, !routeState.switching {
+                publish {
+                    $0.mode = newMode
+                    $0.pendingModeChange = false
+                    $0.notice = nil
+                    $0.offersAutoFallback = false
+                }
+                await withTransaction { [weak self] in
+                    await self?.performRequestDirect()
+                }
+                return
+            }
+            // AUTO selected on a pinned relay call via an ACTUAL transition
+            // (relay/direct → auto): a deliberate user action ALWAYS runs one
+            // fresh bounded evaluation, even after the startup window or
+            // after the automatic startup opportunity was spent. Build-44:
+            // it used to be a silent next-call preference, so the relay
+            // stayed forever. It is NOT continuous quality flapping — one
+            // evaluation per transition establishes a candidate, measures
+            // over a bounded window starting NOW and promotes only on
+            // sustained material advantage; otherwise the relay stays.
+            // Same-mode auto taps never retrigger (the top guard).
+            if newMode == .auto, transport == .relay, actualTransition,
+               !routeState.switching {
+                let gen = epoch
+                publish {
+                    $0.mode = newMode
+                    $0.pendingModeChange = false
+                    $0.notice = nil
+                    $0.offersAutoFallback = false
+                }
+                await withTransaction { [weak self] in
+                    await self?.performStartupUpgrade(gen: gen, freshWindow: true)
                 }
                 return
             }
@@ -720,14 +779,15 @@ final class CallRouteController {
     /// promotion, 20% median, jitter/loss ceilings, anti-flap dwell), then
     /// commits it make-before-break. Any failure — establishment, commitment,
     /// or the post-adoption audio gate — leaves or restores the relay.
-    private func performStartupUpgrade(gen: UInt64) async {
+    private func performStartupUpgrade(gen: UInt64, freshWindow: Bool = false) async {
         let sel = selectionEpoch
         DiagnosticsStore.shared.log("route", "startup opportunity begin mode=auto")
         let startedAt = Date()
         switch await establishCandidate(gen, selection: sel) {
         case .ready(let probe):
             let readyMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            let promote = await sustainedPromotionCheck(probe: probe, gen: gen)
+            let promote = await sustainedPromotionCheck(probe: probe, gen: gen,
+                                                         freshWindow: freshWindow)
             guard promote else {
                 if candidate === probe { cancelCandidate() }
                 publish { $0.switching = false }
@@ -760,11 +820,19 @@ final class CallRouteController {
     /// handoff's server TTL deadline: a candidate about to lapse is never
     /// committed.
     private func sustainedPromotionCheck(probe: DirectProbeControlling, gen: UInt64,
-                                         expiresAt: Date? = nil) async -> Bool {
+                                         expiresAt: Date? = nil,
+                                         freshWindow: Bool = false) async -> Bool {
         let readyAt = Date()
         let selection = selectionEpoch
-        let deadline = min(connectedAt.addingTimeInterval(cadence.startupOpportunityTimeout),
-                           readyAt.addingTimeInterval(cadence.startupMeasurementSeconds))
+        // A startup opportunity is bounded both by the absolute window from
+        // connect and by the measurement window after readiness. An EXPLICIT
+        // user auto evaluation can arrive long after connect, so its bounded
+        // window starts from readiness NOW (it is one deliberate action, not
+        // an extension of startup).
+        let deadline = freshWindow
+            ? readyAt.addingTimeInterval(cadence.startupMeasurementSeconds)
+            : min(connectedAt.addingTimeInterval(cadence.startupOpportunityTimeout),
+                  readyAt.addingTimeInterval(cadence.startupMeasurementSeconds))
         var rounds = 0
         var lastReason = "no_measurement"
         while Date() < deadline {

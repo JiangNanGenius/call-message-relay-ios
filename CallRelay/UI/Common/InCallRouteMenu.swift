@@ -56,10 +56,11 @@ struct InCallRouteMenu: View {
                         }
                     }
                 }
-                // 2026-10-05 routing policy: the route is chosen once at call
-                // start and pinned; a mode picked now is a NEXT-CALL
-                // preference and must say so.
-                if state?.pinned == true {
+                // 2026-10-06 routing policy: explicit direct/relay selections
+                // and one explicit auto evaluation are LIVE actions. The
+                // next-call note is shown only for a genuinely deferred
+                // preference (pendingModeChange), never after a live switch.
+                if state?.pendingModeChange == true {
                     Section {
                         Text(String(localized: "更改于下次通话生效。"))
                     }
@@ -339,7 +340,7 @@ struct RouteModePickerView: View {
                     Text(model.routeDiagnostics.telemetryFooter())
                 }
             }
-            if model.routeDiagnostics.inCall {
+            if model.routeState?.pendingModeChange == true {
                 Section {
                     Text(String(localized: "更改于下次通话生效。"))
                         .font(.footnote)

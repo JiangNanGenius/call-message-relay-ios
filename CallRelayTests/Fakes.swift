@@ -187,6 +187,9 @@ final class FakeGatewayAPI: GatewayAPI {
     // MARK: Direct route (probe/commit/rollback)
     var attachProbeResult: Result<WebRTCAnswer, Error> = .success(
         WebRTCAnswer(sdp: "v=0\r\n", type: "answer", iceMode: "all"))
+    /// Per-call queued attach results, consumed in order (falling back to
+    /// `attachProbeResult`); lets tests script fail-then-succeed retries.
+    var attachProbeResultQueue: [Result<WebRTCAnswer, Error>] = []
     private(set) var attachProbeCalls: [String] = []
     /// When armed once, the next attach parks until resumeAttach/cancel
     /// (hung-attach routing tests). Cancellation mirrors a real
@@ -604,6 +607,9 @@ final class FakeGatewayAPI: GatewayAPI {
                     self.attachContinuation = nil
                 }
             }
+        }
+        if !attachProbeResultQueue.isEmpty {
+            return try attachProbeResultQueue.removeFirst().get()
         }
         return try attachProbeResult.get()
     }
