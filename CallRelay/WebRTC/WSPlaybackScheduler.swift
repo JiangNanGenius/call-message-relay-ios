@@ -85,7 +85,12 @@ final class WSPlaybackScheduler: @unchecked Sendable {
     /// backlog is caught up by trimming to the target. The latency bound is
     /// enforced on TOTAL playout depth (queued + already scheduled ahead),
     /// not on the queue alone — buffers handed to the player are still
-    /// unplayed audio and count toward mouth-to-ear delay.
+    /// unplayed audio and count toward the player-consumption boundary the
+    /// app observes. LIMITATION: the plain `scheduleBuffer(_:completionHandler:)`
+    /// completion the sink uses is NOT a speaker-playback callback — Apple's
+    /// header documents it as firing after the buffer is "consumed by the
+    /// player", possibly before rendering begins, so downstream render/
+    /// output-device latency is outside this accounting and is unknown here.
     private var highWaterFrames: Int { targetFrames + 1 }
     private var inFlight = 0
     private let maxScheduledFrames: Int
@@ -319,10 +324,11 @@ final class WSPlaybackScheduler: @unchecked Sendable {
         }
         queue.append(frame)
         // Adaptive catch-up on TOTAL playout depth: queued frames and
-        // already-scheduled (unplayable) buffers both contribute to
-        // mouth-to-ear delay, so the high-water bound covers both. Only
+        // already-scheduled (unplayable) buffers both contribute to the
+        // local playout backlog, so the high-water bound covers both. Only
         // queued frames can be dropped; scheduled ones drain at the fixed
-        // 20 ms playout rate.
+        // 20 ms playout rate. This bounds LOCAL buffered audio, not physical
+        // mouth-to-ear delay (see the consumption-boundary note above).
         while queue.count + inFlight > highWaterFrames, !queue.isEmpty {
             queue.removeFirst()
             trimmed += 1

@@ -6,13 +6,15 @@ import AVFoundation
 ///
 /// HONEST SCOPE: this is a MODEL, not a device measurement and not an
 /// end-to-end mouth-to-ear number. It drives the REAL scheduler through an
-/// injected virtual clock and a virtual sink with AVAudioPlayerNode's
-/// `dataPlayedBack` completion discipline: a buffer's completion fires when
-/// the buffer has been fully played, and the completion hop back to the
-/// scheduler's owner queue can be delayed (`hopDelay`). It measures the
-/// LOCAL playout age each network frame accumulates (arrival -> audible
-/// start) plus silence gaps, so buffer-policy changes can be compared
-/// deterministically without sleeps.
+/// injected virtual clock and a virtual sink that mirrors the app's actual
+/// completion semantics: the plain `scheduleBuffer(_:completionHandler:)`
+/// completion fires when the player has CONSUMED the buffer (Apple's header
+/// notes it may fire before rendering begins), not at the speaker. The model
+/// measures the LOCAL buffering age each network frame accumulates
+/// (arrival -> player-consumption boundary) plus silence gaps, so
+/// buffer-policy changes can be compared deterministically without sleeps.
+/// Downstream render/output-device latency is NOT modeled and remains
+/// unknown from code.
 ///
 /// Frame identity is maintained by mirroring the scheduler's queue: for
 /// every enqueue the harness observes the trim/drop/schedule deltas and
@@ -252,7 +254,8 @@ final class WSPlaybackLatencyModelTests: XCTestCase {
     // MARK: Scenarios (deterministic, no sleeps)
     //
     // Modeled before/after (same model, 0.3.38 policy vs 0.3.39 policy;
-    // ages = arrival -> audible start, depth = queued + scheduled ahead):
+    // ages = arrival -> player-consumption boundary, depth = queued +
+    // scheduled ahead; downstream output latency is outside the model):
     //
     //   scenario            before mean/p95/max  after mean/p95/max  before->after depthMax
     //   steady              20 / 20 / 20         20 / 20 / 20        3 -> 3
