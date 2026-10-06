@@ -29,7 +29,7 @@ configs:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.34"
+    MARKETING_VERSION: "0.3.35"
     # v0.3.5 public build 9 stays immutable. Build 12 (0.3.5) was the
     # TestFlight CloudKit/WSS/LCK repair; build 13 ships the build-12 crash,
     # iCloud, push-environment and audio fixes in BOTH editions and adds the
@@ -168,7 +168,16 @@ settings:
     # callbacks: bridge events are applied through a delivery-ordered FIFO on
     # the main actor with epoch fencing, and the voice-chat session is
     # configured when a call actually starts audio, not on the push path.
-    CURRENT_PROJECT_VERSION: "41"
+    # Build 42 (0.3.35) adds the Shortcuts/App-Intents surface: call a number
+    # and compose an SMS with optional authorized-line selection (entities
+    # are scoped to the current pairing principal and fail closed), plus an
+    # open-destination intent (dialer/messages/voicemail). All intents are
+    # open-app with a single staged runtime handoff consumed on cold start,
+    # foreground or immediately when the app is already foreground; dialing
+    # reuses the strict existing gateway path (explicit chooser, never a
+    # silent line substitution or cellular fallback) and SMS only ever opens
+    # the prefilled composer for in-app confirmation — never auto-sends.
+    CURRENT_PROJECT_VERSION: "42"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.

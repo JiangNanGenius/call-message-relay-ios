@@ -10879,6 +10879,490 @@
           }
         }
       }
+    },
+    "用 CallRelay 拨打": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用 CallRelay 拨打"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Call with CallRelay"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用 CallRelay 撥打"
+          }
+        }
+      }
+    },
+    "在 CallRelay 中编写短信": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 CallRelay 中编写短信"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compose Message in CallRelay"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 CallRelay 中編寫簡訊"
+          }
+        }
+      }
+    },
+    "打开 CallRelay": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 CallRelay"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open CallRelay"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打開 CallRelay"
+          }
+        }
+      }
+    },
+    "通过已授权的网关线路拨打电话。可选择线路；不选择时使用现有默认线路偏好。线路不可用会在 App 内说明，绝不改用蜂窝电话。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过已授权的网关线路拨打电话。可选择线路；不选择时使用现有默认线路偏好。线路不可用会在 App 内说明，绝不改用蜂窝电话。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Call through an authorized gateway line. Optionally pick a line; otherwise the existing default line preference applies. Unavailable lines are explained in the app — a cellular call is never placed."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "透過已授權的網關線路撥打電話。可選擇線路；不選擇時使用現有預設線路偏好。線路不可用會在 App 內說明，絕不改用手機電話。"
+          }
+        }
+      }
+    },
+    "在 CallRelay 中打开发短信界面并预填收件人、内容与线路；发送需在 App 内确认。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 CallRelay 中打开发短信界面并预填收件人、内容与线路；发送需在 App 内确认。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the CallRelay composer prefilled with recipient, body and line; sending must be confirmed in the app."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 CallRelay 中打開發簡訊介面並預填收件人、內容與線路；傳送需在 App 內確認。"
+          }
+        }
+      }
+    },
+    "打开 CallRelay 的拨号键盘、短信或语音留言。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 CallRelay 的拨号键盘、短信或语音留言。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the CallRelay dialer, messages or voicemail."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打開 CallRelay 的撥號鍵盤、簡訊或語音留言。"
+          }
+        }
+      }
+    },
+    "内容": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内容"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Body"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "內容"
+          }
+        }
+      }
+    },
+    "目的地": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目的地"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destination"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目的地"
+          }
+        }
+      }
+    },
+    "要拨打的号码，例如 +86 130 0000 0000。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要拨打的号码，例如 +86 130 0000 0000。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The number to call, e.g. +86 130 0000 0000."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要撥打的號碼，例如 +86 130 0000 0000。"
+          }
+        }
+      }
+    },
+    "用于外呼的已授权线路；不选则沿用现有默认偏好。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于外呼的已授权线路；不选则沿用现有默认偏好。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authorized line for the call; when unset the existing default preference applies."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用於外呼的已授權線路；不選則沿用現有預設偏好。"
+          }
+        }
+      }
+    },
+    "收件人号码，例如 +86 130 0000 0000。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收件人号码，例如 +86 130 0000 0000。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The recipient's number, e.g. +86 130 0000 0000."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收件人號碼，例如 +86 130 0000 0000。"
+          }
+        }
+      }
+    },
+    "短信正文。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "短信正文。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The message body."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "簡訊正文。"
+          }
+        }
+      }
+    },
+    "用于发送的已授权线路；不选则沿用现有默认偏好。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于发送的已授权线路；不选则沿用现有默认偏好。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authorized line to send from; when unset the existing default preference applies."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用於傳送的已授權線路；不選則沿用現有預設偏好。"
+          }
+        }
+      }
+    },
+    "拨号键盘、短信或语音留言。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拨号键盘、短信或语音留言。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dialer, messages or voicemail."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撥號鍵盤、簡訊或語音留言。"
+          }
+        }
+      }
+    },
+    "快捷指令指定的线路已不属于当前配对（可能尚未配对、已重新配对或网关已变更）。为避免打错线路，本次不会拨打，也不会改用其他线路；请更新快捷指令或重新选择线路。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快捷指令指定的线路已不属于当前配对（可能尚未配对、已重新配对或网关已变更）。为避免打错线路，本次不会拨打，也不会改用其他线路；请更新快捷指令或重新选择线路。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The line chosen in the shortcut no longer belongs to the current pairing (not paired, re-paired, or the gateway changed). To avoid calling from the wrong line, the call was not placed and no other line was substituted; update the shortcut or pick a line again."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "捷徑指定的線路已不屬於目前配對（可能尚未配對、已重新配對或網關已變更）。為避免打錯線路，本次不會撥打，也不會改用其他線路；請更新捷徑或重新選擇線路。"
+          }
+        }
+      }
+    },
+    "号码不能为空。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "号码不能为空。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The number can't be empty."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "號碼不能為空。"
+          }
+        }
+      }
+    },
+    "号码至少需要包含一位数字。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "号码至少需要包含一位数字。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The number needs at least one digit."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "號碼至少需要包含一位數字。"
+          }
+        }
+      }
+    },
+    "写短信": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写短信"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compose"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "寫簡訊"
+          }
+        }
+      }
+    },
+    "打开": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打開"
+          }
+        }
+      }
+    },
+    "CallRelay 线路": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CallRelay 线路"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CallRelay Line"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CallRelay 線路"
+          }
+        }
+      }
+    },
+    "CallRelay 目的地": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CallRelay 目的地"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CallRelay Destination"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CallRelay 目的地"
+          }
+        }
+      }
+    },
+    "快捷指令指定的线路已不可用（配对已变更或线路已被取消授权）。草稿内容已保留；请在“发件人”中重新选择线路后再发送。": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快捷指令指定的线路已不可用（配对已变更或线路已被取消授权）。草稿内容已保留；请在“发件人”中重新选择线路后再发送。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The line chosen in the shortcut is no longer available (pairing changed or line access revoked). Your draft is preserved; pick a line in “From” before sending."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "捷徑指定的線路已不可用（配對已變更或線路已被取消授權）。草稿內容已保留；請在「發件人」中重新選擇線路後再傳送。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

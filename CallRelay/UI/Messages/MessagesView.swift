@@ -41,6 +41,11 @@ private struct MessageInboxView: View {
     @State private var filter: MessageFilter = .all
     @State private var showCompose = false
     @State private var composeRecipient = ""
+    @State private var composeBody = ""
+    @State private var composeLineID: String?
+    @State private var composeLineExpiredMessage: String?
+    /// Shortcuts "open voicemail" push navigation.
+    @State private var openVoicemail = false
     /// Conversation awaiting the native delete confirmation.
     @State private var pendingDeleteKey: String?
     @State private var pendingDeletePeer = ""
@@ -169,8 +174,14 @@ private struct MessageInboxView: View {
                     }
                 }
                 .sheet(isPresented: $showCompose) {
-                    ComposeMessageView(inbox: inbox, initialRecipient: composeRecipient)
-                        .environmentObject(model)
+                    ComposeMessageView(
+                        inbox: inbox,
+                        initialRecipient: composeRecipient,
+                        initialBody: composeBody,
+                        initialLineID: composeLineID,
+                        lineExpiredMessage: composeLineExpiredMessage
+                    )
+                    .environmentObject(model)
                 }
                 // Native delete confirmation for swipe-to-delete: the gateway
                 // tombstones the conversation (history hidden on every
@@ -226,11 +237,14 @@ private struct MessageInboxView: View {
                 } message: {
                     Text(deleteFailure ?? "")
                 }
-                .onChange(of: model.pendingComposePeer) { _, peer in
-                    guard let peer, !peer.isEmpty else { return }
-                    composeRecipient = peer
-                    showCompose = true
-                    _ = model.consumePendingComposePeer()
+                .onChange(of: model.pendingCompose) { _, request in
+                    guard let request, !request.peer.isEmpty else { return }
+                    presentCompose(request)
+                }
+                .onChange(of: model.pendingVoicemailToken) { _, token in
+                    guard token != nil else { return }
+                    _ = model.consumePendingVoicemailToken()
+                    openVoicemail = true
                 }
                 .onChange(of: filteredThreads.map(\.key)) { _, keys in
                     // Refresh/new-message/delete races: selection is stable
@@ -240,12 +254,29 @@ private struct MessageInboxView: View {
                     if keys.isEmpty { isEditing = false }
                 }
                 .onAppear {
-                    if let peer = model.consumePendingComposePeer() {
-                        composeRecipient = peer
-                        showCompose = true
+                    if let request = model.consumePendingCompose() {
+                        presentCompose(request)
+                    }
+                    if model.consumePendingVoicemailToken() != nil {
+                        openVoicemail = true
                     }
                 }
+                // Shortcuts "open voicemail" deep link. Value-based
+                // navigationDestination keeps this independent of the list
+                // row NavigationLinks; the token consumption above resets the
+                // one-shot trigger after the push lands.
+                .navigationDestination(isPresented: $openVoicemail) {
+                    VoicemailView()
+                }
         }
+    }
+
+    private func presentCompose(_ request: AppModel.PendingCompose) {
+        composeRecipient = request.peer
+        composeBody = request.body ?? ""
+        composeLineID = request.lineID
+        composeLineExpiredMessage = request.lineExpiredMessage
+        showCompose = true
     }
 
     /// Native Messages-style bottom bar while editing: mark read + delete for

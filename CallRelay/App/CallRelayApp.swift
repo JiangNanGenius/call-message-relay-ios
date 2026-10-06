@@ -23,6 +23,11 @@ struct CallRelayApp: App {
                     if let pending = appDelegate.takePendingPeer() {
                         model.handleExternalDial(pending)
                     }
+                    // Cold-start consumption of a Shortcuts/App-Intents
+                    // handoff staged before the model existed. A no-op when
+                    // nothing is pending; warm launches consume in
+                    // AppModel.handleForeground.
+                    model.consumeIntentHandoff()
                 }
         }
     }

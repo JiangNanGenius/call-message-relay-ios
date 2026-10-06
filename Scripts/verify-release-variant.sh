@@ -90,7 +90,12 @@ fi
 BRIDGE_PATTERN='webpush|IncomingCallChecker|callrelay://incoming|bark'
 if [ "$VARIANT" = "native" ]; then
   # --- native (Feather): bridge must be absent ---------------------------------
-  [ ! -d "$APP/Metadata.appintents" ] || fail "native app contains Metadata.appintents (bridge present)"
+  # Metadata.appintents ships in BOTH editions since 0.3.35 (core App
+  # Intents); only its CONTENT distinguishes the editions.
+  if [ -d "$APP/Metadata.appintents" ]; then
+    META_MATCHES="$(string_matches "$APP/Metadata.appintents/extract.actionsdata" "$BRIDGE_PATTERN")"
+    [ "$META_MATCHES" = "0" ] || fail "native Metadata.appintents contains $META_MATCHES bridge reference(s)"
+  fi
   if /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$APP/Info.plist" >/dev/null 2>&1; then
     fail "native Info.plist declares CFBundleURLTypes (callrelay:// must not exist)"
   fi

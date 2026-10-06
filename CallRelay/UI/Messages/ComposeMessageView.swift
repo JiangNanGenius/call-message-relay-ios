@@ -14,11 +14,23 @@ struct ComposeMessageView: View {
     @ObservedObject var inbox: MessageInbox
 
     var initialRecipient: String = ""
+    /// Shortcuts compose handoff prefill: body text and an explicit
+    /// originating line. Both remain editable; nothing sends until the
+    /// explicit in-app confirmation.
+    var initialBody: String = ""
+    var initialLineID: String? = nil
+    /// Set when the shortcut's saved line expired (pairing changed / line
+    /// revoked): the draft is kept, this notice explains why, and sending is
+    /// gated on an explicit From-line pick — never a silent default send.
+    var lineExpiredMessage: String? = nil
 
     @State private var recipient = ""
     @State private var bodyText = ""
     @State private var chosenLineID: String? = nil
     @State private var validationMessage: String?
+    /// Shortcuts expired-line gate: set when lineExpiredMessage arrives;
+    /// cleared only by an EXPLICIT From-line pick, never by the default.
+    @State private var requiresLineRepick = false
     @State private var expandedContactID: String?
     @FocusState private var recipientFocused: Bool
     @FocusState private var bodyFocused: Bool
@@ -68,7 +80,14 @@ struct ComposeMessageView: View {
                 fromLineRow
                 Divider()
                 Spacer(minLength: 0)
-                if let reason = liveUnavailableReason {
+                if let lineExpiredMessage {
+                    validationBanner(lineExpiredMessage, color: .orange,
+                                     icon: "exclamationmark.triangle.fill")
+                        .accessibilityIdentifier("smsLineExpiredNotice")
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 6)
+                        .transition(.opacity)
+                } else if let reason = liveUnavailableReason {
                     validationBanner(reason, color: .orange, icon: "exclamationmark.triangle.fill")
                         .padding(.horizontal, 16)
                         .padding(.bottom, 6)
@@ -94,7 +113,12 @@ struct ComposeMessageView: View {
             }
             .onAppear {
                 recipient = initialRecipient
-                chosenLineID = model.defaultLineId
+                bodyText = initialBody
+                // An intent-supplied line is only a prefill: it is validated
+                // against the live authorized list by the From-line menu and
+                // the send path, never trusted blindly.
+                chosenLineID = initialLineID ?? model.defaultLineId
+                requiresLineRepick = lineExpiredMessage != nil
                 if initialRecipient.isEmpty { recipientFocused = true } else { bodyFocused = true }
             }
         }
@@ -152,6 +176,10 @@ struct ComposeMessageView: View {
                     ForEach(model.authorizedLines.filter(\.permissions.sendSms)) { line in
                         Button {
                             chosenLineID = line.id
+                            // Any explicit pick satisfies the expired-line
+                            // re-pick requirement (including re-confirming
+                            // the displayed default).
+                            requiresLineRepick = false
                         } label: {
                             Label(lineLabel(line),
                                   systemImage: resolvedLineID == line.id ? "checkmark" : "")
@@ -270,6 +298,9 @@ struct ComposeMessageView: View {
 
     private var canSend: Bool {
         if isSending { return false }
+        // A shortcut whose saved line expired requires an EXPLICIT From-line
+        // pick first: the default line is never silently used for that send.
+        if requiresLineRepick { return false }
         let recipientReady = !recipient.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && recipient.count <= 32
         let bodyReady = !trimmedBody.isEmpty

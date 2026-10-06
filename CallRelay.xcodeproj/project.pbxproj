@@ -100,6 +100,7 @@
 		6ECDECF4B89D09A686FB5EB9 /* CKExceptionGuard.m in Sources */ = {isa = PBXBuildFile; fileRef = 1E858D9369D4B0D610361A33 /* CKExceptionGuard.m */; };
 		6FA4ECE6903F13212B52184F /* ThreadDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D781F6CF12AFC6D91536AD1 /* ThreadDetailView.swift */; };
 		6FF6B13D7AE8F8A1E9026575 /* ContactSearchIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E663C75CA2166BF579A646BE /* ContactSearchIndexTests.swift */; };
+		713056B2545F2D30DD0EDC06 /* RelayLineEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54D160FA3F8ACEEB90022A10 /* RelayLineEntity.swift */; };
 		729B906025BD86CDAB2DD31B /* LiveCommunicationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F6F1A0C7446903C0C740247 /* LiveCommunicationManager.swift */; };
 		7407094820EC6C777CA26198 /* IdentityBindingPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 444DD6802AFC2753B1AD8155 /* IdentityBindingPolicy.swift */; };
 		748C9EABA6FB7380BFBAC3DB /* RoutePreflightController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B27697239B895BB60E82B75 /* RoutePreflightController.swift */; };
@@ -155,6 +156,7 @@
 		BDEAB94B697C6E846A41670F /* opus.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 601A3D259FD502A8E272612F /* opus.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		BE8FB8065B9B86BDC1E3C25E /* CloudSyncSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7645C567EC9502D507AF685B /* CloudSyncSettingsView.swift */; };
 		BEA1BBCCC394696BDAC83165 /* RelayIdleProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA62DC973E0F606EE32636A3 /* RelayIdleProbeTests.swift */; };
+		C0776E2B7668BDB3BCF95949 /* AppIntentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1E1F1FE156A30F0B5BDB12F /* AppIntentsTests.swift */; };
 		C0B48EBFDE896CDB9167C4F7 /* OutgoingLineSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BD3FDBD2F16E7C9812308CC /* OutgoingLineSelectionTests.swift */; };
 		C39E000B13B2175B6AF0ABA8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 277EF6E70492478D477ECC8D /* Assets.xcassets */; };
 		C4563CE7BD6A1FBD0B41E296 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 19C3B73CCD39434F4620A84B /* WebRTC */; };
@@ -171,14 +173,17 @@
 		CC91ED89889055CC01F274F6 /* SMSWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9C46BCF75DFE9B41A5BB1C /* SMSWireTests.swift */; };
 		CDB76D0961E2B5A00E1C3CCB /* RelayIdleProbeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CEBC3E543CDC3EB4506088B /* RelayIdleProbeController.swift */; };
 		CE25CA301281A67A1FE37CB0 /* ContactImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DAE0DE739F1CD0A614301B6 /* ContactImportView.swift */; };
+		CF6EE47562725831B9BE7BFD /* IntentHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEFFC33C276E912A66AF20E6 /* IntentHandoff.swift */; };
 		CFB89DCAE6ECB0AAE5BDA5DB /* NumberListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BBFC039A979CA61D7614E3E /* NumberListTests.swift */; };
 		D1619AF668102C303A82B35F /* CloudSyncTransportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 561D052EE1D79B619393BD46 /* CloudSyncTransportTests.swift */; };
 		D3041E7A325EC6F17D7CABAC /* ContactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE8CEC9770D37E66F3A120C0 /* ContactsView.swift */; };
 		D47D3C6BF023BC221DBD8A9B /* WarmDirectFastpathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62E23E65E4FBFB0529665ACA /* WarmDirectFastpathTests.swift */; };
 		D5980D2EC4C6E4F3D71ADBD3 /* PairingRuntimeRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBA78DC07BCCADBDB5461650 /* PairingRuntimeRegressionTests.swift */; };
 		D85FEB560030C5B83C27C9B0 /* ContactDeduperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0730972643F1C299521240 /* ContactDeduperTests.swift */; };
+		D9969942D3A43D1EC8113601 /* CallRelayIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 722D30330FB2875CF0BD48BE /* CallRelayIntents.swift */; };
 		D9BAACD0DC42058BD981BD9F /* CallRelay-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 23D6C5702132450ACA6B62AE /* CallRelay-LICENSE.txt */; };
 		DBC78951A54E55ACA41BC95F /* V2TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A201F54A8F28266CE1D63A30 /* V2TestSupport.swift */; };
+		DC82BF13D2AE8DF4B0C0D142 /* CallRelayAppShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DF5DF4CCDB9C135C2EA3D2D /* CallRelayAppShortcuts.swift */; };
 		DCA10453859EEFEA7DA8715A /* opus.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 601A3D259FD502A8E272612F /* opus.xcframework */; };
 		DD7E3751BC97C81B7B278761 /* OpusCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B394AE4AFE0E1A6802002E3 /* OpusCodec.swift */; };
 		DE3E4BB3A6339B8F13EA1FE4 /* WSPlaybackScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 165A1FAFE2CF5CDCF43ED64F /* WSPlaybackScheduler.swift */; };
@@ -281,6 +286,7 @@
 		2A5C48DE22380CFCEFC6E122 /* WSAudioGraph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSAudioGraph.swift; sourceTree = "<group>"; };
 		2BBFC039A979CA61D7614E3E /* NumberListTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumberListTests.swift; sourceTree = "<group>"; };
 		2C9018BD33E55D204A7371F2 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		2DF5DF4CCDB9C135C2EA3D2D /* CallRelayAppShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallRelayAppShortcuts.swift; sourceTree = "<group>"; };
 		2E8B1C2C4B334AD05FA70F48 /* CloudSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncTests.swift; sourceTree = "<group>"; };
 		2F200FB0D96BCEFC537363A2 /* CallProgressToneTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallProgressToneTests.swift; sourceTree = "<group>"; };
 		2FA45748307FF4B37BBF0FB1 /* CallRelay.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = CallRelay.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -315,6 +321,7 @@
 		5200A77B86E1F9545F6207E5 /* CallDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallDriver.swift; sourceTree = "<group>"; };
 		534375935CF5486D02579EA6 /* CloudProvisioningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudProvisioningTests.swift; sourceTree = "<group>"; };
 		5414A860CAFDFACE2D75C624 /* LiveCallDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCallDriver.swift; sourceTree = "<group>"; };
+		54D160FA3F8ACEEB90022A10 /* RelayLineEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayLineEntity.swift; sourceTree = "<group>"; };
 		55C457701ED5FCBFB8643F6F /* VoicemailPlaybackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicemailPlaybackTests.swift; sourceTree = "<group>"; };
 		561D052EE1D79B619393BD46 /* CloudSyncTransportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncTransportTests.swift; sourceTree = "<group>"; };
 		56B2E1398E883F4BABCDF9AD /* DialerVisualCapturesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DialerVisualCapturesUITests.swift; sourceTree = "<group>"; };
@@ -345,6 +352,7 @@
 		6EAE3FE18DC974B944C6BB94 /* WSSBitrateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSSBitrateController.swift; sourceTree = "<group>"; };
 		6FB4F36A44706DA364FB2943 /* ContactVCardExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactVCardExportTests.swift; sourceTree = "<group>"; };
 		70C81D49FBCE98878D4A2F07 /* WSSAudioHandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WSSAudioHandoffTests.swift; sourceTree = "<group>"; };
+		722D30330FB2875CF0BD48BE /* CallRelayIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallRelayIntents.swift; sourceTree = "<group>"; };
 		7645C567EC9502D507AF685B /* CloudSyncSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncSettingsView.swift; sourceTree = "<group>"; };
 		776CC7F799D6B6D0D3AC31E9 /* VoicemailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoicemailView.swift; sourceTree = "<group>"; };
 		790DB59B2E1C6BDD355E800C /* SpamPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpamPolicy.swift; sourceTree = "<group>"; };
@@ -381,6 +389,7 @@
 		9E72B339B23ED69E967FE788 /* Info-PWA.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "Info-PWA.plist"; sourceTree = "<group>"; };
 		9F6F1A0C7446903C0C740247 /* LiveCommunicationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCommunicationManager.swift; sourceTree = "<group>"; };
 		A09FD39E73E3B9361A236FB6 /* CallRelayTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CallRelayTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1E1F1FE156A30F0B5BDB12F /* AppIntentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntentsTests.swift; sourceTree = "<group>"; };
 		A201F54A8F28266CE1D63A30 /* V2TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V2TestSupport.swift; sourceTree = "<group>"; };
 		A284E6E178BCB0C22EB11EF5 /* ThreadKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadKey.swift; sourceTree = "<group>"; };
 		A4A25242CA53E22AF3F8DF7C /* RouteDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteDiagnostics.swift; sourceTree = "<group>"; };
@@ -417,6 +426,7 @@
 		C739195588328B87BC2C71C9 /* KeypadTonePlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeypadTonePlayer.swift; sourceTree = "<group>"; };
 		C9E9B205A20B16ED0A91FC2C /* WebPushLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPushLocalization.swift; sourceTree = "<group>"; };
 		CBA78DC07BCCADBDB5461650 /* PairingRuntimeRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingRuntimeRegressionTests.swift; sourceTree = "<group>"; };
+		CEFFC33C276E912A66AF20E6 /* IntentHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentHandoff.swift; sourceTree = "<group>"; };
 		D0635913B3FD20B2420AF284 /* CallRelayUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CallRelayUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D10A461BD9CA9FBA0DA3CAB8 /* WebPushBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebPushBridgeTests.swift; sourceTree = "<group>"; };
 		D46CF4622322B38D2BB94B65 /* MessagesBulkEditUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessagesBulkEditUITests.swift; sourceTree = "<group>"; };
@@ -547,6 +557,17 @@
 			path = Common;
 			sourceTree = "<group>";
 		};
+		24C51D2CBC523125A5560CC2 /* AppIntents */ = {
+			isa = PBXGroup;
+			children = (
+				2DF5DF4CCDB9C135C2EA3D2D /* CallRelayAppShortcuts.swift */,
+				722D30330FB2875CF0BD48BE /* CallRelayIntents.swift */,
+				CEFFC33C276E912A66AF20E6 /* IntentHandoff.swift */,
+				54D160FA3F8ACEEB90022A10 /* RelayLineEntity.swift */,
+			);
+			path = AppIntents;
+			sourceTree = "<group>";
+		};
 		25070BB4B03349065F469394 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
@@ -566,6 +587,7 @@
 				5D25999B1DF31DDC1F356766 /* Localizable.xcstrings */,
 				8B4B7CD920055CAF9C3CD8FD /* WebPushBridge.xcstrings */,
 				F96DA1287062DE6F9ED40636 /* App */,
+				24C51D2CBC523125A5560CC2 /* AppIntents */,
 				0BE0F5A77D9A5605950608F8 /* Calling */,
 				C8CFF2D106E6AA8F37C5E349 /* CloudSync */,
 				B9AC41AB09E11EACBA6EF990 /* Contacts */,
@@ -584,6 +606,7 @@
 		40197F870E308E6A91FCF750 /* CallRelayTests */ = {
 			isa = PBXGroup;
 			children = (
+				A1E1F1FE156A30F0B5BDB12F /* AppIntentsTests.swift */,
 				E5E3BBBAEB469D6E419EF75B /* AudioDiagnosticsTests.swift */,
 				1BB7D3EEC45514BF4E126799 /* AudioSessionLifecycleTests.swift */,
 				4912A9C8E972B2D45D89256F /* AudioTransportConcurrencyTests.swift */,
@@ -1043,6 +1066,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C0776E2B7668BDB3BCF95949 /* AppIntentsTests.swift in Sources */,
 				4AB8C12A4AEB90CCE72EC62B /* AudioDiagnosticsTests.swift in Sources */,
 				19BDD4DC3C5B8A5931D44CC1 /* AudioSessionLifecycleTests.swift in Sources */,
 				F22479DC3EC8D7A1B8F80051 /* AudioTransportConcurrencyTests.swift in Sources */,
@@ -1154,6 +1178,8 @@
 				E9C780B47D349B2F77275ABD /* CallKitManager.swift in Sources */,
 				0B6D3B722D2EE618906E0FD9 /* CallProgressToneController.swift in Sources */,
 				B3360F6947FD32F621D3C84B /* CallRelayApp.swift in Sources */,
+				DC82BF13D2AE8DF4B0C0D142 /* CallRelayAppShortcuts.swift in Sources */,
+				D9969942D3A43D1EC8113601 /* CallRelayIntents.swift in Sources */,
 				035E6F49191444927CEA2996 /* CallRouteController.swift in Sources */,
 				779556BB078733CD87ED70C3 /* CallState.swift in Sources */,
 				62A2F9E39BEA047EA3C0FF73 /* CellularSignalBars.swift in Sources */,
@@ -1194,6 +1220,7 @@
 				6880E3659B01AC2D7FC7B74A /* IncomingCallChecker.swift in Sources */,
 				9C19B472295DA7F30B1C9DDF /* IncomingCallFilter.swift in Sources */,
 				6AC6BB27BFE444D89F66A424 /* IncomingCheckDeepLink.swift in Sources */,
+				CF6EE47562725831B9BE7BFD /* IntentHandoff.swift in Sources */,
 				42233D7ED894483DEBF91949 /* KeypadTonePlayer.swift in Sources */,
 				AA3592E3F83CD6E5873FB963 /* LineDetailView.swift in Sources */,
 				6D59F2734578F40364CA4DBF /* LineNumberEditView.swift in Sources */,
@@ -1219,6 +1246,7 @@
 				09175A11E64EB5A180108AFA /* RecentsView.swift in Sources */,
 				C54437A9AB6834A1947F4293 /* RecoveryGrant.swift in Sources */,
 				CDB76D0961E2B5A00E1C3CCB /* RelayIdleProbeController.swift in Sources */,
+				713056B2545F2D30DD0EDC06 /* RelayLineEntity.swift in Sources */,
 				AFBC8312DA10813FDA7079D2 /* RetryPolicy.swift in Sources */,
 				52F1F86137E90954ADF3B18F /* RootView.swift in Sources */,
 				A4E829FD8C8F7BDECDF0B62A /* RouteDiagnostics.swift in Sources */,
@@ -1355,7 +1383,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1371,7 +1399,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.34;
+				MARKETING_VERSION = 0.3.35;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1444,7 +1472,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -1460,7 +1488,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.34;
+				MARKETING_VERSION = 0.3.35;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1620,7 +1648,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1642,7 +1670,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.34;
+				MARKETING_VERSION = 0.3.35;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -1717,7 +1745,7 @@
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1739,7 +1767,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.3.34;
+				MARKETING_VERSION = 0.3.35;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

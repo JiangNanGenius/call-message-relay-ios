@@ -8,7 +8,7 @@ import UserNotifications
 final class AppModel: ObservableObject {
     // MARK: Published UI state
     @Published var linePhase: LinePhase = .unpaired {
-        didSet { resolvePendingExternalDial() }
+        didSet { resolvePendingHandoffs() }
     }
     @Published var activeCall: ActiveCallViewState?
     @Published var quality: MediaQuality?
@@ -63,9 +63,30 @@ final class AppModel: ObservableObject {
     @Published var screenedCallNotice: ScreenedCallNotice?
     /// Selected main tab; shared so Contacts can hand a number to Messages.
     @Published var selectedTab: AppTab = .keypad
-    @Published var pendingComposePeer: String?
-    /// Unified gateway lines authorized for this device (v2 only).
-    @Published var authorizedLines: [AuthorizedLine] = []
+    /// Composer handoff (Contacts/Recents rows and the Shortcuts intent):
+    /// opens the Messages compose sheet prefilled; body/line may be nil.
+    /// Never auto-sends — the gateway send only happens on explicit
+    /// in-app confirmation through the normal outbox path.
+    @Published var pendingCompose: PendingCompose?
+    /// One-shot token: when set, the Messages list pushes VoicemailView
+    /// (Shortcuts "open voicemail" handoff). Consumed by the view.
+    @Published var pendingVoicemailToken: UUID?
+    /// Unified gateway lines authorized for this device (v2 only). Every
+    /// assignment republishes the Shortcuts-facing line catalog (principal-
+    /// scoped) and persists a MINIMAL snapshot (id + display name only, no
+    /// tokens/contacts) for cold-start entity resolution, so a saved
+    /// shortcut line resolves before the first network refresh; execution
+    /// still re-validates against the live list.
+    @Published var authorizedLines: [AuthorizedLine] = [] {
+        didSet {
+            RelayLineCatalog.shared.publish(
+                authorizedLines,
+                principal: currentIntentPrincipal ?? "none"
+            )
+            persistIntentLineSnapshot()
+            resolvePendingHandoffs()
+        }
+    }
     @Published var defaultLineId: String?
     /// Explicit state of the authorized-line fetch: never let an empty picker
     /// look like a healthy gateway.
@@ -107,6 +128,17 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastDeletedVoicemailId: String?
 
     enum AppTab: String { case keypad, contacts, messages, recents, settings }
+
+    /// Prefill request for the Messages compose sheet.
+    struct PendingCompose: Identifiable, Equatable {
+        let id = UUID()
+        let peer: String
+        var body: String?
+        var lineID: String?
+        /// Set when a Shortcuts-supplied line expired: the draft is kept
+        /// and the composer requires an explicit in-app line re-pick.
+        var lineExpiredMessage: String?
+    }
 
     struct BlockedDial: Identifiable, Equatable {
         let id = UUID()
@@ -193,7 +225,25 @@ final class AppModel: ObservableObject {
     private var preferencePushGeneration: UInt64 = 0
     private var preferencePushInFlight = false
     private var preferencePushPending: String?
-    private var pendingExternalPeer: String?
+    /// A dial or compose request from a Shortcuts handoff that arrived while
+    /// the live session could not judge its saved line yet. The FULL request
+    /// is preserved (peer, body, scoped line) — never reduced to a bare
+    /// peer, never silently dropped or converted to the default line.
+    private struct PendingExternalDial {
+        let peer: String
+        /// Bare line id from an in-app surface (already user-confirmed).
+        let preferredLineId: String?
+        /// Shortcuts entity id (`principal#lineId`); validated only when the
+        /// request resolves, against the then-current pairing and line list.
+        let scopedLineID: String?
+    }
+    private var pendingExternalDial: PendingExternalDial?
+    private struct PendingComposeHandoff {
+        let peer: String
+        let body: String?
+        let scopedLineID: String
+    }
+    private var pendingComposeHandoff: PendingComposeHandoff?
     /// Gateway call ids reserved during an in-flight CallKit report, so
     /// duplicate pushes/events cannot present a second ring while awaiting.
     private var reservedCallIds: Set<String> = []
@@ -370,6 +420,16 @@ final class AppModel: ObservableObject {
         let resolvedContacts = contacts ?? ContactsService()
         self.spamFilter = resolvedFilter
         self.contacts = resolvedContacts
+        // Route Shortcuts handoffs staged while this app instance is already
+        // foreground (the cold-start .task and foreground-notification paths
+        // cover the other orderings; take() keeps it exactly-once).
+        IntentHandoffCenter.shared.registerConsumer { [weak self] handoff in
+            self?.applyIntentHandoff(handoff)
+        }
+        // Cold-start Shortcuts entity restore: republish the persisted
+        // minimal line snapshot for the current pairing so saved shortcut
+        // lines resolve before the first network refresh.
+        restoreIntentLineSnapshot()
         if LaunchArguments.isUITestReset {
             // Hermetic UI-test run: never touch the owner's real rules.
             resolvedFilter.useEphemeralStore()
@@ -451,6 +511,11 @@ final class AppModel: ObservableObject {
     }
 
     private func handleForeground() {
+        // A Shortcuts handoff staged while the app was suspended routes on
+        // foreground, after the live session exists (cold start consumes it
+        // from CallRelayApp.task instead). Consumed even in demo mode: the
+        // demo dial path is safe and never touches the network.
+        consumeIntentHandoff()
         guard !isDemo else {
             Task { await contacts.refreshIfAuthorized() }
             return
@@ -651,6 +716,8 @@ final class AppModel: ObservableObject {
     func unpair() {
         teardownLive()
         PairingService(identities: identities, tokens: tokenStore, bindings: bindingStore).unpair()
+        // Shortcuts line snapshot belongs to the pairing being removed.
+        clearIntentLineSnapshot()
         linePhase = .unpaired
         recents = []
         activeCall = nil
@@ -798,44 +865,266 @@ final class AppModel: ObservableObject {
 
     // MARK: External call entry points (Intents / tel:)
 
-    /// Routes a number chosen in the system Phone/Contacts UI through the same
-    /// gateway path. Never places a cellular call; when unavailable the UI
-    /// explains why instead of silently failing or opening `tel:`.
-    func handleExternalDial(_ rawPeer: String) {
+    /// The pairing principal that scopes Shortcuts line entities: the bound
+    /// gateway id (live pairing) or "demo" (offline demo). nil = unpaired;
+    /// any saved line entity is then rejected, never resolved.
+    var currentIntentPrincipal: String? {
+        if isDemo { return "demo" }
+        return bindingStore.current()?.gatewayId
+    }
+
+    /// Routes a number chosen in the system Phone/Contacts UI through the
+    /// same gateway path. Never places a cellular call; when unavailable the
+    /// UI explains why instead of silently failing or opening `tel:`.
+    func handleExternalDial(_ rawPeer: String, preferredLineId: String? = nil) {
+        handleExternalDial(rawPeer, preferredLineId: preferredLineId, scopedLineID: nil)
+    }
+
+    private func handleExternalDial(
+        _ rawPeer: String, preferredLineId: String?, scopedLineID: String?
+    ) {
         let peer = rawPeer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !peer.isEmpty else { return }
-        if case .connecting = linePhase {
-            pendingExternalPeer = peer
+        if shouldQueueExternalDial(waitForListLoad: scopedLineID != nil) {
+            pendingExternalDial = PendingExternalDial(
+                peer: peer, preferredLineId: preferredLineId, scopedLineID: scopedLineID)
             return
         }
         if isDemo {
             dial(peer)
             return
         }
+        if scopedLineID != nil {
+            // Shortcuts path: strict line validation, never a silent default.
+            resolveIntentDial(peer: peer, scopedLineID: scopedLineID)
+            return
+        }
         // requestDial either starts the call, presents the line chooser, or
         // attaches the explanatory no-fallback alert — never silently
         // switching numbers or opening a cellular call.
-        _ = requestDial(peer)
+        _ = requestDial(peer, preferredLineId: preferredLineId)
+    }
+
+    /// True while a dial request cannot be judged yet and must be queued
+    /// with its FULL line instruction: connecting, or bootstrap not run yet
+    /// (credentials present but phase still the initial .unpaired).
+    /// - Parameter waitForListLoad: intent (scoped-line) path only. A saved
+    ///   Shortcuts line is validated against the REAL authorized list, so it
+    ///   waits for the first list load on cold start; the plain system
+    ///   tel:/Recents path needs no such wait and reports immediately.
+    private func shouldQueueExternalDial(waitForListLoad: Bool) -> Bool {
+        if case .connecting = linePhase { return true }
+        if isDemo { return false }
+        if isPaired, case .unpaired = linePhase { return true }
+        if waitForListLoad, isPaired, authorizedLines.isEmpty,
+           lineListState == .unknown || lineListState == .loading {
+            return true
+        }
+        return false
+    }
+
+    private func resolvePendingHandoffs() {
+        resolvePendingExternalDial()
+        resolvePendingComposeHandoff()
     }
 
     private func resolvePendingExternalDial() {
-        guard let peer = pendingExternalPeer else { return }
-        if case .connecting = linePhase { return }
-        pendingExternalPeer = nil
-        handleExternalDial(peer)
+        guard let request = pendingExternalDial else { return }
+        if shouldQueueExternalDial(waitForListLoad: request.scopedLineID != nil) { return }
+        pendingExternalDial = nil
+        handleExternalDial(request.peer,
+                           preferredLineId: request.preferredLineId,
+                           scopedLineID: request.scopedLineID)
+    }
+
+    /// A compose handoff carrying a saved line waits (like the dial path)
+    /// until the authorized list can judge that line on cold start; the
+    /// scoped line survives the wait untouched.
+    private func resolvePendingComposeHandoff() {
+        guard let request = pendingComposeHandoff else { return }
+        if shouldWaitForListLoad(scopedLineID: request.scopedLineID) { return }
+        pendingComposeHandoff = nil
+        resolveComposeHandoff(peer: request.peer, body: request.body,
+                              scopedLineID: request.scopedLineID)
+    }
+
+    private func shouldWaitForListLoad(scopedLineID: String?) -> Bool {
+        guard scopedLineID != nil, !isDemo, isPaired,
+              authorizedLines.isEmpty else { return false }
+        return lineListState == .unknown || lineListState == .loading
+    }
+
+    // MARK: Shortcuts line snapshot (cold-start entity restore)
+
+    private enum IntentLineSnapshotKey {
+        static let principal = "callrelay.intentLines.principal"
+        static let lines = "callrelay.intentLines.lines"
+    }
+
+    /// Minimal per-pairing line snapshot for Shortcuts entity resolution on
+    /// cold start: bare id + display name only (never tokens, never contact
+    /// data), isolated by the pairing principal and cleared on unpair.
+    private func persistIntentLineSnapshot() {
+        guard let principal = currentIntentPrincipal, principal != "demo" else {
+            defaults.removeObject(forKey: IntentLineSnapshotKey.principal)
+            defaults.removeObject(forKey: IntentLineSnapshotKey.lines)
+            return
+        }
+        let snapshot: [[String: String]] = authorizedLines.map {
+            ["id": $0.id, "name": $0.friendlyName]
+        }
+        defaults.set(principal, forKey: IntentLineSnapshotKey.principal)
+        defaults.set(snapshot, forKey: IntentLineSnapshotKey.lines)
+    }
+
+    /// Republishes the persisted snapshot for the CURRENT pairing at launch,
+    /// so a previously saved shortcut line renders in the Shortcuts UI even
+    /// before the first authorized-line refresh. A principal mismatch
+    /// (re-paired) restores nothing.
+    private func restoreIntentLineSnapshot() {
+        guard let principal = defaults.string(forKey: IntentLineSnapshotKey.principal),
+              principal == currentIntentPrincipal,
+              let raw = defaults.array(forKey: IntentLineSnapshotKey.lines) as? [[String: String]]
+        else { return }
+        RelayLineCatalog.shared.publish(
+            restored: raw.map { (id: $0["id"] ?? "", displayName: $0["name"] ?? "") },
+            principal: principal
+        )
+    }
+
+    private func clearIntentLineSnapshot() {
+        defaults.removeObject(forKey: IntentLineSnapshotKey.principal)
+        defaults.removeObject(forKey: IntentLineSnapshotKey.lines)
+        RelayLineCatalog.shared.publish(restored: [], principal: "none")
+    }
+
+    // MARK: Shortcuts (App Intents) handoff routing
+
+    /// Outcome of validating a Shortcuts-supplied scoped line id against the
+    /// CURRENT pairing principal and the live authorized list.
+    enum IntentLineCheck: Equatable {
+        /// No line requested: follow the existing default/chooser rules.
+        case useDefault
+        /// Resolved to a currently-authorized bare line id.
+        case resolved(String)
+        /// The requested line is not part of the current pairing (unpaired,
+        /// re-paired, revoked, or another gateway reused the bare id):
+        /// strict failure — never a substitute line.
+        case expired
+    }
+
+    func checkIntentLine(_ scopedID: String?) -> IntentLineCheck {
+        guard let scopedID, !scopedID.isEmpty else { return .useDefault }
+        guard let principal = currentIntentPrincipal,
+              let separator = scopedID.firstIndex(of: RelayLineCatalog.separator)
+        else { return .expired }
+        let scope = String(scopedID[..<separator])
+        let bare = String(scopedID[scopedID.index(after: separator)...])
+        guard scope == principal, !bare.isEmpty,
+              authorizedLines.contains(where: { $0.id == bare }) else { return .expired }
+        return .resolved(bare)
+    }
+
+    /// Strict Shortcuts dial routing. A named line that is expired surfaces
+    /// an explicit explanation and NEVER dials; a named line that is
+    /// authorized but temporarily undialable presents the explicit chooser —
+    /// the user re-picks, the default line is never silently substituted.
+    private func resolveIntentDial(peer: String, scopedLineID: String?) {
+        switch checkIntentLine(scopedLineID) {
+        case .useDefault:
+            _ = requestDial(peer)
+        case .resolved(let bare):
+            _ = requestDial(peer, preferredLineId: bare, strictLine: true)
+        case .expired:
+            externalCallRequest = ExternalCallRequest(
+                peer: peer,
+                message: String(localized: "快捷指令指定的线路已不属于当前配对（可能尚未配对、已重新配对或网关已变更）。为避免打错线路，本次不会拨打，也不会改用其他线路；请更新快捷指令或重新选择线路。"))
+        }
+    }
+
+    /// Applies a Shortcuts/App-Intents handoff staged in ``IntentHandoffCenter``
+    /// through the same entry points as the equivalent in-UI actions. Safe
+    /// to call on every launch/foreground/wake: a nil pending value is a
+    /// no-op and take() is atomic, so the handoff is applied exactly once.
+    func consumeIntentHandoff() {
+        applyIntentHandoff(IntentHandoffCenter.shared.take())
+    }
+
+    private func applyIntentHandoff(_ handoff: IntentHandoff?) {
+        guard let handoff else { return }
+        switch handoff {
+        case .call(let peer, let lineID):
+            handleExternalDial(peer, preferredLineId: nil, scopedLineID: lineID)
+        case .compose(let peer, let body, let lineID):
+            guard let lineID else {
+                resolveComposeHandoff(peer: peer, body: body, scopedLineID: nil)
+                break
+            }
+            // A named line is never dropped or converted to the default:
+            // wait for the list that can judge it, then keep it or prompt.
+            if shouldWaitForListLoad(scopedLineID: lineID) {
+                pendingComposeHandoff = PendingComposeHandoff(
+                    peer: peer, body: body, scopedLineID: lineID)
+                break
+            }
+            resolveComposeHandoff(peer: peer, body: body, scopedLineID: lineID)
+        case .destination(let destination):
+            switch destination {
+            case .dialer: selectedTab = .keypad
+            case .messages: selectedTab = .messages
+            case .voicemail: openVoicemail()
+            }
+        }
+    }
+
+    /// Compose routing for a Shortcuts handoff. A resolved line becomes the
+    /// editable prefill; an expired line KEEPS the draft (recipient + body)
+    /// and attaches an explicit re-pick notice — never a silent default.
+    private func resolveComposeHandoff(peer: String, body: String?, scopedLineID: String?) {
+        switch checkIntentLine(scopedLineID) {
+        case .useDefault:
+            composeSMS(to: peer, body: body, lineID: nil)
+        case .resolved(let bare):
+            composeSMS(to: peer, body: body, lineID: bare)
+        case .expired:
+            pendingCompose = PendingCompose(
+                peer: peer, body: body, lineID: nil,
+                lineExpiredMessage: String(localized: "快捷指令指定的线路已不可用（配对已变更或线路已被取消授权）。草稿内容已保留；请在“发件人”中重新选择线路后再发送。"))
+            selectedTab = .messages
+        }
     }
 
     func dismissExternalCallRequest() { externalCallRequest = nil }
 
     /// Switch to the SMS tab and open the composer addressed to a contact.
     func composeSMS(to peer: String) {
-        pendingComposePeer = peer
+        pendingCompose = PendingCompose(peer: peer)
         selectedTab = .messages
     }
 
-    func consumePendingComposePeer() -> String? {
-        let value = pendingComposePeer
-        pendingComposePeer = nil
+    /// Messages-tab compose handoff with optional body/line prefill (the
+    /// Shortcuts intent path). Still only OPENS the composer — sending stays
+    /// an explicit in-app confirmation.
+    func composeSMS(to peer: String, body: String?, lineID: String?) {
+        pendingCompose = PendingCompose(peer: peer, body: body, lineID: lineID)
+        selectedTab = .messages
+    }
+
+    func consumePendingCompose() -> PendingCompose? {
+        let value = pendingCompose
+        pendingCompose = nil
+        return value
+    }
+
+    /// Voicemail deep-link trigger (Shortcuts "open voicemail").
+    func openVoicemail() {
+        pendingVoicemailToken = UUID()
+        selectedTab = .messages
+    }
+
+    func consumePendingVoicemailToken() -> UUID? {
+        let value = pendingVoicemailToken
+        pendingVoicemailToken = nil
         return value
     }
 
@@ -1108,6 +1397,14 @@ final class AppModel: ObservableObject {
 
     private func teardownLive() {
         sessionGeneration += 1
+        // Stale composer/voicemail deep links and queued SHORTCUTS handoffs
+        // from a previous pairing must not pop later against the wrong
+        // gateway. A legacy system pending dial (no scoped line) keeps its
+        // historical behavior.
+        pendingCompose = nil
+        pendingVoicemailToken = nil
+        pendingComposeHandoff = nil
+        if pendingExternalDial?.scopedLineID != nil { pendingExternalDial = nil }
         lineRunner?.cancel()
         recentsRunner?.cancel()
         lineRunner = nil
@@ -1499,8 +1796,11 @@ final class AppModel: ObservableObject {
 
     /// Unified dial entry point for every UI surface. Returns true when the
     /// call was started; false when an explicit line choice is required.
+    /// - Parameter strictLine: Shortcuts path. When an explicitly named line
+    ///   cannot carry the call right now, present the chooser instead of
+    ///   ever falling through to the default line (no silent substitution).
     @discardableResult
-    func requestDial(_ rawPeer: String, preferredLineId: String? = nil) -> Bool {
+    func requestDial(_ rawPeer: String, preferredLineId: String? = nil, strictLine: Bool = false) -> Bool {
         let peer = rawPeer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !peer.isEmpty else { return false }
         if let blocked = screenOutgoing(peer) {
@@ -1519,8 +1819,16 @@ final class AppModel: ObservableObject {
             externalCallRequest = ExternalCallRequest(peer: peer, message: noDialableLineReason)
             return false
         }
-        if let preferredLineId, let line = line(id: preferredLineId), line.canDialNow {
-            temporaryDialLineId = preferredLineId
+        if let preferredLineId {
+            if let line = line(id: preferredLineId), line.canDialNow {
+                temporaryDialLineId = preferredLineId
+            } else if strictLine {
+                // An explicitly named line that cannot carry the call right
+                // now must prompt for a fresh pick — never silently use the
+                // default line behind the user's back.
+                outgoingPick = OutgoingPick(peer: peer)
+                return false
+            }
         }
         if resolvedDialLine() != nil {
             dial(peer)

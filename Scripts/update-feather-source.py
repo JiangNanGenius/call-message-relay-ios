@@ -65,8 +65,7 @@ with zipfile.ZipFile(args.ipa) as archive:
         parser.error("IPA has no Payload/<app>.app")
     forbidden_paths = [
         n for n in names
-        if "Metadata.appintents" in n
-        or n.endswith("BarkBridge.strings")
+        if n.endswith("BarkBridge.strings")
         or n.endswith("WebPushBridge.strings")
     ]
     if forbidden_paths:
@@ -74,6 +73,16 @@ with zipfile.ZipFile(args.ipa) as archive:
             "IPA is not the pure native edition (bridge files present): "
             + ", ".join(forbidden_paths[:3])
         )
+    # Metadata.appintents ships in both editions since 0.3.35 (core App
+    # Intents); only bridge REFERENCES inside it disqualify the native IPA.
+    meta_prefix = app_prefix + "Metadata.appintents/"
+    meta_files = [n for n in names if n.startswith(meta_prefix) and not n.endswith("/")]
+    for name in meta_files:
+        if NATIVE_FORBIDDEN_BINARY.search(archive.read(name)):
+            parser.error(
+                "IPA is not the pure native edition (bridge reference in "
+                f"{name.replace(app_prefix, '')})"
+            )
     info = plistlib.loads(archive.read(app_prefix + "Info.plist"))
     if info.get("CFBundleURLTypes"):
         parser.error("IPA is not the pure native edition (CFBundleURLTypes present)")
