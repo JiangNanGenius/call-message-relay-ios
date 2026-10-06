@@ -22,6 +22,22 @@ final class FakeDirectProbe: DirectProbeControlling {
     /// Audio-gate input (data-channel echo never counts as audio).
     var audioFlowingValue = true
     var audioFlowing: Bool { audioFlowingValue }
+    /// Gate input: packets advanced but the playout-output stat is genuinely
+    /// unavailable (accepted ONCE, explicitly — never a round-one fallback).
+    var playoutStatUnavailableValue = false
+    var playoutStatUnavailable: Bool { playoutStatUnavailableValue }
+    /// Bounded audio-device restart scripting: `restartCapable` gates whether
+    /// a restart arms at all; `restartHealsAudio` flips the gate input when
+    /// the restart runs (the healthy-after-restart device).
+    private(set) var restartAudioCount = 0
+    var restartCapable = false
+    var restartHealsAudio = false
+    func restartAudioDevice() -> Bool {
+        guard restartCapable else { return false }
+        restartAudioCount += 1
+        if restartHealsAudio { audioFlowingValue = true }
+        return true
+    }
     var offerError: Error?
     var applyError: Error?
     var shouldFailCommit = false
@@ -616,6 +632,78 @@ final class CallRouteControllerTests: XCTestCase {
                        "inbound RTP inside the bound keeps the direct path")
         XCTAssertEqual(h.promoteStagedCalls, 0)
         XCTAssertEqual(handoffProbe.closeCount, 0)
+        h.controller.teardown()
+    }
+
+    /// A genuinely unavailable playout-output stat (key absent across
+    /// multiple stats rounds — the only conservative packet-evidence
+    /// fallback) is accepted ONCE and explicitly: the direct path stays, no
+    /// restart, no rollback, no fallback notice.
+    func testAdoptedDirectAudioGateAcceptsGenuinelyUnavailablePlayoutStat() async throws {
+        let h = Harness()
+        let handoffProbe = FakeDirectProbe()
+        handoffProbe.audioFlowingValue = false
+        handoffProbe.playoutStatUnavailableValue = true
+        h.handoffProbe = handoffProbe
+        h.transportReported = "ice"
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        await pump(0.5) // > directAudioReadyTimeout (0.2 s): a rejection would roll back
+        XCTAssertEqual(h.controller.routeState.active, .direct,
+                       "packet evidence is accepted only when the stat is genuinely unavailable")
+        XCTAssertEqual(h.promoteStagedCalls, 0, "no rollback for an unavailable stat")
+        XCTAssertEqual(handoffProbe.restartAudioCount, 0, "no audio-device restart for an unavailable stat")
+        XCTAssertTrue(h.notices.isEmpty, "an explicit stat-unavailable acceptance is not a fallback notice")
+        h.controller.teardown()
+    }
+
+    /// Build-42 warm direct-first silence pattern: RTP advanced while the
+    /// local render device never pulled audio. The gate arms ONE bounded
+    /// audio-device restart; when the restarted device pulls audio, the
+    /// direct path is KEPT — no relay rollback, no fallback notice.
+    func testAdoptedDirectAudioGateRestartHealsWithoutRollback() async throws {
+        let h = Harness()
+        let handoffProbe = FakeDirectProbe()
+        handoffProbe.audioFlowingValue = false
+        handoffProbe.restartCapable = true
+        handoffProbe.restartHealsAudio = true
+        h.handoffProbe = handoffProbe
+        h.transportReported = "ice"
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 3) { handoffProbe.restartAudioCount == 1 }
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        await pump(0.3)
+        XCTAssertEqual(h.controller.routeState.active, .direct,
+                       "a healed render device keeps the better direct path")
+        XCTAssertEqual(h.promoteStagedCalls, 0, "no relay rollback after a successful restart")
+        XCTAssertEqual(handoffProbe.closeCount, 0)
+        XCTAssertEqual(handoffProbe.restartAudioCount, 1, "exactly one bounded restart, never a loop")
+        XCTAssertTrue(h.notices.isEmpty, "a local recovery is not a fallback notice")
+        h.controller.teardown()
+    }
+
+    /// A still-dead path after the one bounded restart rolls back to a staged
+    /// relay with the truthful notice — the restart never loops and the
+    /// user's route MODE choice is untouched (transport-only recovery).
+    func testAdoptedDirectAudioGateRestartFailureRollsBackOnce() async throws {
+        let h = Harness()
+        let handoffProbe = FakeDirectProbe()
+        handoffProbe.audioFlowingValue = false
+        handoffProbe.restartCapable = true
+        handoffProbe.restartHealsAudio = false
+        h.handoffProbe = handoffProbe
+        h.transportReported = "ice"
+        h.attachRelayResult = true
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 3) { h.controller.routeState.active == .relay && h.promoteStagedCalls >= 1 }
+        XCTAssertEqual(handoffProbe.restartAudioCount, 1, "exactly one bounded restart before rollback")
+        XCTAssertEqual(h.notices.last?.0, "直连音频未就绪，已恢复中继。")
+        XCTAssertEqual(h.controller.routeState.mode, .direct,
+                       "the user's forced-route choice survives a transport recovery")
+        XCTAssertEqual(handoffProbe.closeCount, 1, "the dead peer is closed at handover")
         h.controller.teardown()
     }
 

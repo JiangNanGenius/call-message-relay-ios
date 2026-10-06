@@ -208,6 +208,7 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
         // Manual audio: the audio device stays disabled until CallKit hands us
         // an activated AVAudioSession, preventing echo/category races.
         RTCAudioSession.sharedInstance().useManualAudio = true
+        RTCAudioSessionDiagnostics.install()
     }
 
     func makeOffer(ice: ICEConfiguration, relayOnly: Bool) async throws -> String {

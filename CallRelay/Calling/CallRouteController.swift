@@ -160,6 +160,12 @@ final class CallRouteController {
         /// the absolute opportunity bound above).
         var startupMeasurementSeconds: TimeInterval = 6
         var startupMeasurementPoll: TimeInterval = 0.5
+        /// Bounded window for the ONE local audio-device restart the gate
+        /// arms when RTP advances but the render device never pulled decoded
+        /// audio (build-42 warm direct-first silence), before falling back
+        /// to a staged relay. Covers the restart settle plus a fresh pull
+        /// window; exactly one restart per adoption, never a loop.
+        var directAudioRestartTimeout: TimeInterval = 1.5
         /// After an adoption, ADVANCING two-way direct audio (post-adoption
         /// inbound + outbound RTP with the RTC session enabled) must be
         /// observed within this bound or the call falls back to the relay.
@@ -1230,16 +1236,28 @@ final class CallRouteController {
         startDirectAudioGate(probe: probe, gen: gen)
     }
 
-    /// Bounded proof that the ADOPTED direct transport carries ADVANCING
-    /// two-way audio: inbound gateway RTP AND outbound mic RTP increasing
-    /// since the adoption moment, with the RTC session enabled. The
-    /// data-channel echo proves reachability/RTT only and is never counted.
-    /// On failure the direct peer is a real path failure: the call rolls back
-    /// to a freshly staged relay before the peer is closed. Because the
-    /// gateway's atomic commit already detached the old WSS host, this gate
-    /// runs AFTER cutover and does NOT claim a gapless handover — it is the
-    /// strongest evidence the current protocol allows, with a bounded
-    /// failure exposure.
+    /// Bounded proof that the ADOPTED direct transport carries live local
+    /// media: inbound gateway RTP AND outbound mic RTP advancing since the
+    /// adoption moment, the RTC session enabled, AND the audio output path
+    /// provably pulling NetEq samples (packet counts alone advance even when
+    /// local media is dead — the build-42 warm direct-first silence; NetEq
+    /// semantics verified against the bundled M151, `neteq_impl.cc:217` →
+    /// `statistics_calculator.cc:285`). The data-channel echo proves
+    /// reachability/RTT only and is never counted; output liveness never
+    /// requires non-zero remote volume (concealment advances the counter),
+    /// so a quiet call stays healthy. A genuinely unavailable playout stat
+    /// (key absent across multiple stats rounds, never the first) is
+    /// accepted ONCE with an explicit log+counter instead of silently
+    /// reverting to packet-only judgment. On the first failure the gate arms
+    /// ONE bounded local audio-device restart (the ADM analog of the relay
+    /// graph's proven tap-dead engine restart) and re-checks; only a
+    /// still-dead path rolls back to a freshly staged relay before the peer
+    /// is closed. A rollback never rewrites the user's route MODE — the
+    /// forced/auto choice persists and the live transport change is always
+    /// surfaced by a notice. Because the gateway's atomic commit already
+    /// detached the old WSS host, this gate runs AFTER cutover and does NOT
+    /// claim a gapless handover — it is the strongest evidence the current
+    /// protocol allows, with a bounded failure exposure.
     private func startDirectAudioGate(probe: DirectProbeControlling, gen: UInt64) {
         audioGateTask?.cancel()
         audioGateTask = Task { [weak self] in
@@ -1248,7 +1266,22 @@ final class CallRouteController {
             while !Task.isCancelled {
                 if probe.audioFlowing {
                     DiagnosticsStore.shared.log("route",
-                        "direct audio gate passed afterMs=\(Int(Date().timeIntervalSince(startedAt) * 1000))")
+                        "direct audio gate passed afterMs=\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+                        + " inPkts=\(probe.inboundAudioPackets) neteqOut=\(probe.inboundPlayoutSamples)"
+                        + " outPkts=\(probe.outboundAudioPackets)"
+                        + " admStarts=\(RTCAudioSessionDiagnostics.shared.admStartCount)")
+                    return
+                }
+                if probe.playoutStatUnavailable {
+                    // The SDK never reported the playout-output key across
+                    // multiple stats rounds: accept the pre-fix packet
+                    // evidence ONCE, explicitly — never the silent round-one
+                    // fallback that misjudged the build-42 silent call.
+                    DiagnosticsCensus.shared.increment("audio.gatePlayoutStatMissing")
+                    DiagnosticsStore.shared.log("route",
+                        "direct audio gate passed on packet evidence (playout stat unavailable)"
+                        + " inPkts=\(probe.inboundAudioPackets) outPkts=\(probe.outboundAudioPackets)"
+                        + " admStarts=\(RTCAudioSessionDiagnostics.shared.admStartCount)")
                     return
                 }
                 if Date().timeIntervalSince(startedAt) >= self.cadence.directAudioReadyTimeout { break }
@@ -1257,9 +1290,33 @@ final class CallRouteController {
             guard !Task.isCancelled, gen == self.epoch, !self.tearingDown,
                   self.activeDirect === probe, self.transport == .direct else { return }
             DiagnosticsStore.shared.log("route",
-                "direct audio gate failed: no advancing two-way audio withinMs="
+                "direct audio gate: no live local media withinMs="
                 + "\(Int(self.cadence.directAudioReadyTimeout * 1000))"
-                + " inbound=\(probe.inboundAudioPackets) outbound=\(probe.outboundAudioPackets)"
+                + " inPkts=\(probe.inboundAudioPackets) neteqOut=\(probe.inboundPlayoutSamples)"
+                + " outPkts=\(probe.outboundAudioPackets) playoutStatSeen=\(probe.playoutSamplesStatSeen)"
+                + " admStarts=\(RTCAudioSessionDiagnostics.shared.admStartCount)"
+                + "; one bounded audio-device restart")
+            if probe.restartAudioDevice() {
+                let restartAt = Date()
+                while !Task.isCancelled,
+                      Date().timeIntervalSince(restartAt) < self.cadence.directAudioRestartTimeout {
+                    if probe.audioFlowing {
+                        DiagnosticsStore.shared.log("route",
+                            "direct audio gate passed after audio device restart"
+                            + " neteqOut=\(probe.inboundPlayoutSamples)"
+                            + " admStarts=\(RTCAudioSessionDiagnostics.shared.admStartCount)")
+                        return
+                    }
+                    try? await Task.sleep(nanoseconds: UInt64(self.cadence.directAudioGatePoll * 1_000_000_000))
+                }
+            }
+            guard !Task.isCancelled, gen == self.epoch, !self.tearingDown,
+                  self.activeDirect === probe, self.transport == .direct else { return }
+            DiagnosticsStore.shared.log("route",
+                "direct audio gate failed: no live local media after bounded restart"
+                + " inPkts=\(probe.inboundAudioPackets) neteqOut=\(probe.inboundPlayoutSamples)"
+                + " outPkts=\(probe.outboundAudioPackets)"
+                + " admStarts=\(RTCAudioSessionDiagnostics.shared.admStartCount)"
                 + "; rolling back to relay")
             await self.withTransaction { [weak self] in
                 await self?.performRelayHandover(trigger: .audioNotReady)

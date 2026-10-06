@@ -29,7 +29,7 @@ configs:
 
 settings:
   base:
-    MARKETING_VERSION: "0.3.35"
+    MARKETING_VERSION: "0.3.36"
     # v0.3.5 public build 9 stays immutable. Build 12 (0.3.5) was the
     # TestFlight CloudKit/WSS/LCK repair; build 13 ships the build-12 crash,
     # iCloud, push-environment and audio fixes in BOTH editions and adds the
@@ -177,7 +177,7 @@ settings:
     # reuses the strict existing gateway path (explicit chooser, never a
     # silent line substitution or cellular fallback) and SMS only ever opens
     # the prefilled composer for in-app confirmation — never auto-sends.
-    CURRENT_PROJECT_VERSION: "42"
+    CURRENT_PROJECT_VERSION: "43"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     # Compiler-driven SwiftUI string extraction into Localizable.xcstrings.

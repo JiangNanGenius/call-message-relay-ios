@@ -70,31 +70,176 @@ final class MediaProbeControllerTests: XCTestCase {
 
     /// The route audio gate counts ONLY post-adoption advancing two-way RTP
     /// with the RTC session enabled — never a lifetime or pre-adoption total.
-    func testAudioFlowEvidenceRequiresPostAdoptionAdvancement() {
-        XCTAssertFalse(MediaProbeController.audioFlowEvidence(
+    func testAudioFlowProofRequiresPostAdoptionAdvancement() {
+        XCTAssertEqual(MediaProbeController.audioFlowProof(
             adopted: false, rtcAudioEnabled: true,
             inboundPackets: 500, outboundPackets: 500,
-            baselineInbound: 0, baselineOutbound: 0),
+            baselineInbound: 0, baselineOutbound: 0,
+            playoutSamples: 0, baselinePlayoutSamples: 0,
+            playoutStatSeen: false, statsRoundsSinceAdoption: 5), .unproven,
             "a detached probe can never prove audio flow")
-        XCTAssertFalse(MediaProbeController.audioFlowEvidence(
+        XCTAssertEqual(MediaProbeController.audioFlowProof(
             adopted: true, rtcAudioEnabled: false,
             inboundPackets: 500, outboundPackets: 500,
-            baselineInbound: 0, baselineOutbound: 0),
+            baselineInbound: 0, baselineOutbound: 0,
+            playoutSamples: 0, baselinePlayoutSamples: 0,
+            playoutStatSeen: false, statsRoundsSinceAdoption: 5), .unproven,
             "an enabled RTC audio session is required")
-        XCTAssertFalse(MediaProbeController.audioFlowEvidence(
+        XCTAssertEqual(MediaProbeController.audioFlowProof(
             adopted: true, rtcAudioEnabled: true,
             inboundPackets: 500, outboundPackets: 500,
-            baselineInbound: 500, baselineOutbound: 500),
+            baselineInbound: 500, baselineOutbound: 500,
+            playoutSamples: 0, baselinePlayoutSamples: 0,
+            playoutStatSeen: false, statsRoundsSinceAdoption: 5), .unproven,
             "lifetime counters that do not ADVANCE after adoption are not proof")
-        XCTAssertFalse(MediaProbeController.audioFlowEvidence(
+        XCTAssertEqual(MediaProbeController.audioFlowProof(
             adopted: true, rtcAudioEnabled: true,
             inboundPackets: 504, outboundPackets: 2,
-            baselineInbound: 500, baselineOutbound: 0),
+            baselineInbound: 500, baselineOutbound: 0,
+            playoutSamples: 0, baselinePlayoutSamples: 0,
+            playoutStatSeen: false, statsRoundsSinceAdoption: 5), .unproven,
             "both directions must advance")
-        XCTAssertTrue(MediaProbeController.audioFlowEvidence(
+    }
+
+    /// The playout-samples key can be absent from the FIRST stats round even
+    /// on a healthy SDK: unknown is NOT proof (no round-one false pass), and
+    /// "unavailable" is accepted only after the key stays absent across
+    /// multiple rounds — explicit, never silent.
+    func testAudioFlowProofStatUnavailableNeedsMultipleRounds() {
+        XCTAssertEqual(MediaProbeController.audioFlowProof(
             adopted: true, rtcAudioEnabled: true,
             inboundPackets: 505, outboundPackets: 3,
-            baselineInbound: 500, baselineOutbound: 0))
+            baselineInbound: 500, baselineOutbound: 0,
+            playoutSamples: 0, baselinePlayoutSamples: 0,
+            playoutStatSeen: false,
+            statsRoundsSinceAdoption: MediaProbeController.playoutStatUnavailableRounds - 1),
+            .unproven,
+            "first-round absence of the playout key is unknown, never packet-passed")
+        XCTAssertEqual(MediaProbeController.audioFlowProof(
+            adopted: true, rtcAudioEnabled: true,
+            inboundPackets: 505, outboundPackets: 3,
+            baselineInbound: 500, baselineOutbound: 0,
+            playoutSamples: 0, baselinePlayoutSamples: 0,
+            playoutStatSeen: false,
+            statsRoundsSinceAdoption: MediaProbeController.playoutStatUnavailableRounds),
+            .statUnavailable,
+            "key absent across multiple rounds is the only packet-evidence fallback")
+    }
+
+    /// Build-42 warm direct-first silence: RTP packet counts advanced while
+    /// the audio output path never pulled a single NetEq sample. When the SDK
+    /// reports the counter, its advancement is REQUIRED — packets alone are
+    /// transport evidence, never local-media evidence.
+    func testAudioFlowProofRequiresPlayoutOutputWhenStatPresent() {
+        XCTAssertEqual(MediaProbeController.audioFlowProof(
+            adopted: true, rtcAudioEnabled: true,
+            inboundPackets: 900, outboundPackets: 60,
+            baselineInbound: 500, baselineOutbound: 0,
+            playoutSamples: 4800, baselinePlayoutSamples: 4800,
+            playoutStatSeen: true, statsRoundsSinceAdoption: 5), .unproven,
+            "packets advancing with NetEq output FROZEN is a dead output path")
+        XCTAssertEqual(MediaProbeController.audioFlowProof(
+            adopted: true, rtcAudioEnabled: true,
+            inboundPackets: 900, outboundPackets: 60,
+            baselineInbound: 500, baselineOutbound: 0,
+            playoutSamples: 4800 + MediaProbeController.playoutLivenessFloorSamples - 1,
+            baselinePlayoutSamples: 4800,
+            playoutStatSeen: true, statsRoundsSinceAdoption: 5), .unproven,
+            "below the liveness floor is not proof")
+        XCTAssertEqual(MediaProbeController.audioFlowProof(
+            adopted: true, rtcAudioEnabled: true,
+            inboundPackets: 900, outboundPackets: 60,
+            baselineInbound: 500, baselineOutbound: 0,
+            playoutSamples: 4800 + MediaProbeController.playoutLivenessFloorSamples,
+            baselinePlayoutSamples: 4800,
+            playoutStatSeen: true, statsRoundsSinceAdoption: 5), .proven,
+            "NetEq output advancing past the floor proves a live output path")
+    }
+
+    /// A silent or muted peer still pulls concealment: liveness must never
+    /// require non-zero volume/energy — only the sample counter advancing.
+    /// (Documented by the floor test above: no energy/volume input exists.)
+    func testAudioFlowProofHasNoVolumeRequirement() {
+        XCTAssertEqual(MediaProbeController.audioFlowProof(
+            adopted: true, rtcAudioEnabled: true,
+            inboundPackets: 520, outboundPackets: 10,
+            baselineInbound: 500, baselineOutbound: 0,
+            playoutSamples: MediaProbeController.playoutLivenessFloorSamples,
+            baselinePlayoutSamples: 0,
+            playoutStatSeen: true, statsRoundsSinceAdoption: 3), .proven,
+            "concealment-only playout (quiet peer) is healthy, never degraded")
+    }
+
+    /// Substantive recovery: the armed restart really toggles the manual
+    /// RTCAudioSession — audio disabled immediately, re-enabled after the
+    /// settle while the probe still owns audio.
+    func testRestartAudioDeviceTogglesRtcAudioSession() async throws {
+        let rtc = RTCAudioSession.sharedInstance()
+        let previous = rtc.isAudioEnabled
+        AudioSessionBridge.shared.resetForTest()
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        defer {
+            rtc.isAudioEnabled = previous
+            AudioSessionBridge.shared.resetForTest()
+        }
+        let probe = MediaProbeController()
+        probe.restartSettleNanoseconds = 50_000_000
+        probe.adopt(activatedSession: AudioSessionBridge.shared.activeSession)
+        XCTAssertTrue(rtc.isAudioEnabled, "adoption enables the manual audio device")
+        XCTAssertTrue(probe.restartAudioDevice())
+        XCTAssertFalse(rtc.isAudioEnabled, "the restart stops/uninits the device first")
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertTrue(rtc.isAudioEnabled,
+                      "a live ownership re-enables the device after the settle")
+        probe.closeTransport()
+    }
+
+    /// Fence: when the call's audio ownership ends before the settle fires,
+    /// the delayed re-enable must NOT run — a stale task can never open the
+    /// microphone for an ended call (or behind a newer call's back).
+    func testRestartAudioDeviceDelayedEnableFencedByOwnership() async throws {
+        let rtc = RTCAudioSession.sharedInstance()
+        let previous = rtc.isAudioEnabled
+        AudioSessionBridge.shared.resetForTest()
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        defer {
+            rtc.isAudioEnabled = previous
+            AudioSessionBridge.shared.resetForTest()
+        }
+        let probe = MediaProbeController()
+        probe.restartSettleNanoseconds = 150_000_000
+        probe.adopt(activatedSession: AudioSessionBridge.shared.activeSession)
+        XCTAssertTrue(probe.restartAudioDevice())
+        XCTAssertFalse(rtc.isAudioEnabled)
+        probe.closeTransport() // ownership ends before the settle fires
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertFalse(rtc.isAudioEnabled,
+                       "the fenced re-enable never revives audio after teardown")
+    }
+
+    /// Epoch fence: a NEWER audio lifecycle (e.g. a recovery re-activation or
+    /// a following call's activation bumps the bridge ownership epoch) must
+    /// fence the stale re-enable even while a session stays active and this
+    /// probe still believes it owns audio.
+    func testRestartAudioDeviceDelayedEnableFencedByEpoch() async throws {
+        let rtc = RTCAudioSession.sharedInstance()
+        let previous = rtc.isAudioEnabled
+        AudioSessionBridge.shared.resetForTest()
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        defer {
+            rtc.isAudioEnabled = previous
+            AudioSessionBridge.shared.resetForTest()
+        }
+        let probe = MediaProbeController()
+        probe.restartSettleNanoseconds = 150_000_000
+        probe.adopt(activatedSession: AudioSessionBridge.shared.activeSession)
+        XCTAssertTrue(probe.restartAudioDevice())
+        // A newer activation lifecycle arrives before the settle fires.
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertFalse(rtc.isAudioEnabled,
+                       "a newer ownership epoch fences the stale re-enable")
+        probe.closeTransport()
     }
 
     func testCandidateTypeExtractedFromSDPLine() {

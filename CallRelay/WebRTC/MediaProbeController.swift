@@ -2,6 +2,74 @@ import Foundation
 import WebRTC
 import AVFoundation
 
+/// Privacy-safe `RTCAudioSession` delegate that records the audio device
+/// module's REAL play/record lifecycle: start, stop and audio-unit start
+/// failure. This is the per-call evidence that settles whether local
+/// capture/playback actually activated (build-42 warm direct-first silence
+/// had transport proof only). Counters and redacted log lines only — never
+/// audio content. `RTCAudioSession` holds delegates WEAKLY, so the shared
+/// instance is retained statically and installed exactly once.
+final class RTCAudioSessionDiagnostics: NSObject, RTCAudioSessionDelegate {
+    static let shared = RTCAudioSessionDiagnostics()
+    private static let installLock = NSLock()
+    private static var installed = false
+    private let lock = NSLock()
+    private var startCount = 0
+
+    /// Monotonic count of ADM play/record starts since install (adoption and
+    /// gate logs snapshot it so a start between the two is attributable).
+    /// Lock-protected: delegate callbacks arrive on WebRTC/system threads
+    /// while readers log on the main actor.
+    var admStartCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return startCount
+    }
+
+    /// Registers the shared delegate once. Thread-safe; the WebRTC factory
+    /// inits that call it run on the main actor but install must stay cheap
+    /// and idempotent regardless of the caller.
+    static func install() {
+        installLock.lock()
+        defer { installLock.unlock() }
+        guard !installed else { return }
+        installed = true
+        RTCAudioSession.sharedInstance().add(shared)
+    }
+
+    private func logOnMain(_ message: String) {
+        DispatchQueue.main.async {
+            DiagnosticsStore.shared.log("audio", message)
+        }
+    }
+
+    func audioSessionDidStartPlayOrRecord(_ session: RTCAudioSession) {
+        lock.lock()
+        startCount += 1
+        let count = startCount
+        lock.unlock()
+        DiagnosticsCensus.shared.increment("audio.rtcAdmStart")
+        logOnMain("rtc adm play/record started (total=\(count))")
+    }
+
+    func audioSessionDidStopPlayOrRecord(_ session: RTCAudioSession) {
+        DiagnosticsCensus.shared.increment("audio.rtcAdmStop")
+        logOnMain("rtc adm play/record stopped")
+    }
+
+    func audioSession(_ audioSession: RTCAudioSession,
+                      audioUnitStartFailedWithError error: Error) {
+        DiagnosticsCensus.shared.increment("audio.rtcAdmUnitStartFailed")
+        logOnMain("rtc adm audio unit start failed code=\((error as NSError).code)")
+    }
+
+    func audioSession(_ audioSession: RTCAudioSession,
+                      didDetectPlayoutGlitch totalNumberOfGlitches: Int64) {
+        // Glitches can repeat inside one call; counter-only, no log spam.
+        DiagnosticsCensus.shared.increment("audio.rtcPlayoutGlitch")
+    }
+}
+
 /// Detached direct-path probe / adoptable direct transport.
 ///
 /// Two phases:
@@ -53,32 +121,92 @@ final class MediaProbeController: NSObject {
     /// reports). Zero until audio actually flows on this peer.
     private(set) var inboundAudioPackets: UInt64 = 0
     private(set) var outboundAudioPackets: UInt64 = 0
+    /// NetEq output samples delivered to the AUDIO OUTPUT path (WebRTC
+    /// `totalSamplesReceived`, max across reports). Verified semantics for
+    /// the bundled M151 binary (branch-heads/7379 `neteq_impl.cc:217` →
+    /// `statistics_calculator.cc:285`): the counter accumulates per
+    /// `NetEq::GetAudio` call — the pull driven by the audio device module's
+    /// playout callback through the mixer — once the first decoded frame has
+    /// played out. Speech, silence and concealment all count, so a quiet or
+    /// muted peer still advances it: liveness NEVER requires non-zero remote
+    /// volume. RTP packet counts, by contrast, advance at the network layer
+    /// even when the output path never ran (build-42 warm direct-first
+    /// silence), so a frozen sample counter while packets advance is exactly
+    /// the dead-local-media signature. `playoutSamplesStatSeen` records
+    /// whether the SDK ever reported the key at all.
+    private(set) var inboundPlayoutSamples: UInt64 = 0
+    private(set) var playoutSamplesStatSeen = false
+    /// Stats reports completed SINCE adoption. The playout-samples key may be
+    /// absent from the very first report even on a healthy SDK; "stat
+    /// unavailable" is only accepted after this many rounds still show no
+    /// key, so the gate never false-passes on round one.
+    private(set) var statsRoundsSinceAdoption = 0
     /// Counter snapshots taken at ADOPTION: only packets received/sent AFTER
     /// the adoption may prove the live direct media path (a pre-adoption
     /// probe packet, or any lifetime total, is never audio-readiness proof).
     private var adoptionInboundPackets: UInt64 = 0
     private var adoptionOutboundPackets: UInt64 = 0
-    /// Two-way audio proof for the ADOPTED path: the RTC audio session is
-    /// enabled AND both directions have ADVANCED since adoption. The
-    /// data-channel echo proves reachability/RTT, NEVER audio.
-    var audioFlowing: Bool {
-        Self.audioFlowEvidence(
+    private var adoptionInboundSamples: UInt64 = 0
+
+    /// Three-state local-media proof for the adopted direct path.
+    enum AudioFlowProof: Equatable {
+        /// Not adopted, RTC audio disabled, packets not advanced, or the
+        /// playout-output counter is present but frozen at baseline.
+        case unproven
+        /// Packets advanced but the SDK never reported the playout-samples
+        /// key across at least two stats rounds — only then may the gate
+        /// fall back to packet-only evidence (explicit, logged, counted).
+        case statUnavailable
+        /// Two-way RTP advanced AND the audio output path is provably
+        /// pulling NetEq audio (the strongest in-process local-media proof;
+        /// corroborated by the ADM start delegate callback in the logs).
+        case proven
+    }
+
+    var audioFlowProof: AudioFlowProof {
+        Self.audioFlowProof(
             adopted: adopted,
             rtcAudioEnabled: RTCAudioSession.sharedInstance().isAudioEnabled,
             inboundPackets: inboundAudioPackets,
             outboundPackets: outboundAudioPackets,
             baselineInbound: adoptionInboundPackets,
-            baselineOutbound: adoptionOutboundPackets)
+            baselineOutbound: adoptionOutboundPackets,
+            playoutSamples: inboundPlayoutSamples,
+            baselinePlayoutSamples: adoptionInboundSamples,
+            playoutStatSeen: playoutSamplesStatSeen,
+            statsRoundsSinceAdoption: statsRoundsSinceAdoption)
     }
 
+    /// Proven two-way local media (kept for the gate/tests; the stat-
+    /// unavailable state is surfaced separately, never folded into "true").
+    var audioFlowing: Bool { audioFlowProof == .proven }
+    /// Packets advanced but the playout stat is genuinely unavailable.
+    var playoutStatUnavailable: Bool { audioFlowProof == .statUnavailable }
+
+    /// Playout-output floor: ~0.2 s of 8 kHz PCMU output (~33 ms at the
+    /// 48 kHz Opus rate), trivially crossed by a live output path inside the
+    /// gate window and never crossed by a dead one (frozen at baseline).
+    static let playoutLivenessFloorSamples: UInt64 = 1600
+    /// Stats rounds without the playout key before "unavailable" is accepted.
+    static let playoutStatUnavailableRounds = 2
+
     /// Pure accounting for the audio gate: post-adoption advancement only.
-    static func audioFlowEvidence(adopted: Bool, rtcAudioEnabled: Bool,
-                                  inboundPackets: UInt64, outboundPackets: UInt64,
-                                  baselineInbound: UInt64, baselineOutbound: UInt64) -> Bool {
-        guard adopted, rtcAudioEnabled else { return false }
+    static func audioFlowProof(adopted: Bool, rtcAudioEnabled: Bool,
+                               inboundPackets: UInt64, outboundPackets: UInt64,
+                               baselineInbound: UInt64, baselineOutbound: UInt64,
+                               playoutSamples: UInt64, baselinePlayoutSamples: UInt64,
+                               playoutStatSeen: Bool,
+                               statsRoundsSinceAdoption: Int) -> AudioFlowProof {
+        guard adopted, rtcAudioEnabled else { return .unproven }
         let inboundAdvanced = inboundPackets >= baselineInbound + 5
         let outboundAdvanced = outboundPackets >= baselineOutbound + 3
-        return inboundAdvanced && outboundAdvanced
+        guard inboundAdvanced, outboundAdvanced else { return .unproven }
+        guard playoutStatSeen else {
+            return statsRoundsSinceAdoption >= playoutStatUnavailableRounds
+                ? .statUnavailable : .unproven
+        }
+        return playoutSamples >= baselinePlayoutSamples + playoutLivenessFloorSamples
+            ? .proven : .unproven
     }
 
     var onConnected: (() -> Void)?
@@ -103,6 +231,7 @@ final class MediaProbeController: NSObject {
         // the active engine's tap/render cycle). With manual audio the SDK
         // never flips the GLOBAL isAudioEnabled on factory/peer creation.
         RTCAudioSession.sharedInstance().useManualAudio = true
+        RTCAudioSessionDiagnostics.install()
         self.factory = RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil)
         super.init()
     }
@@ -161,10 +290,21 @@ final class MediaProbeController: NSObject {
         // counts as proof the live direct path carries two-way audio.
         adoptionInboundPackets = inboundAudioPackets
         adoptionOutboundPackets = outboundAudioPackets
+        adoptionInboundSamples = inboundPlayoutSamples
         let rtc = RTCAudioSession.sharedInstance()
         if let session { rtc.audioSessionDidActivate(session) }
         rtc.isAudioEnabled = true
         enableAudioTrack(true)
+        // Privacy-safe per-call snapshot that settles capture/playback
+        // activation on the next field export (port TYPE + output volume +
+        // counters only; the delegate logs the actual ADM start separately).
+        let avSession = AVAudioSession.sharedInstance()
+        DiagnosticsStore.shared.log("audio",
+            "direct media adopt out=\(AudioSessionBridge.outputPortSummary(avSession))"
+            + " vol=\(String(format: "%.2f", avSession.outputVolume))"
+            + " sessionFwd=\(session != nil) admStarts=\(RTCAudioSessionDiagnostics.shared.admStartCount)"
+            + " inPkts=\(adoptionInboundPackets) inSamples=\(adoptionInboundSamples)"
+            + " outPkts=\(adoptionOutboundPackets)")
         // Fast stats for the bounded audio gate, then settle to the normal
         // 1 s cadence so evidence arrives quickly without permanent overhead.
         statsTimerCadence(0.25)
@@ -234,6 +374,47 @@ final class MediaProbeController: NSObject {
         let rtc = RTCAudioSession.sharedInstance()
         rtc.audioSessionDidActivate(session)
         rtc.isAudioEnabled = true
+        return true
+    }
+
+    /// Settle between the ADM stop and re-start inside `restartAudioDevice`
+    /// so the two transitions cannot coalesce into a no-op. Injectable for
+    /// deterministic tests.
+    var restartSettleNanoseconds: UInt64 = 300_000_000
+
+    /// ONE bounded local audio-device recovery for an adopted peer whose RTP
+    /// advances while the audio output path never pulled NetEq samples
+    /// (build-42 warm direct-first silence). This mirrors the relay graph's
+    /// proven tap-dead engine restart: the ADM's VoIP audio unit is stopped
+    /// and uninitialized, then re-initialized against the still-live call
+    /// demand (manual-audio contract: `isAudioEnabled` false stops/uninits,
+    /// true re-inits and starts when needed). The delayed re-start is fenced
+    /// THREE ways so a stale task can never enable audio for a different
+    /// lifecycle: this probe's ownership flags, the bridge interruption/
+    /// session state, and the bridge ownership EPOCH captured at arm time
+    /// (any activation/deactivation/interruption or new-call lifecycle event
+    /// bumps it). Returns false when no restart was armed.
+    @discardableResult
+    func restartAudioDevice() -> Bool {
+        guard adopted, audioOwned else { return false }
+        guard !AudioSessionBridge.shared.isInterrupted,
+              AudioSessionBridge.shared.activeSession != nil else { return false }
+        let epoch = AudioSessionBridge.shared.eventEpoch
+        let settle = restartSettleNanoseconds
+        let rtc = RTCAudioSession.sharedInstance()
+        rtc.isAudioEnabled = false
+        DiagnosticsCensus.shared.increment("audio.rtcAdmRestart")
+        DiagnosticsStore.shared.log("audio", "direct media audio device restart armed (bounded)")
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: settle)
+            guard let self, self.adopted, self.audioOwned,
+                  AudioSessionBridge.shared.eventEpoch == epoch,
+                  !AudioSessionBridge.shared.isInterrupted,
+                  AudioSessionBridge.shared.activeSession != nil else { return }
+            rtc.isAudioEnabled = true
+            self.enableAudioTrack(true)
+            DiagnosticsStore.shared.log("audio", "direct media audio device re-enabled after restart")
+        }
         return true
     }
 
@@ -362,12 +543,18 @@ final class MediaProbeController: NSObject {
             guard let self else { return }
             var inboundAudio: UInt64 = 0
             var outboundAudio: UInt64 = 0
+            var playoutSamples: UInt64 = 0
+            var playoutSeen = false
             for statistic in report.statistics.values {
                 let isAudio = (statistic.values["kind"] as? String) == "audio"
                     || (statistic.values["mediaType"] as? String) == "audio"
                 if statistic.type == "inbound-rtp", isAudio {
                     let packets = (statistic.values["packetsReceived"] as? NSNumber)?.uint64Value ?? 0
                     inboundAudio = max(inboundAudio, packets)
+                    if let samples = (statistic.values["totalSamplesReceived"] as? NSNumber)?.uint64Value {
+                        playoutSamples = max(playoutSamples, samples)
+                        playoutSeen = true
+                    }
                     continue
                 }
                 if statistic.type == "outbound-rtp", isAudio {
@@ -386,10 +573,15 @@ final class MediaProbeController: NSObject {
                     }
                 }
             }
-            if inboundAudio > 0 || outboundAudio > 0 {
+            if inboundAudio > 0 || outboundAudio > 0 || playoutSeen {
                 Task { @MainActor in
                     self.inboundAudioPackets = max(self.inboundAudioPackets, inboundAudio)
                     self.outboundAudioPackets = max(self.outboundAudioPackets, outboundAudio)
+                    if playoutSeen {
+                        self.inboundPlayoutSamples = max(self.inboundPlayoutSamples, playoutSamples)
+                        self.playoutSamplesStatSeen = true
+                    }
+                    if self.adopted { self.statsRoundsSinceAdoption += 1 }
                 }
             }
         }
@@ -424,8 +616,12 @@ final class MediaProbeController: NSObject {
         mediaReady = false
         inboundAudioPackets = 0
         outboundAudioPackets = 0
+        inboundPlayoutSamples = 0
+        playoutSamplesStatSeen = false
+        statsRoundsSinceAdoption = 0
         adoptionInboundPackets = 0
         adoptionOutboundPackets = 0
+        adoptionInboundSamples = 0
         echoChannelOpen = false
         echoChannel = nil
         pendingEcho = nil
@@ -608,16 +804,33 @@ protocol DirectProbeControlling: AnyObject {
     var mediaReady: Bool { get }
     /// Fresh comparable RTT samples in SECONDS (app echo only).
     var samples: [TimeInterval] { get }
-    /// True once this ADOPTED transport has proven ADVANCING two-way audio
-    /// since adoption (inbound gateway RTP + outbound mic RTP with the RTC
-    /// audio session enabled). A data-channel echo, a lifetime packet total
-    /// or a pre-adoption probe packet is reachability/RTT evidence only,
-    /// NEVER audio readiness; fakes that do not model RTP default to true.
+    /// True once this ADOPTED transport has PROVEN two-way local media since
+    /// adoption: inbound gateway RTP + outbound mic RTP advancing with the
+    /// RTC audio session enabled AND the audio output path pulling NetEq
+    /// samples. A data-channel echo, a lifetime packet total or a
+    /// pre-adoption probe packet is reachability/RTT evidence only, NEVER
+    /// audio readiness; fakes that do not model RTP default to true.
     var audioFlowing: Bool { get }
+    /// Packets advanced post-adoption but the playout-samples stat stayed
+    /// unavailable across at least two stats rounds. Only then may the gate
+    /// accept packet-only evidence — never on the first stats round, never
+    /// silently. Fakes default to false.
+    var playoutStatUnavailable: Bool { get }
     /// Lifetime audio RTP counters (diagnostics/gate inputs). Fakes default
     /// to zero; the gate itself compares against an adoption-time baseline.
     var inboundAudioPackets: UInt64 { get }
     var outboundAudioPackets: UInt64 { get }
+    /// NetEq output samples the audio output path pulled (liveness only —
+    /// concealment counts, so a silent peer still advances it). Fakes
+    /// default to 0 with `playoutSamplesStatSeen == false`.
+    var inboundPlayoutSamples: UInt64 { get }
+    var playoutSamplesStatSeen: Bool { get }
+    /// ONE bounded local audio-device restart for a peer whose RTP advances
+    /// while the output path never pulled samples. Returns true when the
+    /// restart was armed. Fakes default to a no-op `false` (gate then rolls
+    /// back to the relay exactly like the pre-fix build).
+    @discardableResult
+    func restartAudioDevice() -> Bool
     /// Most recent app-level echo sample with its arrival date (nil before
     /// the first echo). Never an ICE candidate-pair statistic.
     var latestQualitySample: (rtt: TimeInterval, at: Date)? { get }
@@ -667,8 +880,16 @@ extension DirectProbeControlling {
     var latestQualitySample: (rtt: TimeInterval, at: Date)? { nil }
     /// Test fakes that do not model RTP are treated as audio-flowing.
     var audioFlowing: Bool { true }
+    /// Test fakes default to "stat state known" (no packet-only fallback).
+    var playoutStatUnavailable: Bool { false }
     var inboundAudioPackets: UInt64 { 0 }
     var outboundAudioPackets: UInt64 { 0 }
+    /// Test fakes that do not model playout stats report "stat unseen".
+    var inboundPlayoutSamples: UInt64 { 0 }
+    var playoutSamplesStatSeen: Bool { false }
+    /// Test fakes cannot restart an audio device; the gate falls straight
+    /// back to the relay (pre-fix behavior).
+    func restartAudioDevice() -> Bool { false }
 }
 
 extension MediaProbeController: DirectProbeControlling {
