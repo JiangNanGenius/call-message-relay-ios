@@ -193,6 +193,10 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
     /// True while this session activated the shared AVAudioSession itself
     /// (direct in-app answer, no CallKit activation).
     private var selfManagedAudioActive = false
+    /// This session holds a share of the process-wide RTC audio demand (see
+    /// `RTCAudioDemand`); paired acquire/release keeps the global
+    /// `isAudioEnabled` honest across multiple media objects.
+    private var holdsAudioDemand = false
 
     /// Bounded time to fully gather nontrickle candidates before failing.
     private let gatheringTimeout: TimeInterval
@@ -299,14 +303,20 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
         selfManagedAudioActive = AudioSessionBridge.shared.currentOwnership == .selfManaged
         let rtc = RTCAudioSession.sharedInstance()
         rtc.audioSessionDidActivate(session)
-        rtc.isAudioEnabled = true
+        if !holdsAudioDemand {
+            RTCAudioDemand.acquire()
+            holdsAudioDemand = true
+        }
         AppLog.media.debug("audio activated; mode=voiceChat route privacy handled by CallKit")
     }
 
     func audioDeactivated(with session: AVAudioSession) {
         let rtc = RTCAudioSession.sharedInstance()
         rtc.audioSessionDidDeactivate(session)
-        rtc.isAudioEnabled = false
+        if holdsAudioDemand {
+            RTCAudioDemand.release()
+            holdsAudioDemand = false
+        }
         stopStats()
     }
 
@@ -336,7 +346,10 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
         guard selfManagedAudioActive else { return }
         selfManagedAudioActive = false
         let rtc = RTCAudioSession.sharedInstance()
-        rtc.isAudioEnabled = false
+        if holdsAudioDemand {
+            RTCAudioDemand.release()
+            holdsAudioDemand = false
+        }
         rtc.audioSessionDidDeactivate(AVAudioSession.sharedInstance())
         AudioSessionBridge.shared.deactivateSelfManaged()
         stopStats()
@@ -355,7 +368,12 @@ final class WebRTCCallMedia: NSObject, CallMediaSession {
         try? RTCAudioSession.sharedInstance().lockForConfiguration()
         try? RTCAudioSession.sharedInstance().overrideOutputAudioPort(.none)
         RTCAudioSession.sharedInstance().unlockForConfiguration()
-        RTCAudioSession.sharedInstance().isAudioEnabled = false
+        // CallKit-owned sessions release audio demand here (deactivation is
+        // the system's job, but the ADM must stop with the media object).
+        if holdsAudioDemand {
+            RTCAudioDemand.release()
+            holdsAudioDemand = false
+        }
         peerConnection?.close()
         peerConnection = nil
         audioTrack = nil

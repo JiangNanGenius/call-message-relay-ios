@@ -1652,6 +1652,16 @@ final class CallCoordinator: NSObject {
                     }
                     return
                 }
+                // A STAGED, unpromoted handover attach is not the carrier:
+                // its `.connected` must never flip the route to relay
+                // (build-44: it published a false healthy relay on a pinned
+                // direct route after the rollback), and its mid-stage
+                // disconnect must never arm call-level failure while the
+                // previous transport still carries audio. The explicit
+                // promotion/rollback owns every one of those decisions.
+                if session?.isStagedForHandover == true, state != .closed {
+                    return
+                }
                 self.latestMedia = state
                 switch state {
                 case .connected:
@@ -1889,7 +1899,7 @@ final class CallCoordinator: NSObject {
                 retireRelay: { [weak self] in self?.retireRelayAfterAdoption() },
                 stageRelay: { [weak self] in await self?.stageWSMedia(callId: callId) ?? false },
                 promoteStagedRelay: { [weak self] peer in
-                    self?.promoteStagedWSMedia(retiringDirect: peer)
+                    await self?.promoteStagedWSMedia(retiringDirect: peer) ?? false
                 },
                 discardPreflight: { [weak self] handoff in
                     handoff.probe.cancel()
@@ -2008,24 +2018,129 @@ final class CallCoordinator: NSObject {
     }
 
     /// Exclusive promotion after the staged relay is the server-side host:
-    /// starts the staged relay graph (always — even when no local direct peer
-    /// was adopted, e.g. unknown-outcome recovery) and retires the peer when
-    /// one exists. Only after this may the route be reported as relay.
-    private func promoteStagedWSMedia(retiringDirect peer: DirectProbeControlling?) {
+    /// starts the staged relay graph and retires the peer when one exists.
+    ///
+    /// Build-44 ordering (field regression): the retiring direct peer's
+    /// audio device is released BEFORE the staged graph starts — a
+    /// concurrent engine start against the live RTC ADM fails ("graph
+    /// start error"), and the pre-fix flow then failed the staged socket
+    /// AND published a healthy relay AND let the call die. Now a failed
+    /// start ROLLS BACK: the staged socket closes without audio, the
+    /// previous transport (direct peer or old relay — never closed) is
+    /// restored and its audio device resumed. Because the staged attach
+    /// already made the SERVER commit the relay, a preserved direct peer is
+    /// media-UNPROVEN afterwards (ICE connectivity is not server-routing
+    /// proof): the route always publishes the honest degraded/recovery
+    /// state, and the bounded failure machinery (monitor re-handover,
+    /// server reconciliation, media-failure grace) settles the call. Only a
+    /// PROVEN running staged graph reports true, so the route may publish
+    /// relay.
+    ///
+    /// Fencing: the retry loop and every post-await step re-check the call
+    /// generation (hangup/new call), the bridge ownership epoch
+    /// (interruption/deactivation/new activation/media reset) and the
+    /// authoritative system audio session. A stale promotion performs NO
+    /// cleanup against the newer lifecycle (no staged-state clearing, no
+    /// shared-audio resume, no publish). A staged promotion NEVER
+    /// self-activates a session and never fails the socket from a
+    /// graph-start error.
+    @discardableResult
+    private func promoteStagedWSMedia(retiringDirect peer: DirectProbeControlling?) async -> Bool {
         mediaRecoveryTask?.cancel()
         mediaRecoveryTask = nil
-        latestMedia = .connected
+        let gen = generation
+        let bridgeEpoch = AudioSessionBridge.shared.eventEpoch
         let superseded = stagedPreviousRelay
-        stagedPreviousRelay = nil
-        guard let session = wsMedia else { return }
+        guard let session = wsMedia else { return false }
         // Exclusive promotion: this session may now open the capture graph
         // (it was gated off while the previous transport carried audio).
         session.promoteAudioOwnership()
-        if let activated = AudioSessionBridge.shared.activeSession {
-            session.audioActivated(with: activated)
-        } else {
-            session.activateAudio()
+        // A graph-start failure inside this window is reported, never fatal
+        // to the socket: this function owns the failure decision.
+        session.graphStartFailureNonfatal = true
+        defer { session.graphStartFailureNonfatal = false }
+        // Ordered audio handover: release the retiring peer's ADM FIRST
+        // (the transport stays alive for rollback). Mirrors the proven
+        // relay→direct adoption sequence (two concurrent audio owners
+        // break the engine start).
+        peer?.suspendAudioDeviceForHandover()
+        var started = false
+        for attempt in 0...max(0, promotionGraphStartRetries) {
+            if attempt > 0 {
+                DiagnosticsCensus.shared.increment("audio.wsPromotedGraphRetry")
+                try? await Task.sleep(nanoseconds: promotionGraphRetrySettleNanoseconds)
+            }
+            // Post-await fence: the call, the audio ownership and the live
+            // session must all still be the ones this promotion was armed
+            // with — a hangup, an interruption or a newer call supersedes.
+            guard gen == self.generation, !ended,
+                  activeGatewayId != nil || conference != nil,
+                  AudioSessionBridge.shared.eventEpoch == bridgeEpoch,
+                  !AudioSessionBridge.shared.isInterrupted,
+                  wsMedia === session else { break }
+            // A staged promotion requires the authoritative active session
+            // (system or self-managed by THIS call). It must never
+            // self-activate: with no session the promotion cannot run —
+            // roll back instead of claiming audio against nothing.
+            guard let activated = AudioSessionBridge.shared.activeSession else {
+                DiagnosticsCensus.shared.increment("audio.wsPromotionNoActiveSession")
+                break
+            }
+            started = session.startOwnedAudioGraph(with: activated)
+            if started { break }
         }
+        // A delivered activation may have started the staged graph while the
+        // retry loop fenced (the bridge replays activations to `wsMedia`).
+        // That is success ONLY against THIS call's identity: a newer call
+        // (generation), an ended call, or a replaced `wsMedia` must never
+        // let a stale promotion retire the peer or publish relay. A newer
+        // bridge epoch with the SAME call identity may legitimately start
+        // the graph (the activation replay above), so it is not a blocker.
+        if !started, session.isGraphRunning,
+           gen == self.generation, !ended, wsMedia === session {
+            started = true
+        }
+        guard started else {
+            // A newer call (generation) or audio lifecycle event (bridge
+            // epoch: interruption/deactivation/new activation/media reset)
+            // owns the state now. This stale promotion must NOT clear
+            // staged state, resume shared audio, or publish against it —
+            // the delivered lifecycle events drive audio from here.
+            guard gen == self.generation,
+                  AudioSessionBridge.shared.eventEpoch == bridgeEpoch else {
+                // A newer lifecycle owns audio now: keep its state (no
+                // staged-state clearing, no ADM resume, no publish), but
+                // re-gate the staged session so a later activation replay
+                // cannot start its graph underneath the restored direct
+                // peer — two concurrent audio owners must never exist.
+                session.markAudioStaged()
+                DiagnosticsCensus.shared.increment("call.relayPromotionSuperseded")
+                return false
+            }
+            // Roll back: the staged socket never took audio; close it and
+            // restore the previous transport untouched. A nil `superseded`
+            // means the previous transport is the direct peer, which the
+            // route controller still owns — resume its audio device.
+            stagedPreviousRelay = nil
+            if wsMedia === session { wsMedia = superseded }
+            session.closeWithoutAudio()
+            peer?.resumeAudioDeviceAfterFailedHandover()
+            // Evidence only: the staged attach already made the SERVER
+            // commit the relay, and ICE "connected" alone is NOT proof the
+            // server still routes call media to the preserved peer — the
+            // route therefore always publishes the degraded/recovery state
+            // after a failed promotion (never a kept-line claim), and the
+            // bounded failure machinery (monitor re-handover, media-failure
+            // grace) settles the call.
+            let directUsable = peer?.connected ?? false
+            DiagnosticsCensus.shared.increment("call.relayPromotionRolledBack")
+            DiagnosticsStore.shared.log("call",
+                "relay promotion failed; rolled back (directUsable=\(directUsable))")
+            publishPhase()
+            return false
+        }
+        stagedPreviousRelay = nil
+        latestMedia = .connected
         session.startPingSampling()
         // The staged socket reached `.connected` during the handshake BEFORE
         // it became `wsMedia`, so that quality emission was dropped by the
@@ -2035,7 +2150,16 @@ final class CallCoordinator: NSObject {
         superseded?.retireAfterHandover()
         peer?.closeTransport()
         publishPhase()
+        return true
     }
+
+    /// Bounded graph-start retries for a staged promotion (the first
+    /// attempt can race the retiring ADM's asynchronous teardown; ONE
+    /// settle-and-retry covers it without unbounded churn). Injectable for
+    /// deterministic tests.
+    var promotionGraphStartRetries = 1
+    /// Settle between a failed staged graph start and its single retry.
+    var promotionGraphRetrySettleNanoseconds: UInt64 = 150_000_000
 
     private func reattachWSMedia(callId: String) async -> Bool {
         await stageWSMedia(callId: callId)

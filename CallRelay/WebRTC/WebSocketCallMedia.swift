@@ -49,6 +49,10 @@ final class WebSocketCallMedia: NSObject {
         /// reported to the gateway in the ping so its downlink controller
         /// sees the freshest end-to-end delay evidence.
         var playbackBufferedFrames: Int { get }
+        /// OSStatus-style code of the most recent `startIfNeeded` failure
+        /// (privacy-safe numeric; nil when the last start succeeded or no
+        /// start ran). Lightweight fakes default to nil.
+        var lastStartFailureCode: Int? { get }
     }
 
     /// Test seam over URLSessionWebSocketTask.
@@ -96,9 +100,16 @@ final class WebSocketCallMedia: NSObject {
     private var quality = MediaQuality()
     private var selfManagedAudioActive = false
     /// False while this socket is a STAGED handover attach: it may complete
-    /// its handshake but must not open its capture/playback graph until
+    /// its handshake but must not open a second capture graph until
     /// `activateAudio()` promotes it (exactly one mic owner at all times).
     private var audioAllowed = true
+    /// While true a graph-start failure is REPORTED (log/counter) but never
+    /// fails the socket: the exclusive staged-promotion window owns the
+    /// failure decision (truthful rollback vs real call end). The
+    /// coordinator sets it for the promotion and clears it when the
+    /// promotion settles; the PRIMARY transport keeps the fatal semantics
+    /// (a primary graph that cannot start must fail the media truthfully).
+    var graphStartFailureNonfatal = false
     private var connected = false
 
     /// The CURRENT transport state (idle/connected/disconnected/failed/
@@ -382,11 +393,19 @@ final class WebSocketCallMedia: NSObject {
     /// call. Cleared at the exclusive promotion (`promoteAudioOwnership()`).
     func markAudioStaged(_ staged: Bool = true) {
         audioAllowed = !staged
+        isStagedForHandover = staged
     }
+
+    /// True while this session is a staged, unpromoted handover attach: its
+    /// socket lifecycle is NOT the call's carrier and must never drive
+    /// call-level media failure, route transitions or a healthy-relay
+    /// publish (the exclusive promotion owns those).
+    private(set) var isStagedForHandover = false
 
     /// Exclusive promotion: this session may now open the capture graph.
     func promoteAudioOwnership() {
         audioAllowed = true
+        isStagedForHandover = false
     }
 
     /// Route-change revalidation: the real graph re-checks the live input
@@ -743,13 +762,61 @@ final class WebSocketCallMedia: NSObject {
             DiagnosticsStore.shared.log("audio", "ws session normalized at engine start (changed=yes)")
         }
         guard audioIO.startIfNeeded() else {
-            // Never claim audio that cannot run.
-            DiagnosticsStore.shared.log("audio", "ws system activation failed: graph start error")
+            // Never claim audio that cannot run. Inside the staged-promotion
+            // window the caller owns the failure decision (rollback vs call
+            // end) — the socket must not be failed underneath it.
+            DiagnosticsStore.shared.log("audio",
+                "ws system activation failed: graph start error"
+                + Self.failureCodeSuffix(audioIO.lastStartFailureCode))
+            if graphStartFailureNonfatal {
+                DiagnosticsCensus.shared.increment("audio.wsActivationFailureNonfatal")
+                return
+            }
             socketDidFail(toFailed: true)
             return
         }
         DiagnosticsStore.shared.log("audio", "ws audio activated (system)")
         AppLog.media.debug("ws audio activated")
+    }
+
+    /// Owned graph start that REPORTS failure to the caller instead of
+    /// failing the socket: used by the exclusive handover promotion and by
+    /// the self-managed activation, where the caller decides between a
+    /// truthful rollback to the still-live previous transport and a real
+    /// call failure. A staged graph that cannot start must never kill a
+    /// healthy carrier nor be published as a healthy relay (build-43
+    /// regression: "ws system activation failed: graph start error" →
+    /// socket failed → call ended while the direct transport was alive).
+    @discardableResult
+    func startOwnedAudioGraph(with session: AVAudioSession) -> Bool {
+        if AudioSessionBridge.shared.isInterrupted {
+            DiagnosticsCensus.shared.increment("audio.wsActivationWhileInterrupted")
+            return false
+        }
+        selfManagedAudioActive = AudioSessionBridge.shared.currentOwnership == .selfManaged
+        guard audioAllowed else {
+            DiagnosticsCensus.shared.increment("audio.wsStagedActivationSuppressed")
+            return false
+        }
+        let normalized = AudioSessionBridge.normalizeForVoiceChat(session)
+        if normalized {
+            DiagnosticsStore.shared.log("audio", "ws session normalized at engine start (changed=yes)")
+        }
+        guard audioIO.startIfNeeded() else {
+            DiagnosticsCensus.shared.increment("audio.wsOwnedGraphStartFail")
+            DiagnosticsStore.shared.log("audio",
+                "ws owned graph start failed"
+                + Self.failureCodeSuffix(audioIO.lastStartFailureCode))
+            return false
+        }
+        DiagnosticsStore.shared.log("audio", "ws audio activated (owned)")
+        AppLog.media.debug("ws audio activated (owned)")
+        return true
+    }
+
+    /// Privacy-safe failure-code suffix for diagnostics (numeric only).
+    private static func failureCodeSuffix(_ code: Int?) -> String {
+        " code=\(code.map(String.init) ?? "unknown")"
     }
 
     func audioDeactivated(with session: AVAudioSession) {
@@ -760,8 +827,9 @@ final class WebSocketCallMedia: NSObject {
     func activateAudioWithoutCallKit() -> Bool {
         if selfManagedAudioActive { return true }
         if let active = AudioSessionBridge.shared.activeSession {
-            audioActivated(with: active)
-            return true
+            // Failure-reporting start (never socket-fails here): the caller
+            // owns the failure decision and gets the truthful Bool.
+            return startOwnedAudioGraph(with: active)
         }
         guard let session = AudioSessionBridge.shared.activateSelfManaged() else {
             DiagnosticsStore.shared.log("audio", "ws direct-answer activation error")
@@ -773,7 +841,9 @@ final class WebSocketCallMedia: NSObject {
             // ownership we just claimed instead of pretending audio works.
             AudioSessionBridge.shared.registerSelfManagedDeactivation()
             selfManagedAudioActive = false
-            DiagnosticsStore.shared.log("audio", "ws direct-answer activation failed: graph start error")
+            DiagnosticsStore.shared.log("audio",
+                "ws direct-answer activation failed: graph start error"
+                + Self.failureCodeSuffix(audioIO.lastStartFailureCode))
             return false
         }
         _ = session
@@ -1092,6 +1162,8 @@ extension WebSocketCallMedia.WSAudioGraphing {
     /// input format and rebuilds the capture pipeline when the route changed
     /// it; lightweight fakes do nothing.
     func revalidateRoute() {}
+    /// Lightweight fakes report no failure detail.
+    var lastStartFailureCode: Int? { nil }
 }
 
 extension WebSocketCallMedia.MediaSocket {

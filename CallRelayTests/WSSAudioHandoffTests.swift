@@ -17,7 +17,10 @@ final class Graph: WebSocketCallMedia.WSAudioGraphing {
     var onMicFrame: (([Int16]) -> Void)?
     private(set) var startCount = 0
     private(set) var stopCount = 0
-    var isRunning: Bool { startCount > stopCount }
+    /// Scripted start outcome (build 44: a failing staged graph must roll a
+    /// handover back, never kill the carrier). Flippable mid-test.
+    var startResult = true
+    var isRunning: Bool { startResult && startCount > stopCount }
     @discardableResult
     func startIfNeeded() -> Bool {
         // Model the real graph's re-entry guard: repeated activations
@@ -25,7 +28,7 @@ final class Graph: WebSocketCallMedia.WSAudioGraphing {
         // restart the engine.
         guard !isRunning else { return true }
         startCount += 1
-        return true
+        return startResult
     }
     func stop() { stopCount += 1 }
     func setMicMuted(_ muted: Bool) { }

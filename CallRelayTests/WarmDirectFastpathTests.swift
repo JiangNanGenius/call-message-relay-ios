@@ -410,6 +410,223 @@ final class WarmDirectFastpathCoordinatorTests: XCTestCase {
         coordinator.handleProviderReset()
     }
 
+    // MARK: Build-44: staged-relay promotion failure after the server commit
+
+    /// The staged attach IS the server-side relay commit; a graph start
+    /// failure afterwards must NOT end the call, NOT publish a healthy
+    /// relay, and NEVER claim the current line was kept (ICE connectivity
+    /// is not server-routing proof). The honest state is degraded/recovery;
+    /// the user's retry with a working graph completes the switch.
+    func testRelayPromotionFailureAfterServerCommitIsDegradedThenRecovers() async throws {
+        AudioSessionBridge.shared.resetForTest()
+        let api = makeAPI()
+        let probe = FakeDirectProbe()
+        let preflight = FakePreflightProvider()
+        preflight.handoff = makeHandoff(probe: probe, samples: Array(repeating: 0.02, count: 6))
+        let idleRelay = FakeIdleRelayProbe()
+        idleRelay.stamps = Array(repeating: 0.10, count: 6).map { ($0, Date()) }
+        api.onCommit = { }
+        let staged = WSScript()
+        staged.graph.startResult = false
+        let (coordinator, callKit, delegate) = makeCoordinator(
+            api: api, mode: .auto, scripts: [staged], preflight: preflight,
+            idleRelay: idleRelay, probes: [probe])
+        coordinator.promotionGraphRetrySettleNanoseconds = 0
+        var notices: [String] = []
+        coordinator.onRouteNotice = { message, _ in notices.append(message) }
+
+        _ = startOutgoing(coordinator, api)
+        await waitUntil(timeout: 3) { delegate.states.contains { $0.active == .direct } }
+        try await assertActiveCall(delegate)
+        // The system activates audio (LCK didActivate in production): the
+        // promotion then exercises the real graph-start path.
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        await pumpMainActor(5)
+        let statesBefore = delegate.states.count
+
+        // User asks for relay; the staged attach succeeds (server commits
+        // relay) but the staged graph cannot start (build-43 field failure).
+        await coordinator.selectRouteMode(.relay)
+        await waitUntil(timeout: 3) {
+            delegate.states.contains { $0.directDegraded && $0.active == .direct && !$0.switching }
+        }
+        await pumpMainActor(20)
+
+        XCTAssertEqual(probe.suspendAudioCount, 1, "the ADM is released before the staged graph starts")
+        XCTAssertEqual(probe.resumeAudioCount, 1, "rollback resumes the direct peer's audio device")
+        XCTAssertEqual(probe.closeCount, 0, "the direct transport is never closed on rollback")
+        XCTAssertTrue(callKit.ended.isEmpty, "a failed staged graph must not end the call")
+        XCTAssertTrue(delegate.endedReasons.isEmpty)
+        XCTAssertFalse(notices.isEmpty, "the failure surfaces a truthful notice")
+        XCTAssertFalse(notices.contains { $0.contains("仍保持当前线路") },
+                       "never a kept-line claim after the server committed relay")
+        let newStates = Array(delegate.states.dropFirst(statesBefore))
+        if let degradedIndex = newStates.firstIndex(where: { $0.directDegraded }) {
+            // Everything published AFTER the rollback must keep the honest
+            // degraded state (the latch holds until fresh RTP re-proof or a
+            // successful handover) and must never show relay.
+            let postRollback = newStates[degradedIndex...]
+            XCTAssertFalse(postRollback.contains { $0.active == .relay },
+                           "a failed promotion is never published as relay")
+            XCTAssertFalse(postRollback.contains { !$0.directDegraded },
+                           "no healthy-direct publish after the server committed relay")
+        } else {
+            XCTFail("the rollback never published the degraded state")
+        }
+
+        // The user retry with a working graph completes the requested switch.
+        await coordinator.selectRouteMode(.relay)
+        await waitUntil(timeout: 3) { delegate.states.contains { $0.active == .relay } }
+        XCTAssertEqual(probe.closeCount, 1, "the peer retires on the successful promotion")
+        XCTAssertFalse(delegate.states.last?.directDegraded ?? true)
+        coordinator.handleProviderReset()
+    }
+
+    /// Same failure with the direct peer already dead at rollback time:
+    /// still no kept-line claim, no call end, and the bounded recovery path
+    /// stays available.
+    func testRelayPromotionFailureWithDeadPeerNeverClaimsKeptLine() async throws {
+        AudioSessionBridge.shared.resetForTest()
+        let api = makeAPI()
+        let probe = FakeDirectProbe()
+        let preflight = FakePreflightProvider()
+        preflight.handoff = makeHandoff(probe: probe, samples: Array(repeating: 0.02, count: 6))
+        let idleRelay = FakeIdleRelayProbe()
+        idleRelay.stamps = Array(repeating: 0.10, count: 6).map { ($0, Date()) }
+        api.onCommit = { }
+        let staged = WSScript()
+        staged.graph.startResult = false
+        let (coordinator, callKit, delegate) = makeCoordinator(
+            api: api, mode: .auto, scripts: [staged], preflight: preflight,
+            idleRelay: idleRelay, probes: [probe])
+        coordinator.promotionGraphRetrySettleNanoseconds = 0
+
+        _ = startOutgoing(coordinator, api)
+        await waitUntil(timeout: 3) { delegate.states.contains { $0.active == .direct } }
+        try await assertActiveCall(delegate)
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        await pumpMainActor(5)
+        // The server demoted/dropped the ICE leg when it committed the relay
+        // (build-43 field: direct ICE disconnected during staging).
+        probe.connected = false
+
+        await coordinator.selectRouteMode(.relay)
+        await waitUntil(timeout: 3) {
+            delegate.states.contains { $0.directDegraded && $0.active == .direct && !$0.switching }
+        }
+        await pumpMainActor(20)
+
+        XCTAssertEqual(probe.resumeAudioCount, 1)
+        XCTAssertEqual(probe.closeCount, 0)
+        XCTAssertTrue(callKit.ended.isEmpty, "no blind carrier end on the client")
+        XCTAssertTrue(delegate.endedReasons.isEmpty)
+        XCTAssertTrue(delegate.states.last?.directDegraded ?? false,
+                      "the honest degraded state is published, never kept-line")
+        coordinator.handleProviderReset()
+    }
+
+    /// A hangup racing the promotion retry: the stale promotion must run NO
+    /// rollback cleanup (no ADM resume, no publish) against the ended call.
+    func testHangupDuringPromotionRetryRunsNoRollbackCleanup() async throws {
+        AudioSessionBridge.shared.resetForTest()
+        let api = makeAPI()
+        let probe = FakeDirectProbe()
+        let preflight = FakePreflightProvider()
+        preflight.handoff = makeHandoff(probe: probe, samples: Array(repeating: 0.02, count: 6))
+        let idleRelay = FakeIdleRelayProbe()
+        idleRelay.stamps = Array(repeating: 0.10, count: 6).map { ($0, Date()) }
+        api.onCommit = { }
+        let staged = WSScript()
+        staged.graph.startResult = false
+        let (coordinator, _, delegate) = makeCoordinator(
+            api: api, mode: .auto, scripts: [staged], preflight: preflight,
+            idleRelay: idleRelay, probes: [probe])
+        // One retry with a real sleep window the hangup lands inside.
+        coordinator.promotionGraphStartRetries = 1
+        coordinator.promotionGraphRetrySettleNanoseconds = 400_000_000
+
+        let uuid = startOutgoing(coordinator, api)
+        await waitUntil(timeout: 3) { delegate.states.contains { $0.active == .direct } }
+        try await assertActiveCall(delegate)
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        await pumpMainActor(5)
+
+        // Drive the switch WITHOUT awaiting it: the promotion's first graph
+        // attempt fails, then it sleeps before the bounded retry — the
+        // hangup lands inside that window.
+        let modeTask = Task { await coordinator.selectRouteMode(.relay) }
+        await waitUntil(timeout: 3) { probe.suspendAudioCount == 1 && staged.graph.startCount == 1 }
+        coordinator.endCall(uuid: uuid, reason: .userHungUp)
+        await modeTask.value
+        try await Task.sleep(nanoseconds: 700_000_000)
+        await pumpMainActor(20)
+
+        XCTAssertEqual(probe.resumeAudioCount, 0,
+                       "a stale promotion must not resume shared audio for an ended call")
+        XCTAssertEqual(probe.suspendAudioCount, 1)
+        XCTAssertEqual(staged.graph.startCount, 1,
+                       "the fenced retry never ran a second graph start against the ended call")
+        XCTAssertFalse(delegate.endedReasons.isEmpty, "the hangup completes locally")
+        coordinator.handleProviderReset()
+    }
+
+    /// An audio interruption racing the promotion retry: the stale
+    /// promotion performs no rollback cleanup against the newer audio
+    /// lifecycle, and a later activation replay must NOT start the
+    /// abandoned staged graph (two audio owners).
+    func testInterruptionDuringPromotionRetrySkipsRollbackCleanup() async throws {
+        AudioSessionBridge.shared.resetForTest()
+        let api = makeAPI()
+        let probe = FakeDirectProbe()
+        let preflight = FakePreflightProvider()
+        preflight.handoff = makeHandoff(probe: probe, samples: Array(repeating: 0.02, count: 6))
+        let idleRelay = FakeIdleRelayProbe()
+        idleRelay.stamps = Array(repeating: 0.10, count: 6).map { ($0, Date()) }
+        api.onCommit = { }
+        let staged = WSScript()
+        staged.graph.startResult = false
+        let (coordinator, callKit, delegate) = makeCoordinator(
+            api: api, mode: .auto, scripts: [staged], preflight: preflight,
+            idleRelay: idleRelay, probes: [probe])
+        coordinator.promotionGraphStartRetries = 1
+        coordinator.promotionGraphRetrySettleNanoseconds = 400_000_000
+
+        _ = startOutgoing(coordinator, api)
+        await waitUntil(timeout: 3) { delegate.states.contains { $0.active == .direct } }
+        try await assertActiveCall(delegate)
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        await pumpMainActor(5)
+
+        // Drive the switch without awaiting it; interrupt audio inside the
+        // retry sleep (the first graph attempt already failed).
+        let modeTask = Task { await coordinator.selectRouteMode(.relay) }
+        await waitUntil(timeout: 3) { probe.suspendAudioCount == 1 && staged.graph.startCount == 1 }
+        NotificationCenter.default.post(
+            name: AVAudioSession.interruptionNotification, object: nil,
+            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        await modeTask.value
+        try await Task.sleep(nanoseconds: 700_000_000)
+        await pumpMainActor(20)
+
+        XCTAssertEqual(probe.resumeAudioCount, 0,
+                       "no ADM resume against the newer audio lifecycle")
+        XCTAssertTrue(callKit.ended.isEmpty, "an interruption never ends the call")
+        XCTAssertTrue(delegate.endedReasons.isEmpty)
+
+        // Interruption ends; the system re-activates. The replay must NOT
+        // start the abandoned staged graph (it was re-gated).
+        NotificationCenter.default.post(
+            name: AVAudioSession.interruptionNotification, object: nil,
+            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
+                       AVAudioSessionInterruptionOptionKey: AVAudioSession.InterruptionOptions.shouldResume.rawValue])
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        await pumpMainActor(20)
+        XCTAssertEqual(staged.graph.startCount, 1,
+                       "only the one failed promotion attempt ran; the replay is suppressed")
+        AudioSessionBridge.shared.didDeactivate(AVAudioSession.sharedInstance())
+        coordinator.handleProviderReset()
+    }
+
     // MARK: A genuine relay failure still surfaces (and ends after grace)
 
     func testGenuineRelayFailureStillReported() async throws {

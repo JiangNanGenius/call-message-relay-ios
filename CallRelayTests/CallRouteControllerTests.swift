@@ -69,6 +69,12 @@ final class FakeDirectProbe: DirectProbeControlling {
     }
     func adopt(activatedSession session: AVAudioSession?) { adoptCount += 1 }
     func setMuted(_ muted: Bool) { mutedCalls.append(muted) }
+    /// Ordered-handover tracking (build 44): the coordinator suspends the
+    /// ADM before the staged graph starts and resumes it on rollback.
+    private(set) var suspendAudioCount = 0
+    private(set) var resumeAudioCount = 0
+    func suspendAudioDeviceForHandover() { suspendAudioCount += 1 }
+    func resumeAudioDeviceAfterFailedHandover() { resumeAudioCount += 1 }
     func cancel() {
         cancelCount += 1
         connected = false
@@ -79,6 +85,9 @@ final class FakeDirectProbe: DirectProbeControlling {
     }
     func closeTransport() { closeCount += 1 }
     var samples: [TimeInterval] { samplesToReturn }
+    /// Scripted inbound RTP total: the post-rollback media re-proof input
+    /// (fresh packets past the rollback snapshot clear the degraded latch).
+    var inboundAudioPackets: UInt64 = 0
     func freshQualitySamples(within window: TimeInterval, now: Date = Date()) -> [TimeInterval] {
         samplesToReturn
     }
@@ -126,6 +135,13 @@ final class CallRouteControllerTests: XCTestCase {
         /// Every promoteStagedRelay invocation, including nil-peer recovery.
         var promoteStagedCalls = 0
         var promoteStagedNilPeer = 0
+        /// Scripted promotion outcome: false models the staged graph failing
+        /// to start (build-43 handover regression). On false the fake does
+        /// NOT close the peer — matching the coordinator's rollback.
+        var promoteStagedResult = true
+        /// Per-attempt scripted outcomes (consumed in order; falls back to
+        /// `promoteStagedResult` when empty) for bounded-recovery tests.
+        var promoteStagedResults: [Bool] = []
         /// Preflight handoffs the harness wants the controller to receive.
         var handoffProbe: FakeDirectProbe?
         var handoffSamples: [TimeInterval] = []
@@ -166,15 +182,27 @@ final class CallRouteControllerTests: XCTestCase {
                     return self?.attachRelayResult ?? false
                 },
                 promoteStagedRelay: { [weak self] peer in
-                    self?.promoteStagedCalls += 1
+                    guard let self else { return false }
+                    self.promoteStagedCalls += 1
+                    let outcome = self.promoteStagedResults.isEmpty
+                        ? self.promoteStagedResult
+                        : self.promoteStagedResults.removeFirst()
                     if let p = peer as? FakeDirectProbe {
-                        self?.promotedDirectPeers.append(p)
+                        self.promotedDirectPeers.append(p)
+                        p.suspendAudioDeviceForHandover()
+                        guard outcome else {
+                            // Rollback model: resume the peer, never close.
+                            p.resumeAudioDeviceAfterFailedHandover()
+                            return false
+                        }
                         // Production coordinator closes the peer + starts the
                         // staged relay graph here.
                         p.closeTransport()
                     } else {
-                        self?.promoteStagedNilPeer += 1
+                        self.promoteStagedNilPeer += 1
+                        guard outcome else { return false }
                     }
+                    return true
                 },
                 discardPreflight: { [weak self] handoff in
                     handoff.probe.cancel()
@@ -1181,6 +1209,166 @@ final class CallRouteControllerTests: XCTestCase {
         XCTAssertEqual(h.api.commitCalls.count, 0, "a late attach resolution cannot commit")
         XCTAssertEqual(h.probes.first?.adoptCount ?? 0, 0)
         h.controller.teardown()
+    }
+
+    // MARK: Promotion failure after the staged attach (build-43 regression)
+
+    /// The staged attach IS the server-side relay commit. A failed promotion
+    /// afterwards must NEVER claim the current line was kept — ICE
+    /// "connected" on the preserved peer is not proof the server still
+    /// routes call media to it. The honest state is degraded/recovery, and
+    /// a later retry with a working graph completes the user's switch.
+    func testPinnedUserRelayPromotionFailureIsDegradedNeverKeptClaim() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        await pump(0.2)
+        let activePeer = h.probes.first
+        let statesBefore = h.states.count
+
+        h.promoteStagedResult = false
+        await h.controller.setMode(.relay)
+        await pump(0.3)
+        XCTAssertEqual(h.controller.routeState.active, .direct)
+        XCTAssertTrue(h.controller.routeState.directDegraded,
+                      "a failed promotion publishes the honest degraded state")
+        XCTAssertEqual(h.notices.last?.0, "切换失败，正在恢复连接…",
+                       "never a kept-line claim after the server committed relay")
+        XCTAssertEqual(activePeer?.closeCount, 0, "the peer survives the rollback")
+        XCTAssertEqual(activePeer?.suspendAudioCount, 1, "ADM released before the graph start")
+        XCTAssertEqual(activePeer?.resumeAudioCount, 1, "ADM resumed on rollback")
+        let newStates = Array(h.states.dropFirst(statesBefore))
+        if let degradedIndex = newStates.firstIndex(where: { $0.directDegraded }) {
+            // Everything published AFTER the rollback must keep the honest
+            // degraded state (the latch holds until fresh RTP re-proof or a
+            // successful handover) and must never show relay.
+            let postRollback = newStates[degradedIndex...]
+            XCTAssertFalse(postRollback.contains { $0.active == .relay },
+                           "a failed promotion is never published as relay")
+            XCTAssertFalse(postRollback.contains { !$0.directDegraded },
+                           "no healthy-direct publish after the server committed relay")
+        } else {
+            XCTFail("the rollback never published the degraded state")
+        }
+
+        // A working graph on the user retry completes the requested switch.
+        h.promoteStagedResult = true
+        await h.controller.setMode(.relay)
+        await pump(0.3)
+        XCTAssertEqual(h.controller.routeState.active, .relay)
+        XCTAssertFalse(h.controller.routeState.directDegraded)
+        XCTAssertEqual(activePeer?.closeCount, 1)
+        h.controller.teardown()
+    }
+
+    /// A dead direct peer + a failed first promotion: the bounded monitor
+    /// re-attempt earns the relay on the second staged handover (the fresh
+    /// staged engine starts cleanly once the ADM conflict is gone).
+    func testPromotionFailureWithDeadPeerRecoversViaBoundedMonitor() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        await pump(0.2)
+        let peer = h.probes.first
+        // The direct path genuinely dies (echo stalls, peer lost).
+        peer?.connected = false
+        peer?.samplesToReturn = []
+        peer?.stallCount = 5
+        // First promotion fails its graph start; the re-attempt succeeds.
+        h.promoteStagedResults = [false, true]
+
+        await waitUntil(timeout: 5) { h.controller.routeState.active == .relay }
+        XCTAssertEqual(h.promoteStagedCalls, 2,
+                       "exactly the bounded re-attempt runs, no churn loop")
+        XCTAssertEqual(peer?.closeCount, 1, "the dead peer closes on the successful handover")
+        XCTAssertTrue(h.notices.contains { $0.0 == "切换失败，正在恢复连接…" },
+                      "the failed first promotion surfaced the recovery notice")
+        h.controller.teardown()
+    }
+
+    /// With the handover budget spent, the monitor publishes the honest
+    /// degraded state and stops — no endless staging against a dead peer.
+    func testPromotionFailureBudgetPublishesDegradedAndStops() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        await pump(0.2)
+        let peer = h.probes.first
+        peer?.connected = false
+        peer?.samplesToReturn = []
+        peer?.stallCount = 5
+        h.promoteStagedResults = [false, false]
+
+        // Wait for both bounded attempts to run (monitor cadence 0.05 s).
+        await waitUntil(timeout: 5) { h.promoteStagedCalls >= 2 }
+        let callsAfterBudget = h.promoteStagedCalls
+        await pump(0.5)
+        XCTAssertEqual(h.promoteStagedCalls, callsAfterBudget,
+                       "no third handover attempt after the budget is spent")
+        XCTAssertEqual(h.controller.routeState.active, .direct,
+                       "the dead direct is never replaced by an unproven relay")
+        XCTAssertTrue(h.controller.routeState.directDegraded)
+        XCTAssertEqual(peer?.closeCount, 0, "rollback never closes the peer")
+        XCTAssertEqual(peer?.resumeAudioCount, 2, "each failed attempt resumed the ADM")
+        h.controller.teardown()
+    }
+
+    /// The degraded latch clears ONLY on fresh inbound RTP (media re-proof):
+    /// the echo channel and ICE connectivity never clear it.
+    func testPromotionFailureLatchClearsOnlyOnFreshInboundRTP() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        await pump(0.2)
+        let peer = h.probes.first
+
+        h.promoteStagedResult = false
+        await h.controller.setMode(.relay)
+        await pump(0.3)
+        XCTAssertTrue(h.controller.routeState.directDegraded)
+        // Echo/ICE health alone must NOT clear the latch.
+        peer?.samplesToReturn = Array(repeating: 0.02, count: 8)
+        await pump(0.3)
+        XCTAssertTrue(h.controller.routeState.directDegraded,
+                      "healthy echo without fresh call RTP keeps the latch")
+        // Fresh inbound RTP past the rollback snapshot re-proves the path.
+        peer?.inboundAudioPackets = CallRouteController.promotionReproofPackets
+        await waitUntil(timeout: 3) { h.controller.routeState.directDegraded == false }
+        XCTAssertEqual(h.controller.routeState.active, .direct,
+                       "re-proven direct media clears the degraded state truthfully")
+        h.controller.teardown()
+    }
+
+    /// Teardown racing a staged promotion must not publish or notice against
+    /// the dead call (teardown already cleared `switching`).
+    func testPromotionTeardownPublishesNothingAfterwards() async throws {
+        let h = Harness()
+        h.api.onCommit = { h.transportReported = "ice" }
+        h.makeController(.direct)
+        h.controller.relayDidConnect(wsMedia: nil)
+        await waitUntil(timeout: 2) { h.controller.routeState.active == .direct }
+        await pump(0.2)
+
+        h.promoteStagedResult = false
+        let modeTask = Task { await h.controller.setMode(.relay) }
+        await Task.yield()
+        h.controller.teardown()
+        await modeTask.value
+        let statesAfter = h.states.count
+        let noticesAfter = h.notices.count
+        await pump(0.3)
+        XCTAssertEqual(h.states.count, statesAfter,
+                       "no publish after teardown raced the promotion")
+        XCTAssertEqual(h.notices.count, noticesAfter,
+                       "no notice after teardown raced the promotion")
     }
 
     // MARK: setMode cancellation safety

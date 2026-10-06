@@ -25,11 +25,18 @@ import AVFoundation
 /// A manual mode change during the call updates the PERSISTED preference and
 /// applies to the NEXT call (the UI says so), never hijacking the live call.
 ///
-/// Make-before-break: the relay keeps carrying audio until the gateway's
+/// Ordered handovers: the relay keeps carrying audio until the gateway's
 /// atomic commit has installed the direct peer; a direct→relay rollback
-/// stages a fresh WSS attach and only then closes the direct peer. The
-/// data-channel echo proves reachability/RTT — NEVER audio — so every
-/// adoption is additionally guarded by a bounded inbound-RTP audio gate.
+/// stages a fresh WSS attach, releases the direct peer's audio device
+/// BEFORE the staged graph starts (a concurrent engine start against the
+/// live ADM fails — build-43), and closes the direct peer only after the
+/// staged graph provably runs. A failed promotion resumes the direct
+/// peer's audio device but NEVER claims the line was kept: the staged
+/// attach already committed the relay server-side, so the preserved peer
+/// is media-unproven (degraded/recovery) until FRESH inbound RTP re-proves
+/// it or a bounded re-handover succeeds. The data-channel echo proves
+/// reachability/RTT — NEVER audio — so every adoption is additionally
+/// guarded by a bounded inbound-RTP audio gate.
 ///
 /// Invariants:
 /// * The DETACHED candidate is a different object from the ADOPTED peer.
@@ -53,7 +60,13 @@ final class CallRouteController {
         /// graph and closes the adopted direct peer when one is live. Called
         /// with nil when no local peer was adopted (server reconciliation /
         /// unknown-outcome recovery) — staged audio must ALWAYS start.
-        let promoteStagedRelay: (DirectProbeControlling?) -> Void
+        /// Returns true ONLY when the staged graph provably runs; on false
+        /// the previous transport was restored by the coordinator (direct
+        /// peer resumed, never closed) and the route must stay on it — a
+        /// failed promotion is NEVER published as a healthy relay
+        /// (build-43 regression: graph start error → false healthy relay →
+        /// dead call).
+        let promoteStagedRelay: (DirectProbeControlling?) async -> Bool
         /// Releases a declined preflight candidate: closes the peer and tells
         /// the gateway to drop its device-scoped probe entry.
         let discardPreflight: (RoutePreflightController.Handoff) -> Void
@@ -115,6 +128,17 @@ final class CallRouteController {
     private var startupUpgradeAttempted = false
     /// Bounded post-adoption inbound-audio gate for the active direct peer.
     private var audioGateTask: Task<Void, Never>?
+    /// Set when a staged-relay promotion FAILED after the server committed
+    /// the relay: the preserved direct peer is media-UNPROVEN from that
+    /// moment (ICE connectivity and the echo channel are not call-audio
+    /// proof — the server may still bridge call media to the committed
+    /// relay). Cleared only by a successful handover or by FRESH inbound
+    /// RTP advancing past the rollback snapshot (real re-proof).
+    private var promotionFailedAt: Date?
+    private var promotionFailedInboundPackets: UInt64 = 0
+    /// Inbound RTP packets beyond the rollback snapshot that re-prove the
+    /// direct path carries call media (~0.5 s at the 50 pps audio cadence).
+    static let promotionReproofPackets: UInt64 = 25
     private var state = CallRouteState()
 
     /// ONE serialization gate for every route transaction. FIFO waiters, so
@@ -176,6 +200,13 @@ final class CallRouteController {
         /// transient failure cannot strand the call on a failing direct path.
         var stageRelayAttempts = 3
         var stageRetryDelay: TimeInterval = 0.5
+        /// Bounded relay-handover attempts per call (a fresh staged attach +
+        /// graph start each): a failed promotion (build-43 graph start
+        /// error) leaves the peer dead, so the failure streak re-accumulates
+        /// and earns ONE more attempt; once the budget is spent the monitor
+        /// publishes the honest degraded state and stops, letting the
+        /// media-failure grace / server reconciliation settle the call.
+        var maximumHandoverAttempts = 2
     }
 
     init(callId: String,
@@ -408,6 +439,14 @@ final class CallRouteController {
 
     func relayDidConnect(wsMedia: WebSocketCallMedia?) {
         guard !tearingDown else { return }
+        // Only the INITIAL relay connection of an unpinned call may publish
+        // relay here. A staged handover attach reaches `.connected` BEFORE
+        // its exclusive promotion; letting it flip a pinned direct route
+        // published a false healthy relay and silently replaced the state
+        // machine's transport (build-43 field + build-44 review). Staged
+        // sessions are also gated at the coordinator; this is the
+        // route-local invariant.
+        guard !pinned, activeDirect == nil else { return }
         connectedAt = Date()
         transport = .relay
         expectingRelayClose = false
@@ -1223,6 +1262,10 @@ final class CallRouteController {
         callbacks.retireRelay()
         probe.adopt(activatedSession: callbacks.activatedAudioSession())
         probe.setMuted(callbacks.isMuted())
+        // A fresh adoption starts a new media-proof cycle: any older
+        // promotion-failure latch belongs to the previous peer.
+        promotionFailedAt = nil
+        promotionFailedInboundPackets = 0
         expectingRelayClose = false
         publish {
             $0.active = .direct
@@ -1354,6 +1397,7 @@ final class CallRouteController {
         monitorTask = Task { [weak self] in
             guard let self else { return }
             var badRounds = 0
+            var handoverAttempts = 0
             while !Task.isCancelled, gen == self.epoch, !self.tearingDown, self.transport == .direct {
                 try? await Task.sleep(nanoseconds: UInt64(self.cadence.monitorInterval * 1_000_000_000))
                 guard !Task.isCancelled, gen == self.epoch, !self.tearingDown else { return }
@@ -1370,18 +1414,39 @@ final class CallRouteController {
                     candidateStable: peer.connected,
                     candidateLost: !peer.connected)
                 self.publish {
+                    var degraded = metrics.candidateLost || metrics.stalls >= 2
+                    if self.promotionFailedAt != nil {
+                        // Post-rollback the direct path stays media-UNPROVEN
+                        // (and the degraded state latched) until FRESH
+                        // inbound RTP advances past the rollback snapshot —
+                        // the cumulative counters predate the rollback and
+                        // the echo channel is never call-audio proof.
+                        if peer.inboundAudioPackets
+                            >= self.promotionFailedInboundPackets + Self.promotionReproofPackets {
+                            self.promotionFailedAt = nil
+                        } else {
+                            degraded = true
+                        }
+                    }
+                    $0.directDegraded = degraded
                     $0.rttSeconds = direct.last
-                    $0.directDegraded = metrics.candidateLost || metrics.stalls >= 2
                 }
                 // Server reconciliation: the gateway may have rolled back to
                 // ws without a local peer transition. NEVER trust that alone:
-                // converge through a LOCAL staged re-attach.
+                // converge through a LOCAL staged re-attach. Bounded like
+                // every other handover; an unstageable relay is published as
+                // the honest degraded state, never silently retried forever.
                 if let server = await self.callbacks.fetchTransport(), gen == self.epoch {
                     if server == "ws" {
+                        guard handoverAttempts < self.cadence.maximumHandoverAttempts else {
+                            self.publish { $0.directDegraded = true }
+                            return
+                        }
+                        handoverAttempts += 1
                         await self.withTransaction { [weak self] in
                             await self?.performRelayHandover(trigger: .reconcile)
                         }
-                        return
+                        continue
                     }
                 }
                 guard gen == self.epoch else { return }
@@ -1408,13 +1473,24 @@ final class CallRouteController {
                 // Actual path failure in ANY mode: fall back to the relay so
                 // the call survives; the notice keeps it truthful (never
                 // silent). Quality-driven switching does not exist anymore.
+                // Bounded recovery: each confirmed streak earns ONE staged
+                // handover (fresh attach + engine start). A failed attempt
+                // leaves the peer dead, so the streak re-accumulates and may
+                // earn one more; with the budget spent, the honest degraded
+                // state is the steady state and the monitor stops — the
+                // media-failure grace / server side settle the call.
+                guard handoverAttempts < self.cadence.maximumHandoverAttempts else {
+                    self.publish { $0.directDegraded = true }
+                    return
+                }
+                handoverAttempts += 1
+                badRounds = 0
                 if autoFallback, self.advisor.canFallback {
                     _ = self.advisor.considerFallback()
                 }
                 await self.withTransaction { [weak self] in
                     await self?.performRelayHandover(trigger: .degraded)
                 }
-                return
             }
         }
     }
@@ -1432,8 +1508,13 @@ final class CallRouteController {
 
     /// Must run inside a transaction. Stages a fresh WSS attach (ready, no
     /// audio); on success promotes it (starts audio, closes any local peer)
-    /// and only then reports relay. On failure the current transport is
-    /// truthfully preserved/reported — never claimed from server state alone.
+    /// and only then reports relay. On a STAGE failure the current
+    /// transport is untouched and truthfully reported. On a PROMOTION
+    /// failure the coordinator already resumed the direct peer's audio
+    /// device, but the staged attach committed the relay server-side: the
+    /// route latches the honest degraded/recovery state (never a kept-line
+    /// or healthy-relay claim) until fresh inbound RTP re-proves the direct
+    /// path or a bounded re-handover succeeds.
     private func performRelayHandover(trigger: RollbackTrigger) async {
         guard !tearingDown else { return }
         audioGateTask?.cancel()
@@ -1442,13 +1523,45 @@ final class CallRouteController {
         let gen = epoch
         let peer = activeDirect
         let ok = await stageRelayBounded()
-        guard ok, gen == epoch, !tearingDown else {
+        // A teardown during staging owns the state: never publish or notice
+        // against it (teardown already cleared `switching`).
+        guard gen == epoch, !tearingDown else { return }
+        guard ok else {
             publish { $0.switching = false }
             notice(String(localized: "无法切回中继，仍保持当前线路。"), offersAuto: false)
             return
         }
-        // Staged relay is ready: exclusive local handover now.
-        callbacks.promoteStagedRelay(peer)
+        // Staged relay is ready: exclusive local handover now. Only a
+        // PROVEN running staged graph may flip the route to relay.
+        let promoted = await callbacks.promoteStagedRelay(peer)
+        // Same teardown fence after the promotion await.
+        guard gen == epoch, !tearingDown else { return }
+        guard promoted else {
+            publish { $0.switching = false }
+            guard peer != nil else {
+                // Nil-peer recovery/reconcile: the coordinator restored the
+                // old relay when it was still usable; nothing direct to
+                // degrade. The media-failure grace settles a truly dead one.
+                notice(String(localized: "切换失败，正在恢复连接…"), offersAuto: false)
+                return
+            }
+            // The staged attach already made the SERVER commit the relay.
+            // ICE "connected" on the preserved peer is NOT proof the server
+            // still routes call media to it, so a failed promotion is NEVER
+            // a "kept current line" — always the honest degraded/recovery
+            // state, latched until FRESH inbound RTP re-proves the path (or
+            // a later handover succeeds). The bounded failure machinery
+            // (monitor re-handover below, server reconciliation,
+            // media-failure grace) keeps the call alive for recovery or
+            // ends it truthfully. (Build-43 regression: false healthy
+            // relay + dead call.)
+            promotionFailedAt = Date()
+            promotionFailedInboundPackets = peer?.inboundAudioPackets ?? 0
+            publish { $0.directDegraded = true }
+            notice(String(localized: "切换失败，正在恢复连接…"), offersAuto: false)
+            return
+        }
+        promotionFailedAt = nil
         if activeDirect === peer { activeDirect = nil }
         measure?.close()
         measure = nil

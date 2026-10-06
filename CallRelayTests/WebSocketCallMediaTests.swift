@@ -323,6 +323,61 @@ final class WebSocketCallMediaLifecycleTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(graph.stopCount, 1)
     }
 
+    // MARK: Owned (promotion) graph start: failure-reporting, never socket-fatal
+
+    /// Build-44: the exclusive staged promotion starts the graph through a
+    /// failure-REPORTING path. A failed start returns false and leaves the
+    /// socket fully connected — the caller (coordinator) decides between a
+    /// truthful rollback and a real call end (build-43: the socket was
+    /// failed underneath a still-healthy direct carrier).
+    func testOwnedGraphStartFailureReportsFalseWithoutFailingSocket() async throws {
+        let socket = FakeMediaSocket()
+        socket.scripted = [.message(.success(.string(#"{"type":"ready"}"#))), .park]
+        var states: [MediaState] = []
+        let graph = FakeAudioGraph(startResult: false)
+        let media = WebSocketCallMedia(
+            socketFactory: { _, _ in socket }, audioGraph: graph)
+        media.onState = { states.append($0) }
+        media.markAudioStaged()
+        try await media.connect(request: URLRequest(url: readyURL))
+        media.promoteAudioOwnership()
+
+        let started = media.startOwnedAudioGraph(with: AVAudioSession.sharedInstance())
+        XCTAssertFalse(started, "the failing graph reports false")
+        XCTAssertTrue(media.connectedForTest(),
+                      "the staged socket survives a failed graph start")
+        XCTAssertEqual(states.last, .connected,
+                       "no .failed/.disconnected is published from the promotion path")
+        media.close()
+    }
+
+    /// Inside the staged-promotion window a bridge-replayed activation must
+    /// also never fail the socket; outside the window the PRIMARY transport
+    /// keeps the fatal semantics.
+    func testAudioActivatedFailureNonfatalOnlyInsidePromotionWindow() async throws {
+        let socket = FakeMediaSocket()
+        socket.scripted = [.message(.success(.string(#"{"type":"ready"}"#))), .park]
+        var states: [MediaState] = []
+        let graph = FakeAudioGraph(startResult: false)
+        let media = WebSocketCallMedia(
+            socketFactory: { _, _ in socket }, audioGraph: graph)
+        media.onState = { states.append($0) }
+        try await media.connect(request: URLRequest(url: readyURL))
+
+        media.graphStartFailureNonfatal = true
+        media.audioActivatedForTest(AVAudioSession.sharedInstance())
+        XCTAssertTrue(media.connectedForTest(),
+                      "inside the promotion window a graph failure is reported, not fatal")
+        XCTAssertEqual(states.last, .connected)
+
+        media.graphStartFailureNonfatal = false
+        media.audioActivatedForTest(AVAudioSession.sharedInstance())
+        XCTAssertFalse(media.connectedForTest(),
+                       "outside the window the primary transport fails truthfully")
+        XCTAssertEqual(states.last, .failed)
+        media.close()
+    }
+
     // MARK: Old socket cannot poison the replacement; final states exact
 
     func testLateFailureFromOldSocketCannotPoisonReplacement() async throws {

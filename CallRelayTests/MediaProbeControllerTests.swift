@@ -57,15 +57,109 @@ final class MediaProbeControllerTests: XCTestCase {
         XCTAssertEqual(fresh, [0.03, 0.02])
     }
 
-    func testDetachedProbeDoesNotTouchGlobalAudioSession() throws {
+    /// Build-44 idle-mic guard: the global manual-audio flag is sticky
+    /// (M151 default YES) and a leftover ENABLED flag let an idle preflight
+    /// probe start the ADM — microphone open with no call (build-43 field
+    /// log). A detached probe must CLAMP a stale enabled flag while no live
+    /// owner exists, and must never touch the flag an active owner holds.
+    func testDetachedProbeClampsStaleGlobalAudioEnableOnlyWhenUnowned() throws {
         let session = RTCAudioSession.sharedInstance()
-        let before = session.isAudioEnabled
+        RTCAudioDemand.resetForTest()
+        defer {
+            RTCAudioDemand.resetForTest()
+            session.isAudioEnabled = false
+        }
+        // Stale leftover enabled flag with NO live owner: a detached probe
+        // must switch it OFF and leave it off.
+        session.isAudioEnabled = true
         let probe = MediaProbeController()
-        XCTAssertEqual(session.isAudioEnabled, before,
-                       "creating a detached probe must not toggle shared audio")
+        XCTAssertFalse(session.isAudioEnabled,
+                       "an unowned stale enabled flag is clamped by a detached probe")
         probe.cancel()
-        XCTAssertEqual(session.isAudioEnabled, before,
-                       "cancelling a detached probe must not toggle shared audio")
+        XCTAssertFalse(session.isAudioEnabled, "cancel leaves the clamp in place")
+
+        // While an owner holds demand, a new detached probe must NOT touch
+        // the active call's audio.
+        RTCAudioDemand.acquire()
+        XCTAssertTrue(session.isAudioEnabled)
+        let probe2 = MediaProbeController()
+        XCTAssertTrue(session.isAudioEnabled,
+                      "an owned flag is never clamped from under the active call")
+        probe2.cancel()
+        RTCAudioDemand.release()
+        XCTAssertFalse(session.isAudioEnabled, "the last release disables the ADM")
+    }
+
+    /// Demand pairing: nested owners keep the global flag set until the LAST
+    /// release; an unbalanced extra release never drives the count negative.
+    func testAudioDemandBalancesNestedOwners() {
+        let session = RTCAudioSession.sharedInstance()
+        RTCAudioDemand.resetForTest()
+        defer {
+            RTCAudioDemand.resetForTest()
+            session.isAudioEnabled = false
+        }
+        XCTAssertEqual(RTCAudioDemand.ownerCount, 0)
+        RTCAudioDemand.acquire()
+        RTCAudioDemand.acquire()
+        XCTAssertTrue(session.isAudioEnabled)
+        RTCAudioDemand.release()
+        XCTAssertTrue(session.isAudioEnabled, "one owner still holds the device")
+        RTCAudioDemand.release()
+        XCTAssertFalse(session.isAudioEnabled, "the last release disables the device")
+        RTCAudioDemand.release()
+        XCTAssertEqual(RTCAudioDemand.ownerCount, 0, "extra releases are floored")
+    }
+
+    /// Ordered handover: suspend releases the ADM without closing the
+    /// transport; resume re-acquires it against the still-live session; a
+    /// suspend while interrupted never resumes behind the bridge's back.
+    func testHandoverSuspendResumeKeepsDemandExact() async throws {
+        let session = RTCAudioSession.sharedInstance()
+        RTCAudioDemand.resetForTest()
+        AudioSessionBridge.shared.resetForTest()
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        defer {
+            RTCAudioDemand.resetForTest()
+            session.isAudioEnabled = false
+            AudioSessionBridge.shared.resetForTest()
+        }
+        let probe = MediaProbeController()
+        probe.adopt(activatedSession: AudioSessionBridge.shared.activeSession)
+        XCTAssertTrue(session.isAudioEnabled)
+        XCTAssertEqual(RTCAudioDemand.ownerCount, 1)
+
+        probe.suspendAudioDeviceForHandover()
+        XCTAssertFalse(session.isAudioEnabled, "the ADM releases before the staged graph starts")
+        XCTAssertEqual(RTCAudioDemand.ownerCount, 0)
+        // Idempotent: a second suspend without holding demand is a no-op.
+        probe.suspendAudioDeviceForHandover()
+        XCTAssertEqual(RTCAudioDemand.ownerCount, 0)
+
+        probe.resumeAudioDeviceAfterFailedHandover()
+        XCTAssertTrue(session.isAudioEnabled, "rollback re-acquires the audio device")
+        XCTAssertEqual(RTCAudioDemand.ownerCount, 1)
+        // Full close releases exactly once.
+        probe.closeTransport()
+        XCTAssertFalse(session.isAudioEnabled)
+        XCTAssertEqual(RTCAudioDemand.ownerCount, 0)
+    }
+
+    /// The answer-SDP audio codec is logged per call for the uplink-quality
+    /// investigation (codec name only — the offer munging advertises Opus
+    /// first with PCMU fallback; the GATEWAY picks).
+    func testNegotiatedAudioCodecParsedFromAnswer() {
+        let opusAnswer = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111 0\r\n"
+            + "a=rtpmap:111 opus/48000/2\r\n"
+        XCTAssertEqual(MediaProbeController.negotiatedAudioCodec(fromAnswer: opusAnswer), "opus")
+        let pcmuAnswer = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 0\r\n"
+            + "a=rtpmap:0 PCMU/8000\r\n"
+        XCTAssertEqual(MediaProbeController.negotiatedAudioCodec(fromAnswer: pcmuAnswer), "pcmu")
+        let pcmuFirst = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 0 111\r\n"
+        XCTAssertEqual(MediaProbeController.negotiatedAudioCodec(fromAnswer: pcmuFirst), "pcmu",
+                       "the FIRST payload is the gateway's selected codec")
+        XCTAssertNil(MediaProbeController.negotiatedAudioCodec(fromAnswer: "v=0\r\n"))
+        XCTAssertNil(MediaProbeController.negotiatedAudioCodec(fromAnswer: "m=audio\r\n"))
     }
 
     /// The route audio gate counts ONLY post-adoption advancing two-way RTP
@@ -239,6 +333,36 @@ final class MediaProbeControllerTests: XCTestCase {
         try await Task.sleep(nanoseconds: 400_000_000)
         XCTAssertFalse(rtc.isAudioEnabled,
                        "a newer ownership epoch fences the stale re-enable")
+        probe.closeTransport()
+    }
+
+    /// Restart-then-handover race: the bounded restart releases demand and
+    /// its delayed re-enable sleeps. A handover suspension landing in that
+    /// window must STILL fence the pending re-enable (the suspend bumps the
+    /// generation even with no demand held) — otherwise the sleeping
+    /// restart re-acquires the ADM underneath the staged relay graph.
+    func testRestartThenHandoverBeforeSettleFencesReenable() async throws {
+        let rtc = RTCAudioSession.sharedInstance()
+        let previous = rtc.isAudioEnabled
+        RTCAudioDemand.resetForTest()
+        AudioSessionBridge.shared.resetForTest()
+        AudioSessionBridge.shared.didActivate(AVAudioSession.sharedInstance())
+        defer {
+            RTCAudioDemand.resetForTest()
+            rtc.isAudioEnabled = previous
+            AudioSessionBridge.shared.resetForTest()
+        }
+        let probe = MediaProbeController()
+        probe.restartSettleNanoseconds = 200_000_000
+        probe.adopt(activatedSession: AudioSessionBridge.shared.activeSession)
+        XCTAssertTrue(rtc.isAudioEnabled)
+        XCTAssertTrue(probe.restartAudioDevice())
+        XCTAssertFalse(rtc.isAudioEnabled, "the restart releases the device immediately")
+        // Handover lands BEFORE the restart's settle fires.
+        probe.suspendAudioDeviceForHandover()
+        try await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertFalse(rtc.isAudioEnabled,
+                       "a restart armed pre-handover must never re-enable the ADM under the staged relay")
         probe.closeTransport()
     }
 

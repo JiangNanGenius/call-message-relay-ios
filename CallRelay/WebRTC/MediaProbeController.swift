@@ -2,6 +2,88 @@ import Foundation
 import WebRTC
 import AVFoundation
 
+/// Process-wide RTCAudioSession audio demand. With `useManualAudio` the
+/// SDK's audio device module runs exactly while the GLOBAL
+/// `RTCAudioSession.isAudioEnabled` is true. That flag is sticky: it
+/// defaults to YES (M151 `RTCAudioSession`) and survives individual media
+/// objects, so a DETACHED probe (idle preflight or a mid-call candidate)
+/// would start the ADM — and open the microphone with no call — whenever
+/// the flag was left set (build-43 field evidence: "rtc adm play/record
+/// started" during an idle preflight, before any adoption and again after
+/// call end). A single boolean per consumer cannot express this: one
+/// owner's release must never disable audio another owner still needs.
+///
+/// This counter makes the global flag reflect "any live owner":
+/// * `acquire()`/`release()` pair an owner's audio lifecycle exactly;
+/// * `clampWhenUnowned()` is the detached-consumer guard: with no live
+///   owner the ADM must stay off — it covers the M151 default and any
+///   lifecycle gap WITHOUT touching an active call's audio.
+///
+/// Count and flag are updated as ONE serialized unit under the lock (the
+/// SDK setter runs while the lock is held — `RTCAudioSession` and the
+/// diagnostics delegate never call back into this type, so no re-entry is
+/// possible). Without that, two concurrent callers could interleave the
+/// counter update and the flag write and leave the flag contradicting the
+/// final count.
+enum RTCAudioDemand {
+    private static let lock = NSLock()
+    private static var owners = 0
+
+    /// Current live-owner count (diagnostics/tests).
+    static var ownerCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return owners
+    }
+
+    static func acquire() {
+        lock.lock()
+        owners += 1
+        RTCAudioSession.sharedInstance().isAudioEnabled = true
+        lock.unlock()
+    }
+
+    static func release() {
+        lock.lock()
+        guard owners > 0 else {
+            lock.unlock()
+            return
+        }
+        owners -= 1
+        if owners == 0 {
+            RTCAudioSession.sharedInstance().isAudioEnabled = false
+        }
+        lock.unlock()
+    }
+
+    /// Detached-consumer guard: a probe that does NOT own audio must never
+    /// observe a stale enabled flag. No-op while any owner holds demand, so
+    /// an active direct call's ADM is never switched off by a new probe.
+    static func clampWhenUnowned() {
+        lock.lock()
+        guard owners == 0 else {
+            lock.unlock()
+            return
+        }
+        let rtc = RTCAudioSession.sharedInstance()
+        if rtc.isAudioEnabled {
+            rtc.isAudioEnabled = false
+            DiagnosticsCensus.shared.increment("audio.rtcAdmIdleClamp")
+        }
+        lock.unlock()
+    }
+
+    #if DEBUG
+    /// Test isolation only: drops the count without touching the flag
+    /// (each test then re-proves ownership through acquire/release).
+    static func resetForTest() {
+        lock.lock()
+        owners = 0
+        lock.unlock()
+    }
+    #endif
+}
+
 /// Privacy-safe `RTCAudioSession` delegate that records the audio device
 /// module's REAL play/record lifecycle: start, stop and audio-unit start
 /// failure. This is the per-call evidence that settles whether local
@@ -116,6 +198,13 @@ final class MediaProbeController: NSObject {
     /// True only after THIS instance adopted the peer and owns audio; only
     /// then may teardown disable the shared RTCAudioSession.
     private var audioOwned = false
+    /// This instance currently holds a share of the process-wide RTC audio
+    /// demand (see `RTCAudioDemand`); released exactly once per acquire.
+    private var holdsAudioDemand = false
+    /// Bumped on every handover suspension: a bounded-restart re-enable
+    /// armed BEFORE the suspension must never re-acquire demand underneath
+    /// the staged relay graph that now owns audio.
+    private var audioSuspendGeneration: UInt64 = 0
     private(set) var mediaReady = false
     /// Inbound/outbound audio RTP observed by WebRTC stats (max across
     /// reports). Zero until audio actually flows on this peer.
@@ -232,6 +321,12 @@ final class MediaProbeController: NSObject {
         // never flips the GLOBAL isAudioEnabled on factory/peer creation.
         RTCAudioSession.sharedInstance().useManualAudio = true
         RTCAudioSessionDiagnostics.install()
+        // Build-44 idle-mic guard: the global flag is sticky (M151 default
+        // YES) and a leftover ENABLED flag let an idle preflight probe start
+        // the ADM — microphone open with no call (build-43 field log). With
+        // no live audio owner the flag must be OFF; an active call's demand
+        // (owner count > 0) is never touched.
+        RTCAudioDemand.clampWhenUnowned()
         self.factory = RTCPeerConnectionFactory(encoderFactory: nil, decoderFactory: nil)
         super.init()
     }
@@ -278,6 +373,31 @@ final class MediaProbeController: NSObject {
     func applyAnswer(_ sdp: String) async throws {
         guard let pc = peerConnection else { throw MediaError.notPrepared }
         try await pc.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp))
+        // Privacy-safe codec evidence (codec NAME only), clearly labelled as
+        // the SDP-advertised selection: the answer's first audio payload is
+        // the gateway's ADVERTISED preference. The PROVEN negotiated codec
+        // arrives with the first stats report (`direct codec rtp=…` below).
+        if let codec = Self.negotiatedAudioCodec(fromAnswer: sdp) {
+            DiagnosticsStore.shared.log("audio", "direct codec advertised=\(codec)")
+        }
+    }
+
+    /// First payload of the answer's audio m-section mapped to a codec name
+    /// (`opus`/`pcmu`), nil when the SDP carries no usable audio line. Pure
+    /// and unit-testable; payload names never leave the device unredacted.
+    static func negotiatedAudioCodec(fromAnswer sdp: String) -> String? {
+        for rawLine in sdp.components(separatedBy: "\n") {
+            let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
+            guard line.hasPrefix("m=audio") else { continue }
+            let parts = line.split(separator: " ").map(String.init)
+            guard parts.count >= 4, let firstPT = Int(parts[3]) else { return nil }
+            switch firstPT {
+            case SDPCodecFilter.opusPT: return "opus"
+            case SDPCodecFilter.pcmuPT: return "pcmu"
+            default: return "pt\(firstPT)"
+            }
+        }
+        return nil
     }
 
     // MARK: Adoption (exclusive audio ownership)
@@ -293,7 +413,10 @@ final class MediaProbeController: NSObject {
         adoptionInboundSamples = inboundPlayoutSamples
         let rtc = RTCAudioSession.sharedInstance()
         if let session { rtc.audioSessionDidActivate(session) }
-        rtc.isAudioEnabled = true
+        if !holdsAudioDemand {
+            RTCAudioDemand.acquire()
+            holdsAudioDemand = true
+        }
         enableAudioTrack(true)
         // Privacy-safe per-call snapshot that settles capture/playback
         // activation on the next field export (port TYPE + output volume +
@@ -341,7 +464,10 @@ final class MediaProbeController: NSObject {
         rtc.audioSessionDidActivate(session)
         // A recovery activation after an interruption must re-enable the ADM;
         // the normal adoption path also enables it.
-        rtc.isAudioEnabled = true
+        if !holdsAudioDemand {
+            RTCAudioDemand.acquire()
+            holdsAudioDemand = true
+        }
     }
 
     /// Forwards a system deactivation (interruption began / media reset /
@@ -351,7 +477,10 @@ final class MediaProbeController: NSObject {
         guard adopted else { return }
         let rtc = RTCAudioSession.sharedInstance()
         rtc.audioSessionDidDeactivate(session)
-        rtc.isAudioEnabled = false
+        if holdsAudioDemand {
+            RTCAudioDemand.release()
+            holdsAudioDemand = false
+        }
     }
 
     /// Direct in-app answer with no system call (no `didActivate` will come):
@@ -364,7 +493,10 @@ final class MediaProbeController: NSObject {
         if let active = AudioSessionBridge.shared.activeSession {
             let rtc = RTCAudioSession.sharedInstance()
             rtc.audioSessionDidActivate(active)
-            rtc.isAudioEnabled = true
+            if !holdsAudioDemand {
+                RTCAudioDemand.acquire()
+                holdsAudioDemand = true
+            }
             return true
         }
         guard let session = AudioSessionBridge.shared.activateSelfManaged() else {
@@ -373,7 +505,10 @@ final class MediaProbeController: NSObject {
         }
         let rtc = RTCAudioSession.sharedInstance()
         rtc.audioSessionDidActivate(session)
-        rtc.isAudioEnabled = true
+        if !holdsAudioDemand {
+            RTCAudioDemand.acquire()
+            holdsAudioDemand = true
+        }
         return true
     }
 
@@ -396,26 +531,70 @@ final class MediaProbeController: NSObject {
     /// bumps it). Returns false when no restart was armed.
     @discardableResult
     func restartAudioDevice() -> Bool {
-        guard adopted, audioOwned else { return false }
+        guard adopted, audioOwned, holdsAudioDemand else { return false }
         guard !AudioSessionBridge.shared.isInterrupted,
               AudioSessionBridge.shared.activeSession != nil else { return false }
         let epoch = AudioSessionBridge.shared.eventEpoch
+        let suspendGen = audioSuspendGeneration
         let settle = restartSettleNanoseconds
-        let rtc = RTCAudioSession.sharedInstance()
-        rtc.isAudioEnabled = false
+        RTCAudioDemand.release()
+        holdsAudioDemand = false
         DiagnosticsCensus.shared.increment("audio.rtcAdmRestart")
         DiagnosticsStore.shared.log("audio", "direct media audio device restart armed (bounded)")
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: settle)
-            guard let self, self.adopted, self.audioOwned,
+            guard let self, self.adopted, self.audioOwned, !self.holdsAudioDemand,
+                  self.audioSuspendGeneration == suspendGen,
                   AudioSessionBridge.shared.eventEpoch == epoch,
                   !AudioSessionBridge.shared.isInterrupted,
                   AudioSessionBridge.shared.activeSession != nil else { return }
-            rtc.isAudioEnabled = true
+            RTCAudioDemand.acquire()
+            self.holdsAudioDemand = true
             self.enableAudioTrack(true)
             DiagnosticsStore.shared.log("audio", "direct media audio device re-enabled after restart")
         }
         return true
+    }
+
+    /// Stops this adopted peer's ADM WITHOUT closing the transport so the
+    /// staged relay graph can take the voice-processing unit: a concurrent
+    /// engine start against the still-running ADM fails (build-43 field
+    /// evidence: "graph start error" mid-handover, then a false healthy
+    /// relay publish and a dead call). The peer stays fully rollback-capable
+    /// until `closeTransport()`. The suspend generation ALWAYS bumps for an
+    /// adopted owner (even with no demand currently held) so a pending
+    /// bounded-restart re-enable is fenced; the demand release itself is
+    /// conditional on actually holding it.
+    func suspendAudioDeviceForHandover() {
+        guard adopted, audioOwned else { return }
+        // Bump the suspend generation even when this peer currently holds
+        // NO audio demand (a bounded restart may already have released it
+        // with its delayed re-enable still sleeping): the generation fence
+        // is exactly what stops that pending re-enable from re-acquiring
+        // the ADM underneath the staged relay graph.
+        audioSuspendGeneration &+= 1
+        guard holdsAudioDemand else { return }
+        RTCAudioDemand.release()
+        holdsAudioDemand = false
+        DiagnosticsCensus.shared.increment("audio.rtcAdmHandoverSuspend")
+        DiagnosticsStore.shared.log("audio", "direct media audio device suspended for handover")
+    }
+
+    /// Re-enables the ADM after the staged relay graph failed to start: the
+    /// direct transport (never closed) keeps carrying the call. Fenced
+    /// against interruption/session loss exactly like the bounded restart —
+    /// a late resume must never reopen the mic for a dead lifecycle; the
+    /// bridge's next real activation re-acquires demand through
+    /// `audioSessionActivated` instead.
+    func resumeAudioDeviceAfterFailedHandover() {
+        guard adopted, audioOwned, !holdsAudioDemand else { return }
+        guard !AudioSessionBridge.shared.isInterrupted,
+              AudioSessionBridge.shared.activeSession != nil else { return }
+        RTCAudioDemand.acquire()
+        holdsAudioDemand = true
+        enableAudioTrack(true)
+        DiagnosticsCensus.shared.increment("audio.rtcAdmHandoverResume")
+        DiagnosticsStore.shared.log("audio", "direct media audio device resumed after failed handover")
     }
 
     private func enableAudioTrack(_ enabled: Bool) {
@@ -545,6 +724,7 @@ final class MediaProbeController: NSObject {
             var outboundAudio: UInt64 = 0
             var playoutSamples: UInt64 = 0
             var playoutSeen = false
+            var outboundCodecId: String?
             for statistic in report.statistics.values {
                 let isAudio = (statistic.values["kind"] as? String) == "audio"
                     || (statistic.values["mediaType"] as? String) == "audio"
@@ -560,6 +740,7 @@ final class MediaProbeController: NSObject {
                 if statistic.type == "outbound-rtp", isAudio {
                     let packets = (statistic.values["packetsSent"] as? NSNumber)?.uint64Value ?? 0
                     outboundAudio = max(outboundAudio, packets)
+                    outboundCodecId = statistic.values["codecId"] as? String
                     continue
                 }
                 guard statistic.type == "candidate-pair",
@@ -573,8 +754,23 @@ final class MediaProbeController: NSObject {
                     }
                 }
             }
-            if inboundAudio > 0 || outboundAudio > 0 || playoutSeen {
+            // The PROVEN negotiated uplink codec: the outbound stream's
+            // codecId resolves to the codec stat's mimeType — real RTP
+            // evidence, unlike the SDP-advertised preference logged at
+            // answer time. Resolved after the loop (dictionary order is
+            // unspecified) and logged once per peer.
+            var rtpCodecName: String?
+            if let codecId = outboundCodecId,
+               let codecStat = report.statistics.values.first(where: { $0.id == codecId }),
+               let mime = codecStat.values["mimeType"] as? String {
+                rtpCodecName = mime.hasPrefix("audio/") ? String(mime.dropFirst("audio/".count)) : mime
+            }
+            if inboundAudio > 0 || outboundAudio > 0 || playoutSeen || rtpCodecName != nil {
                 Task { @MainActor in
+                    if let rtpCodecName, !self.rtpCodecLogged {
+                        self.rtpCodecLogged = true
+                        DiagnosticsStore.shared.log("audio", "direct codec rtp=\(rtpCodecName)")
+                    }
                     self.inboundAudioPackets = max(self.inboundAudioPackets, inboundAudio)
                     self.outboundAudioPackets = max(self.outboundAudioPackets, outboundAudio)
                     if playoutSeen {
@@ -586,6 +782,9 @@ final class MediaProbeController: NSObject {
             }
         }
     }
+
+    /// The RTP-proven codec was logged for this peer (once).
+    private var rtpCodecLogged = false
 
 
 
@@ -619,13 +818,17 @@ final class MediaProbeController: NSObject {
         inboundPlayoutSamples = 0
         playoutSamplesStatSeen = false
         statsRoundsSinceAdoption = 0
+        rtpCodecLogged = false
         adoptionInboundPackets = 0
         adoptionOutboundPackets = 0
         adoptionInboundSamples = 0
         echoChannelOpen = false
         echoChannel = nil
         pendingEcho = nil
-        if disableAudio { RTCAudioSession.sharedInstance().isAudioEnabled = false }
+        if disableAudio, holdsAudioDemand {
+            RTCAudioDemand.release()
+            holdsAudioDemand = false
+        }
         adopted = false
         audioOwned = false
         let pc = peerConnection
@@ -854,6 +1057,13 @@ protocol DirectProbeControlling: AnyObject {
     /// Self-activates voice chat for an in-app direct answer (no system call).
     @discardableResult
     func activateAudioWithoutCallKit() -> Bool
+    /// Stops this adopted peer's audio device WITHOUT closing the transport,
+    /// so a staged relay graph can take the voice-processing unit (ordered
+    /// handover; the peer stays rollback-capable until `closeTransport()`).
+    func suspendAudioDeviceForHandover()
+    /// Re-enables the peer's audio device after the staged graph failed to
+    /// start (rollback: the direct transport keeps carrying the call).
+    func resumeAudioDeviceAfterFailedHandover()
     /// Output-port override (speaker), matching the other transports.
     func setSpeakerphone(_ enabled: Bool) throws
     func setMuted(_ muted: Bool)
@@ -871,6 +1081,10 @@ extension DirectProbeControlling {
     /// activates the shared AVAudioSession.
     @discardableResult
     func activateAudioWithoutCallKit() -> Bool { true }
+    /// Fakes default to a no-op suspend (override to assert the ordering).
+    func suspendAudioDeviceForHandover() {}
+    /// Fakes default to a no-op resume (override to assert the ordering).
+    func resumeAudioDeviceAfterFailedHandover() {}
     /// Fakes do not reroute audio.
     func setSpeakerphone(_ enabled: Bool) throws {}
 }

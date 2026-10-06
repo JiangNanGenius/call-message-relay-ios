@@ -205,6 +205,11 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
     /// injectable; the production wrapper is a thin AVAudioEngine adapter).
     private let audioSurface: AudioSurfaceProviding
 
+    /// OSStatus-style code of the most recent engine start failure
+    /// (privacy-safe numeric evidence for field diagnostics — the build-43
+    /// handover failure exported only "graph start error" with no code).
+    private(set) var lastStartFailureCode: Int?
+
     private static let restartBudget = RestartBudget()
 
     init(audioSurface: AudioSurfaceProviding? = nil) {
@@ -273,8 +278,11 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
         feed.runTickLate = 0
         feed.lock.unlock()
         } catch {
-            AppLog.media.notice("ws audio engine start failed: \((error as NSError).code)")
+            let code = (error as NSError).code
+            lastStartFailureCode = code
+            AppLog.media.notice("ws audio engine start failed: \(code)")
             DiagnosticsCensus.shared.increment("audio.graphStartFail")
+            DiagnosticsStore.shared.log("audio", "graph start failed code=\(code)")
             // The tap is now installed BEFORE start: a failed start must
             // remove it or a retry would install a second tap on the node.
             removeCapture()
@@ -285,6 +293,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
             sink = nil
             return false
         }
+        lastStartFailureCode = nil
         DiagnosticsCensus.shared.increment("audio.graphStart")
         DiagnosticsStore.shared.log("audio",
             "graph start capRate=\(captureRate) ch=\(hardwareChannels) "
@@ -305,6 +314,7 @@ final class WSAudioGraph: WebSocketCallMedia.WSAudioGraphing {
                        playbackFormat: AVAudioFormat,
                        sink: WSPlaybackScheduler.WSPlaybackScheduling,
                        armTimer: Bool = false) -> Bool {
+        lastStartFailureCode = nil
         feed.lock.lock()
         guard !feed.running else { feed.lock.unlock(); return true }
         feed.capture = WSCapturePipeline(sourceFormat: captureFormat)
